@@ -1,0 +1,10 @@
+openilink-hub
+dist/
+*.db
+*.db-wal
+*.db-shm
+.idea/
+.vscode/
+*.swp
+.DS_Store
+node_modules/
