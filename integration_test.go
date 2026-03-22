@@ -1307,6 +1307,107 @@ func TestInboundNoMatchStoredWithoutChannelID(t *testing.T) {
 	}
 }
 
+func TestRawMessageStored(t *testing.T) {
+	env := setup(t)
+	defer env.close()
+
+	env.register("rawuser", "password123")
+	botObj := env.createBotForUser("Bot1")
+	env.mgr.StartBot(context.Background(), botObj)
+
+	ch, _ := env.db.CreateChannel(botObj.ID, "RawChan", "", nil, nil)
+	ws := env.connectWS(t, ch.APIKey)
+	defer ws.Close()
+	readWS(t, ws)
+
+	inst, _ := env.mgr.GetInstance(botObj.ID)
+	mock := inst.Provider.(*mockProvider.Provider)
+
+	mock.SimulateInbound(provider.InboundMessage{
+		ExternalID: "raw-1", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
+		Items: []provider.MessageItem{{Type: "text", Text: "hello raw"}},
+	})
+	readWSTimeout(t, ws, 2*time.Second)
+
+	// Check bot-level message has raw
+	msgs, _ := env.db.ListMessages(botObj.ID, 10, 0)
+	if len(msgs) == 0 {
+		t.Fatal("no messages")
+	}
+	msg := msgs[0]
+	if msg.Raw == nil {
+		t.Fatal("raw is nil")
+	}
+
+	var raw map[string]any
+	json.Unmarshal(*msg.Raw, &raw)
+
+	// Mock sets _mock: true
+	if raw["_mock"] != true {
+		t.Errorf("raw._mock = %v, want true", raw["_mock"])
+	}
+	if raw["from_user_id"] != "u@wx" {
+		t.Errorf("raw.from_user_id = %v", raw["from_user_id"])
+	}
+
+	// Check channel-level copy also has raw
+	chMsgs, _ := env.db.ListChannelMessages(ch.ID, "u@wx", 10)
+	if len(chMsgs) == 0 {
+		t.Fatal("no channel messages")
+	}
+	if chMsgs[0].Raw == nil {
+		t.Error("channel copy raw is nil")
+	}
+}
+
+func TestRawMessageWithCustomData(t *testing.T) {
+	env := setup(t)
+	defer env.close()
+
+	env.register("rawcustom", "password123")
+	botObj := env.createBotForUser("Bot1")
+	env.mgr.StartBot(context.Background(), botObj)
+
+	inst, _ := env.mgr.GetInstance(botObj.ID)
+	mock := inst.Provider.(*mockProvider.Provider)
+
+	// Send with explicit raw (simulating real iLink response)
+	customRaw := json.RawMessage(`{"message_id":12345,"item_list":[{"type":3,"voice_item":{"encode_type":6,"sample_rate":24000}}],"_server":"ilink"}`)
+	mock.SimulateInbound(provider.InboundMessage{
+		ExternalID: "raw-2", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
+		Items: []provider.MessageItem{{Type: "voice", Text: "你好"}},
+		Raw:   customRaw,
+	})
+
+	time.Sleep(200 * time.Millisecond)
+
+	msgs, _ := env.db.ListMessages(botObj.ID, 10, 0)
+	if len(msgs) == 0 {
+		t.Fatal("no messages")
+	}
+	if msgs[0].Raw == nil {
+		t.Fatal("raw is nil")
+	}
+
+	var raw map[string]any
+	json.Unmarshal(*msgs[0].Raw, &raw)
+
+	// Should preserve the custom raw, not auto-generate
+	if raw["_server"] != "ilink" {
+		t.Errorf("raw._server = %v, want ilink", raw["_server"])
+	}
+	if raw["message_id"] != float64(12345) {
+		t.Errorf("raw.message_id = %v", raw["message_id"])
+	}
+
+	// Verify voice encode_type is preserved in raw
+	items := raw["item_list"].([]any)
+	voice := items[0].(map[string]any)["voice_item"].(map[string]any)
+	if voice["encode_type"] != float64(6) {
+		t.Errorf("encode_type = %v, want 6", voice["encode_type"])
+	}
+}
+
 func TestMentionRoutesFirstOnly(t *testing.T) {
 	env := setup(t)
 	defer env.close()

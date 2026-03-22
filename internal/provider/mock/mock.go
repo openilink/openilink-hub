@@ -72,7 +72,19 @@ func (p *Provider) GetConfig(_ context.Context, _, _ string) (*provider.BotConfi
 }
 
 // SimulateInbound injects a fake inbound message for testing.
+// Automatically sets Raw to a JSON representation if not already set.
 func (p *Provider) SimulateInbound(msg provider.InboundMessage) {
+	if msg.Raw == nil {
+		raw, _ := json.Marshal(map[string]any{
+			"message_id":   msg.ExternalID,
+			"from_user_id": msg.Sender,
+			"to_user_id":   msg.Recipient,
+			"create_time_ms": msg.Timestamp,
+			"item_list":    msg.Items,
+			"_mock":        true,
+		})
+		msg.Raw = raw
+	}
 	p.mu.Lock()
 	cb := p.onMsg
 	p.mu.Unlock()
