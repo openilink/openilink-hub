@@ -132,7 +132,7 @@ func (s *Server) SetupUpstreamHandler() relay.UpstreamHandler {
 			}
 
 			typing := data.Status != "cancel"
-			if err := inst.Provider.SendTyping(context.Background(), data.Recipient, data.Ticket, typing); err != nil {
+			if err := inst.Provider.SendTyping(context.Background(), "", data.Ticket, typing); err != nil {
 				conn.Send(relay.NewAck(env.ReqID, false, "", err.Error()))
 				return
 			}
@@ -140,7 +140,6 @@ func (s *Server) SetupUpstreamHandler() relay.UpstreamHandler {
 
 		case "get_config":
 			var data struct {
-				Recipient    string `json:"recipient"`
 				ContextToken string `json:"context_token"`
 			}
 			if err := json.Unmarshal(env.Data, &data); err != nil {
@@ -154,7 +153,7 @@ func (s *Server) SetupUpstreamHandler() relay.UpstreamHandler {
 				return
 			}
 
-			cfg, err := inst.Provider.GetConfig(context.Background(), data.Recipient, data.ContextToken)
+			cfg, err := inst.Provider.GetConfig(context.Background(), "", data.ContextToken)
 			if err != nil {
 				conn.Send(relay.NewAck(env.ReqID, false, "", err.Error()))
 				return

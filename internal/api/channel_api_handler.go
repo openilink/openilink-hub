@@ -165,9 +165,8 @@ func (s *Server) handleChannelTyping(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Recipient string `json:"recipient"`
-		Ticket    string `json:"ticket"`
-		Status    string `json:"status"` // "typing" or "cancel"
+		Ticket string `json:"ticket"`
+		Status string `json:"status"` // "typing" or "cancel"
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -181,7 +180,7 @@ func (s *Server) handleChannelTyping(w http.ResponseWriter, r *http.Request) {
 	}
 
 	typing := req.Status != "cancel"
-	if err := inst.Provider.SendTyping(context.Background(), req.Recipient, req.Ticket, typing); err != nil {
+	if err := inst.Provider.SendTyping(context.Background(), "", req.Ticket, typing); err != nil {
 		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -201,7 +200,6 @@ func (s *Server) handleChannelConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Recipient    string `json:"recipient"`
 		ContextToken string `json:"context_token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -215,7 +213,7 @@ func (s *Server) handleChannelConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := inst.Provider.GetConfig(context.Background(), req.Recipient, req.ContextToken)
+	cfg, err := inst.Provider.GetConfig(context.Background(), "", req.ContextToken)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadGateway)
 		return
