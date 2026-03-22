@@ -1,12 +1,14 @@
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LogOut, Github, Puzzle, Bot, LayoutDashboard, User, Shield, Bug, Store, FolderOpen, ShieldCheck, BarChart3, Users, Settings, Blocks } from "lucide-react";
+import { LogOut, Github, Puzzle, Bot, LayoutDashboard, User, Shield, Bug, Store, FolderOpen, ShieldCheck, BarChart3, Users, Settings, Blocks, Sun, Moon } from "lucide-react";
 import { api } from "../lib/api";
+import { useTheme } from "../lib/theme";
 
 export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState<any>(null);
+  const { resolvedTheme, setTheme } = useTheme();
 
   useEffect(() => {
     api.me().then(setUser).catch(() => navigate("/login", { replace: true }));
@@ -99,6 +101,13 @@ export function Layout() {
               className="flex-1 flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground py-1.5 rounded-lg hover:bg-secondary/50 transition-colors">
               <Github className="w-3 h-3" /> GitHub
             </a>
+            <button
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="flex items-center justify-center text-muted-foreground hover:text-foreground py-1 px-2 rounded hover:bg-secondary/50 transition-colors cursor-pointer"
+              aria-label="切换主题"
+            >
+              {resolvedTheme === "dark" ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
+            </button>
             <button onClick={handleLogout}
               className="flex-1 flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground py-1.5 rounded-lg hover:bg-secondary/50 transition-colors cursor-pointer">
               <LogOut className="w-3 h-3" /> 退出

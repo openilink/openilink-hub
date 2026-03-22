@@ -14,9 +14,11 @@ import { AdminPage } from "./pages/admin";
 import { PluginDebugPage } from "./pages/plugin-debug";
 import { AppsPage } from "./pages/apps";
 import { AppDetailPage } from "./pages/app-detail";
+import { ThemeProvider } from "./lib/theme";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    <ThemeProvider>
     <BrowserRouter>
       <Routes>
         {/* Public */}
@@ -45,5 +47,6 @@ createRoot(document.getElementById("root")!).render(
         </Route>
       </Routes>
     </BrowserRouter>
+    </ThemeProvider>
   </StrictMode>
 );

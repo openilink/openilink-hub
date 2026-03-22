@@ -3,7 +3,8 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card } from "../components/ui/card";
 import { api } from "../lib/api";
-import { Link2, Unlink, KeyRound, Plus, Trash2 } from "lucide-react";
+import { Link2, Unlink, Trash2, KeyRound, Plus, Sun, Moon, Monitor } from "lucide-react";
+import { useTheme, type Theme } from "../lib/theme";
 
 const providerLabels: Record<string, string> = { github: "GitHub", linuxdo: "LinuxDo" };
 
@@ -11,6 +12,7 @@ export function SettingsPage() {
   const [user, setUser] = useState<any>(null);
   const [oauthAccounts, setOauthAccounts] = useState<any[]>([]);
   const [oauthProviders, setOauthProviders] = useState<string[]>([]);
+  const { theme, setTheme } = useTheme();
 
   async function load() {
     const [u, accounts, providers] = await Promise.all([api.me(), api.oauthAccounts(), api.oauthProviders()]);
@@ -41,6 +43,12 @@ export function SettingsPage() {
 
   if (!user) return null;
 
+  const themeOptions: { value: Theme; label: string; icon: React.ReactNode }[] = [
+    { value: "light", label: "浅色", icon: <Sun className="w-3.5 h-3.5" /> },
+    { value: "dark", label: "深色", icon: <Moon className="w-3.5 h-3.5" /> },
+    { value: "system", label: "跟随系统", icon: <Monitor className="w-3.5 h-3.5" /> },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -56,6 +64,23 @@ export function SettingsPage() {
       )}
 
       {/* Account info */}
+      <Card className="space-y-3">
+        <h3 className="text-sm font-medium">外观</h3>
+        <div className="flex gap-2">
+          {themeOptions.map(({ value, label, icon }) => (
+            <Button
+              key={value}
+              variant={theme === value ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTheme(value)}
+            >
+              {icon}
+              {label}
+            </Button>
+          ))}
+        </div>
+      </Card>
+
       <Card className="space-y-3">
         <h3 className="text-sm font-medium">账号信息</h3>
         <div className="text-sm space-y-1">
