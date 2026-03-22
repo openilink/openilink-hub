@@ -174,7 +174,13 @@ function AIConfigSection() {
       <div className="space-y-2">
         <Input placeholder="https://api.openai.com/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="h-8 text-xs font-mono" />
         <div className="flex gap-2">
-          <Input type="password" placeholder={configured ? "API Key（留空保持不变）" : "API Key"} value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="h-8 text-xs font-mono" />
+          <Input
+            type="password"
+            placeholder={configured ? `已配置 (${config.api_key})，留空保持不变` : "API Key"}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="h-8 text-xs font-mono"
+          />
           <Input placeholder="模型名称" value={model} onChange={(e) => setModel(e.target.value)} className="h-8 text-xs font-mono w-40" />
         </div>
       </div>
