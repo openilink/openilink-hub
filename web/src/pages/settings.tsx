@@ -108,8 +108,81 @@ export function SettingsPage() {
         </Card>
       )}
 
+      {user.role === "admin" && <AIConfigSection />}
       {user.role === "admin" && <OAuthConfigSection />}
     </div>
+  );
+}
+
+function AIConfigSection() {
+  const [config, setConfig] = useState<any>(null);
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    try {
+      const data = await api.getAIConfig();
+      setConfig(data);
+      setBaseUrl(data.base_url || "");
+      setModel(data.model || "");
+      setApiKey("");
+    } catch { /* not admin */ }
+  }
+
+  useEffect(() => { load(); }, []);
+  if (!config) return null;
+
+  const configured = config.enabled === "true";
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    try {
+      let url = baseUrl.replace(/\/+$/, "");
+      if (url && !url.endsWith("/v1")) url += "/v1";
+      setBaseUrl(url);
+      await api.setAIConfig({ base_url: url, api_key: apiKey || undefined, model: model || undefined });
+      load();
+    } catch (err: any) { setError(err.message); }
+    setSaving(false);
+  }
+
+  async function handleDelete() {
+    if (!confirm("删除全局 AI 配置？")) return;
+    await api.deleteAIConfig();
+    load();
+  }
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium">全局 AI 配置</h3>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            配置后渠道可选择「内置」模式，无需单独填写 API Key
+          </p>
+        </div>
+        {configured && (
+          <Button variant="ghost" size="sm" onClick={handleDelete}>
+            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+          </Button>
+        )}
+      </div>
+      <div className="space-y-2">
+        <Input placeholder="https://api.openai.com/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="h-8 text-xs font-mono" />
+        <div className="flex gap-2">
+          <Input type="password" placeholder={configured ? "API Key（留空保持不变）" : "API Key"} value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="h-8 text-xs font-mono" />
+          <Input placeholder="模型名称" value={model} onChange={(e) => setModel(e.target.value)} className="h-8 text-xs font-mono w-40" />
+        </div>
+      </div>
+      {error && <p className="text-[10px] text-destructive">{error}</p>}
+      <div className="flex justify-end">
+        <Button size="sm" onClick={handleSave} disabled={saving}>保存</Button>
+      </div>
+    </Card>
   );
 }
 

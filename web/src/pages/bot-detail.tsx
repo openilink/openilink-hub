@@ -364,6 +364,7 @@ function ChannelRow({ channel, onRefresh }: { channel: any; onRefresh: () => voi
 
 function AIConfigPanel({ channelId, config, onSaved }: { channelId: string; config: any; onSaved: () => void }) {
   const [enabled, setEnabled] = useState(config?.enabled || false);
+  const [source, setSource] = useState(config?.source || "builtin");
   const [baseUrl, setBaseUrl] = useState(config?.base_url || "");
   const [apiKey, setApiKey] = useState(config?.api_key || "");
   const [model, setModel] = useState(config?.model || "");
@@ -375,9 +376,7 @@ function AIConfigPanel({ channelId, config, onSaved }: { channelId: string; conf
   function normalizeBaseUrl(url: string): string {
     if (!url) return "";
     let u = url.replace(/\/+$/, "");
-    if (u && !u.endsWith("/v1")) {
-      u += "/v1";
-    }
+    if (u && !u.endsWith("/v1")) u += "/v1";
     return u;
   }
 
@@ -385,24 +384,27 @@ function AIConfigPanel({ channelId, config, onSaved }: { channelId: string; conf
     setSaving(true);
     setError("");
     try {
-      const normalized = normalizeBaseUrl(baseUrl);
-      setBaseUrl(normalized);
-      await api.updateChannel(channelId, {
-        ai_config: {
-          enabled,
-          base_url: normalized,
-          api_key: apiKey,
-          model: model || "gpt-4o-mini",
-          system_prompt: systemPrompt,
-          max_history: maxHistory || 20,
-        },
-      });
+      const cfg: any = {
+        enabled,
+        source,
+        system_prompt: systemPrompt,
+        max_history: maxHistory || 20,
+      };
+      if (source === "custom") {
+        cfg.base_url = normalizeBaseUrl(baseUrl);
+        cfg.api_key = apiKey;
+        cfg.model = model || "gpt-4o-mini";
+        setBaseUrl(cfg.base_url);
+      }
+      await api.updateChannel(channelId, { ai_config: cfg });
       onSaved();
     } catch (err: any) {
       setError(err.message);
     }
     setSaving(false);
   }
+
+  const canSave = source === "builtin" || apiKey;
 
   return (
     <div className="border rounded-lg bg-background p-3 space-y-3">
@@ -412,39 +414,46 @@ function AIConfigPanel({ channelId, config, onSaved }: { channelId: string; conf
         </span>
         <label className="flex items-center gap-1.5 cursor-pointer">
           <span className="text-[10px] text-muted-foreground">{enabled ? "已开启" : "已关闭"}</span>
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="w-3.5 h-3.5 accent-primary"
-          />
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="w-3.5 h-3.5 accent-primary" />
         </label>
       </div>
 
       {enabled && (
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              placeholder="https://api.openai.com/v1"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              onBlur={() => setBaseUrl(normalizeBaseUrl(baseUrl))}
-              className="h-7 text-[11px] font-mono col-span-2"
-            />
-            <Input
-              type="password"
-              placeholder="API Key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="h-7 text-[11px] font-mono"
-            />
-            <Input
-              placeholder="模型（默认 gpt-4o-mini）"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="h-7 text-[11px] font-mono"
-            />
+          {/* Source selector */}
+          <div className="flex gap-1">
+            <button
+              onClick={() => setSource("builtin")}
+              className={`px-2.5 py-1 text-[11px] rounded cursor-pointer transition-colors ${
+                source === "builtin" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              }`}
+            >内置</button>
+            <button
+              onClick={() => setSource("custom")}
+              className={`px-2.5 py-1 text-[11px] rounded cursor-pointer transition-colors ${
+                source === "custom" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              }`}
+            >自定义</button>
           </div>
+
+          {source === "builtin" && (
+            <p className="text-[10px] text-muted-foreground">使用管理员在设置中配置的全局 AI 服务</p>
+          )}
+
+          {source === "custom" && (
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder="https://api.openai.com/v1"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                onBlur={() => setBaseUrl(normalizeBaseUrl(baseUrl))}
+                className="h-7 text-[11px] font-mono col-span-2"
+              />
+              <Input type="password" placeholder="API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="h-7 text-[11px] font-mono" />
+              <Input placeholder="模型（默认 gpt-4o-mini）" value={model} onChange={(e) => setModel(e.target.value)} className="h-7 text-[11px] font-mono" />
+            </div>
+          )}
+
           <textarea
             placeholder="系统提示词（System Prompt）"
             value={systemPrompt}
@@ -454,24 +463,11 @@ function AIConfigPanel({ channelId, config, onSaved }: { channelId: string; conf
           />
           <div className="flex items-center gap-2">
             <label className="text-[10px] text-muted-foreground shrink-0">上下文消息数</label>
-            <Input
-              type="number"
-              value={maxHistory}
-              onChange={(e) => setMaxHistory(parseInt(e.target.value) || 20)}
-              className="h-7 text-[11px] w-20"
-              min={1}
-              max={100}
-            />
+            <Input type="number" value={maxHistory} onChange={(e) => setMaxHistory(parseInt(e.target.value) || 20)} className="h-7 text-[11px] w-20" min={1} max={100} />
             <div className="flex-1" />
             {error && <span className="text-[10px] text-destructive">{error}</span>}
-            <Button size="sm" className="h-7" onClick={handleSave} disabled={saving || !apiKey}>
-              {saving ? "..." : "保存"}
-            </Button>
+            <Button size="sm" className="h-7" onClick={handleSave} disabled={saving || !canSave}>{saving ? "..." : "保存"}</Button>
           </div>
-          <p className="text-[10px] text-muted-foreground">
-            兼容 OpenAI / Azure / Anthropic 代理 / Ollama 等任何 OpenAI 兼容接口。
-            收到文本消息时自动调用 AI 生成回复并发送给用户。
-          </p>
         </div>
       )}
     </div>

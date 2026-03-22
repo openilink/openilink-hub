@@ -232,15 +232,36 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 		_ = m.db.UpdateChannelLastSeq(ch.ID, seqID)
 
 		// AI auto-reply (only for text messages)
-		if ch.AIConfig.Enabled && ch.AIConfig.APIKey != "" && msgType == "text" && content != "" {
+		if ch.AIConfig.Enabled && msgType == "text" && content != "" {
 			go m.aiReply(inst, ch, msg.Sender, content)
 		}
 	}
 }
 
+// resolveAIConfig merges channel config with global builtin config if source is "builtin".
+func (m *Manager) resolveAIConfig(cfg database.AIConfig) database.AIConfig {
+	if cfg.Source != "builtin" {
+		return cfg
+	}
+	// Load global AI config from system_config
+	global, _ := m.db.ListConfigByPrefix("ai.")
+	if global["ai.api_key"] == "" {
+		return cfg // no global config, can't resolve
+	}
+	cfg.BaseURL = global["ai.base_url"]
+	cfg.APIKey = global["ai.api_key"]
+	cfg.Model = global["ai.model"]
+	return cfg
+}
+
 // aiReply calls the AI completion API and sends the reply through the bot.
 func (m *Manager) aiReply(inst *Instance, ch database.Channel, sender, text string) {
-	reply, err := ai.Complete(context.Background(), ch.AIConfig, m.db, inst.DBID, sender, text)
+	resolved := m.resolveAIConfig(ch.AIConfig)
+	if resolved.APIKey == "" {
+		slog.Warn("ai reply skipped: no api key", "channel", ch.ID, "source", ch.AIConfig.Source)
+		return
+	}
+	reply, err := ai.Complete(context.Background(), resolved, m.db, inst.DBID, sender, text)
 	if err != nil {
 		slog.Error("ai completion failed", "channel", ch.ID, "err", err)
 		return

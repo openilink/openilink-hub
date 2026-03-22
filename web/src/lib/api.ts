@@ -59,6 +59,12 @@ export const api = {
   deleteOAuthConfig: (provider: string) =>
     request(`/api/admin/config/oauth/${provider}`, { method: "DELETE" }),
 
+  // Admin: AI config
+  getAIConfig: () => request<any>("/api/admin/config/ai"),
+  setAIConfig: (data: { base_url?: string; api_key?: string; model?: string }) =>
+    request("/api/admin/config/ai", { method: "PUT", body: JSON.stringify(data) }),
+  deleteAIConfig: () => request("/api/admin/config/ai", { method: "DELETE" }),
+
   // Users (admin)
   listUsers: () => request<any[]>("/api/users"),
   createUser: (data: any) => request("/api/users", { method: "POST", body: JSON.stringify(data) }),

@@ -110,6 +110,58 @@ func (s *Server) handleDeleteOAuthConfig(w http.ResponseWriter, r *http.Request)
 	jsonOK(w)
 }
 
+// GET /api/admin/config/ai — get global AI config
+func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
+	dbConf, err := s.DB.ListConfigByPrefix("ai.")
+	if err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	result := map[string]string{
+		"base_url": dbConf["ai.base_url"],
+		"api_key":  maskSecret(dbConf["ai.api_key"]),
+		"model":    dbConf["ai.model"],
+	}
+	// Show if configured
+	if dbConf["ai.api_key"] != "" {
+		result["enabled"] = "true"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// PUT /api/admin/config/ai — set global AI config
+func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BaseURL string `json:"base_url"`
+		APIKey  string `json:"api_key"`
+		Model   string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if req.BaseURL != "" {
+		s.DB.SetConfig("ai.base_url", req.BaseURL)
+	}
+	if req.APIKey != "" {
+		s.DB.SetConfig("ai.api_key", req.APIKey)
+	}
+	if req.Model != "" {
+		s.DB.SetConfig("ai.model", req.Model)
+	}
+	jsonOK(w)
+}
+
+// DELETE /api/admin/config/ai — remove global AI config
+func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
+	s.DB.DeleteConfig("ai.base_url")
+	s.DB.DeleteConfig("ai.api_key")
+	s.DB.DeleteConfig("ai.model")
+	jsonOK(w)
+}
+
 func maskSecret(s string) string {
 	if len(s) <= 8 {
 		return strings.Repeat("*", len(s))

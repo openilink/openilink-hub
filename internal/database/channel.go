@@ -18,9 +18,10 @@ type FilterRule struct {
 // AIConfig holds optional AI auto-reply configuration for a channel.
 type AIConfig struct {
 	Enabled      bool   `json:"enabled"`
-	BaseURL      string `json:"base_url,omitempty"`      // default: https://api.openai.com/v1
+	Source       string `json:"source,omitempty"`         // "builtin" (use global config) or "custom"
+	BaseURL      string `json:"base_url,omitempty"`
 	APIKey       string `json:"api_key,omitempty"`
-	Model        string `json:"model,omitempty"`          // default: gpt-4o-mini
+	Model        string `json:"model,omitempty"`
 	SystemPrompt string `json:"system_prompt,omitempty"`
 	MaxHistory   int    `json:"max_history,omitempty"`    // context messages, default: 20
 }
