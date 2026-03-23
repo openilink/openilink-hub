@@ -271,7 +271,7 @@ func joinKeys(m map[string]bool) string {
 
 func (s *Webhook) Handle(d Delivery) {
 	cfg := d.Channel.WebhookConfig
-	if cfg.URL == "" {
+	if cfg.URL == "" && cfg.PluginID == "" && cfg.Script == "" {
 		return
 	}
 	start := time.Now()
