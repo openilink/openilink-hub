@@ -21,6 +21,9 @@ type App struct {
 	Commands    json.RawMessage `json:"commands"`
 	Events      json.RawMessage `json:"events"`
 	Scopes      json.RawMessage `json:"scopes"`
+	SetupURL    string          `json:"setup_url,omitempty"`
+	RedirectURL string          `json:"redirect_url,omitempty"`
+	ClientSecret string         `json:"client_secret,omitempty"`
 	Status      string          `json:"status"`
 	CreatedAt   int64           `json:"created_at"`
 	UpdatedAt   int64           `json:"updated_at"`
@@ -75,11 +78,14 @@ func (db *DB) CreateApp(app *App) (*App, error) {
 	if app.Scopes == nil {
 		app.Scopes = json.RawMessage("[]")
 	}
-	err := db.QueryRow(`INSERT INTO apps (id, owner_id, name, slug, description, icon, homepage, commands, events, scopes)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+	if app.ClientSecret == "" {
+		app.ClientSecret = generateToken(32)
+	}
+	err := db.QueryRow(`INSERT INTO apps (id, owner_id, name, slug, description, icon, homepage, commands, events, scopes, setup_url, redirect_url, client_secret)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		RETURNING EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT`,
 		app.ID, app.OwnerID, app.Name, app.Slug, app.Description, app.Icon, app.Homepage,
-		app.Commands, app.Events, app.Scopes,
+		app.Commands, app.Events, app.Scopes, app.SetupURL, app.RedirectURL, app.ClientSecret,
 	).Scan(&app.CreatedAt, &app.UpdatedAt)
 	app.Status = "active"
 	return app, err
@@ -89,13 +95,13 @@ func (db *DB) CreateApp(app *App) (*App, error) {
 func (db *DB) GetApp(id string) (*App, error) {
 	a := &App{}
 	err := db.QueryRow(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.homepage,
-		a.commands, a.events, a.scopes, a.status,
+		a.commands, a.events, a.scopes, a.setup_url, a.redirect_url, a.client_secret, a.status,
 		EXTRACT(EPOCH FROM a.created_at)::BIGINT, EXTRACT(EPOCH FROM a.updated_at)::BIGINT,
 		COALESCE(u.username, '')
 		FROM apps a LEFT JOIN users u ON u.id = a.owner_id
 		WHERE a.id = $1`, id).Scan(
 		&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.Homepage,
-		&a.Commands, &a.Events, &a.Scopes, &a.Status,
+		&a.Commands, &a.Events, &a.Scopes, &a.SetupURL, &a.RedirectURL, &a.ClientSecret, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt, &a.OwnerName)
 	if err != nil {
 		return nil, err
@@ -107,11 +113,11 @@ func (db *DB) GetApp(id string) (*App, error) {
 func (db *DB) GetAppBySlug(slug string) (*App, error) {
 	a := &App{}
 	err := db.QueryRow(`SELECT id, owner_id, name, slug, description, icon, homepage,
-		commands, events, scopes, status,
+		commands, events, scopes, setup_url, redirect_url, client_secret, status,
 		EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT
 		FROM apps WHERE slug = $1`, slug).Scan(
 		&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.Homepage,
-		&a.Commands, &a.Events, &a.Scopes, &a.Status,
+		&a.Commands, &a.Events, &a.Scopes, &a.SetupURL, &a.RedirectURL, &a.ClientSecret, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -122,7 +128,7 @@ func (db *DB) GetAppBySlug(slug string) (*App, error) {
 // ListAppsByOwner returns all apps owned by a user.
 func (db *DB) ListAppsByOwner(ownerID string) ([]App, error) {
 	rows, err := db.Query(`SELECT id, owner_id, name, slug, description, icon, homepage,
-		commands, events, scopes, status,
+		commands, events, scopes, setup_url, redirect_url, client_secret, status,
 		EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT
 		FROM apps WHERE owner_id = $1 ORDER BY created_at DESC`, ownerID)
 	if err != nil {
@@ -133,7 +139,7 @@ func (db *DB) ListAppsByOwner(ownerID string) ([]App, error) {
 	for rows.Next() {
 		var a App
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.Homepage,
-			&a.Commands, &a.Events, &a.Scopes, &a.Status,
+			&a.Commands, &a.Events, &a.Scopes, &a.SetupURL, &a.RedirectURL, &a.ClientSecret, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -143,10 +149,10 @@ func (db *DB) ListAppsByOwner(ownerID string) ([]App, error) {
 }
 
 // UpdateApp updates an app's fields.
-func (db *DB) UpdateApp(id string, name, description, icon, homepage string, commands, events, scopes json.RawMessage) error {
+func (db *DB) UpdateApp(id string, name, description, icon, homepage, setupURL, redirectURL string, commands, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=$1, description=$2, icon=$3, homepage=$4,
-		commands=$5, events=$6, scopes=$7, updated_at=NOW() WHERE id=$8`,
-		name, description, icon, homepage, commands, events, scopes, id)
+		commands=$5, events=$6, scopes=$7, setup_url=$8, redirect_url=$9, updated_at=NOW() WHERE id=$10`,
+		name, description, icon, homepage, commands, events, scopes, setupURL, redirectURL, id)
 	return err
 }
 
@@ -272,4 +278,23 @@ func (db *DB) RegenerateInstallationToken(id string) (string, error) {
 func (db *DB) DeleteInstallation(id string) error {
 	_, err := db.Exec("DELETE FROM app_installations WHERE id = $1", id)
 	return err
+}
+
+// CreateOAuthCode creates a temporary OAuth code for the install flow.
+func (db *DB) CreateOAuthCode(code, appID, botID, state string) error {
+	_, err := db.Exec(`INSERT INTO app_oauth_codes (code, app_id, bot_id, state) VALUES ($1,$2,$3,$4)`,
+		code, appID, botID, state)
+	return err
+}
+
+// ExchangeOAuthCode consumes a code and returns the app_id and bot_id. Deletes the code.
+func (db *DB) ExchangeOAuthCode(code string) (appID, botID string, err error) {
+	err = db.QueryRow(`DELETE FROM app_oauth_codes WHERE code = $1 AND expires_at > NOW() RETURNING app_id, bot_id`,
+		code).Scan(&appID, &botID)
+	return
+}
+
+// CleanExpiredOAuthCodes removes expired codes.
+func (db *DB) CleanExpiredOAuthCodes() {
+	db.Exec("DELETE FROM app_oauth_codes WHERE expires_at < NOW()")
 }

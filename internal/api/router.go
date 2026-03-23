@@ -152,6 +152,10 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /api/apps/{id}/installations/{iid}/event-logs", s.handleAppEventLogs)
 	protected.HandleFunc("GET /api/apps/{id}/installations/{iid}/api-logs", s.handleAppAPILogs)
 
+	// --- App OAuth ---
+	protected.HandleFunc("GET /api/apps/{id}/oauth/setup", s.handleAppOAuthSetupRedirect)
+	protected.HandleFunc("GET /api/apps/{id}/oauth/authorize", s.handleAppOAuthAuthorize)
+
 	// --- Webhook plugins (authenticated actions) ---
 	protected.HandleFunc("POST /api/webhook-plugins/submit", s.handleSubmitPlugin)
 	protected.HandleFunc("POST /api/webhook-plugins/{id}/versions/{vid}/cancel", s.handleCancelVersion)
@@ -174,6 +178,9 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /api/admin/config/ai", s.requireAdmin(s.handleGetAIConfig))
 	protected.HandleFunc("PUT /api/admin/config/ai", s.requireAdmin(s.handleSetAIConfig))
 	protected.HandleFunc("DELETE /api/admin/config/ai", s.requireAdmin(s.handleDeleteAIConfig))
+
+	// App OAuth exchange (no user auth — app uses client_secret)
+	mux.HandleFunc("POST /api/apps/{id}/oauth/exchange", s.handleAppOAuthExchange)
 
 	mux.Handle("/api/", auth.Middleware(s.DB)(protected))
 

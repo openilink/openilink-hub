@@ -125,6 +125,8 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		Description string          `json:"description"`
 		Icon        string          `json:"icon"`
 		Homepage    string          `json:"homepage"`
+		SetupURL    string          `json:"setup_url"`
+		RedirectURL string          `json:"redirect_url"`
 		Commands    json.RawMessage `json:"commands"`
 		Events      json.RawMessage `json:"events"`
 		Scopes      json.RawMessage `json:"scopes"`
@@ -150,6 +152,14 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	if req.Homepage != "" {
 		homepage = req.Homepage
 	}
+	setupURL := app.SetupURL
+	if req.SetupURL != "" {
+		setupURL = req.SetupURL
+	}
+	redirectURL := app.RedirectURL
+	if req.RedirectURL != "" {
+		redirectURL = req.RedirectURL
+	}
 	commands := app.Commands
 	if req.Commands != nil {
 		commands = req.Commands
@@ -163,7 +173,7 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		scopes = req.Scopes
 	}
 
-	if err := s.DB.UpdateApp(appID, name, description, icon, homepage, commands, events, scopes); err != nil {
+	if err := s.DB.UpdateApp(appID, name, description, icon, homepage, setupURL, redirectURL, commands, events, scopes); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
