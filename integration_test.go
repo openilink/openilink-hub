@@ -42,14 +42,14 @@ func testDB(t *testing.T) *database.DB {
 		t.Skipf("skip: database unavailable: %v", err)
 	}
 	// Drop schema_version and modified tables so migrations re-run from scratch
-	preDB.Exec("DROP TABLE IF EXISTS schema_version, plugin_installs, plugins CASCADE")
+	preDB.Exec("DROP TABLE IF EXISTS schema_version, plugin_installs, plugin_versions, plugins CASCADE")
 	preDB.Close()
 
 	db, err := database.Open(dsn)
 	if err != nil {
 		t.Skipf("skip: database unavailable: %v", err)
 	}
-	for _, table := range []string{"plugins", "messages", "channels", "bots", "oauth_accounts", "sessions", "credentials", "users", "system_config"} {
+	for _, table := range []string{"plugin_installs", "plugin_versions", "plugins", "webhook_logs", "messages", "channels", "bots", "oauth_accounts", "sessions", "credentials", "users", "system_config"} {
 		db.Exec("DELETE FROM " + table)
 	}
 	return db

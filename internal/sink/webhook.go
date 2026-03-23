@@ -301,17 +301,15 @@ func (s *Webhook) Handle(d Delivery) {
 	var replies []replyAction
 	skipped := false
 
-	// Resolve script
+	// Resolve script: PluginID is a version ID
 	script := cfg.Script
 	if cfg.PluginID != "" {
-		plugin, err := s.DB.GetPlugin(cfg.PluginID)
+		resolvedScript, resolvedVersion, err := s.DB.ResolvePluginScript(cfg.PluginID)
 		if err != nil {
-			slog.Error("webhook plugin not found", "channel", d.Channel.ID, "plugin", cfg.PluginID, "err", err)
-		} else if plugin.Status != "approved" {
-			slog.Warn("webhook plugin not approved", "channel", d.Channel.ID, "plugin", cfg.PluginID, "status", plugin.Status)
+			slog.Error("webhook plugin resolve failed", "channel", d.Channel.ID, "version_id", cfg.PluginID, "err", err)
 		} else {
-			script = plugin.Script
-			pluginVersion = plugin.Version
+			script = resolvedScript
+			pluginVersion = resolvedVersion
 		}
 	}
 	if pluginVersion != "" {

@@ -25,14 +25,12 @@ func handlePluginSkill(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/webhook-plugins/submit
-// Body: {"github_url": "https://github.com/user/repo/blob/main/plugin.js"}
-// Alt:  {"script": "// @name ...\nfunction onRequest(ctx) {...}"} (inline, no GitHub)
 func (s *Server) handleSubmitPlugin(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 
 	var req struct {
 		GithubURL string `json:"github_url"`
-		Script    string `json:"script"` // inline submission (alternative to github_url)
+		Script    string `json:"script"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -40,12 +38,9 @@ func (s *Server) handleSubmitPlugin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var script, githubURL, commitHash string
-
 	if req.Script != "" {
-		// Inline submission
 		script = req.Script
 	} else if req.GithubURL != "" {
-		// GitHub fetch
 		rawURL, owner, repo, path, err := parseGithubBlobURL(req.GithubURL)
 		if err != nil {
 			jsonError(w, err.Error(), http.StatusBadRequest)
@@ -58,130 +53,121 @@ func (s *Server) handleSubmitPlugin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		githubURL = req.GithubURL
-		commitHash, err = fetchGithubCommitHash(owner, repo, path)
-		if err != nil {
-			slog.Warn("failed to fetch commit hash, using empty", "err", err)
-		}
+		commitHash, _ = fetchGithubCommitHash(owner, repo, path)
 	} else {
 		jsonError(w, "github_url or script required", http.StatusBadRequest)
 		return
 	}
 
-	// Parse plugin metadata from script comments
 	meta := parsePluginMeta(script)
 	if meta.Name == "" {
 		jsonError(w, "plugin must have @name in comments", http.StatusBadRequest)
 		return
 	}
 
-	// Check name ownership: if another user already has a plugin with this name, reject
-	if owner, _ := s.DB.FindPluginOwner(meta.Name); owner != "" && owner != userID {
+	// Find or create plugin
+	plugin, err := s.DB.GetPluginByName(meta.Name)
+	if err != nil {
+		// New plugin — check name not taken by someone else
+		if owner, _ := s.DB.FindPluginOwner(meta.Name); owner != "" && owner != userID {
+			jsonError(w, "plugin name already taken by another user", http.StatusConflict)
+			return
+		}
+		plugin, err = s.DB.CreatePlugin(&database.Plugin{
+			Name: meta.Name, Namespace: meta.Namespace, Description: meta.Description,
+			Author: meta.Author, Icon: meta.Icon, License: meta.License, Homepage: meta.Homepage,
+			OwnerID: userID,
+		})
+		if err != nil {
+			jsonError(w, "create plugin failed", http.StatusInternalServerError)
+			return
+		}
+	} else if plugin.OwnerID != userID {
 		jsonError(w, "plugin name already taken by another user", http.StatusConflict)
 		return
 	}
 
+	// Update plugin metadata
+	plugin.Description = meta.Description
+	plugin.Author = meta.Author
+	plugin.Icon = meta.Icon
+	plugin.License = meta.License
+	plugin.Homepage = meta.Homepage
+	plugin.Namespace = meta.Namespace
+	s.DB.UpdatePluginMeta(plugin.ID, plugin)
+
 	configSchema, _ := json.Marshal(meta.Config)
 
-	newPlugin := &database.Plugin{
-		Name:           meta.Name,
-		Description:    meta.Description,
-		Author:         meta.Author,
-		Version:        meta.Version,
-		Namespace:      meta.Namespace,
-		Icon:           meta.Icon,
-		License:        meta.License,
-		Homepage:       meta.Homepage,
-		MatchTypes:     meta.Match,
-		ConnectDomains: meta.Connect,
-		GrantPerms:     strings.Join(meta.Grant, ","),
-		Changelog:      meta.Changelog,
-		GithubURL:      githubURL,
-		CommitHash:     commitHash,
-		Script:         script,
-		ConfigSchema:   configSchema,
-		SubmittedBy:    userID,
-	}
-
-	// Check for existing pending plugin by same submitter + name → update instead of creating duplicate
-	var plugin *database.Plugin
-	existing, _ := s.DB.FindPendingPlugin(userID, meta.Name)
+	// Check for existing pending version → update it
+	existing, _ := s.DB.FindPendingVersion(plugin.ID)
 	if existing != nil {
-		if err := s.DB.UpdatePlugin(existing.ID, newPlugin); err != nil {
-			jsonError(w, "update failed", http.StatusInternalServerError)
+		existing.Version = meta.Version
+		existing.Changelog = meta.Changelog
+		existing.Script = script
+		existing.ConfigSchema = configSchema
+		existing.GithubURL = githubURL
+		existing.CommitHash = commitHash
+		existing.MatchTypes = meta.Match
+		existing.ConnectDomains = meta.Connect
+		existing.GrantPerms = strings.Join(meta.Grant, ",")
+		if err := s.DB.UpdatePluginVersion(existing.ID, existing); err != nil {
+			jsonError(w, "update version failed", http.StatusInternalServerError)
 			return
 		}
-		plugin, _ = s.DB.GetPlugin(existing.ID)
-	} else {
-		var err error
-		plugin, err = s.DB.CreatePlugin(newPlugin)
-		if err != nil {
-			jsonError(w, "save failed", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(plugin)
-}
-
-// GET /api/me/plugins — list current user's plugins
-func (s *Server) handleMyPlugins(w http.ResponseWriter, r *http.Request) {
-	userID := auth.UserIDFromContext(r.Context())
-	plugins, err := s.DB.ListPluginsByUser(userID)
-	if err != nil {
-		jsonError(w, "list failed", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"plugin_id": plugin.ID, "version_id": existing.ID, "status": "pending"})
 		return
 	}
-	for i := range plugins {
-		plugins[i].Script = "" // don't send full script in list
+
+	// Create new version
+	ver, err := s.DB.CreatePluginVersion(&database.PluginVersion{
+		PluginID: plugin.ID, Version: meta.Version, Changelog: meta.Changelog,
+		Script: script, ConfigSchema: configSchema,
+		GithubURL: githubURL, CommitHash: commitHash,
+		MatchTypes: meta.Match, ConnectDomains: meta.Connect, GrantPerms: strings.Join(meta.Grant, ","),
+	})
+	if err != nil {
+		jsonError(w, "create version failed", http.StatusInternalServerError)
+		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(plugins)
+	json.NewEncoder(w).Encode(map[string]any{"plugin_id": plugin.ID, "version_id": ver.ID, "status": "pending"})
 }
 
-// optionalUser tries to extract the current user from session cookie (for public endpoints).
-func (s *Server) optionalUser(r *http.Request) *database.User {
-	cookie, err := r.Cookie("session")
-	if err != nil {
-		return nil
-	}
-	userID, err := auth.ValidateSession(s.DB, cookie.Value)
-	if err != nil {
-		return nil
-	}
-	user, _ := s.DB.GetUserByID(userID)
-	return user
-}
-
-// GET /api/webhook-plugins — list approved plugins (public), pending/rejected (admin only)
+// GET /api/webhook-plugins — list plugins with latest approved version
 func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
-	if status == "" {
-		status = "approved"
-	}
-	// Only admin can see pending/rejected
-	if status != "approved" {
+
+	if status == "pending" {
+		// Admin only
 		user := s.optionalUser(r)
 		if user == nil || !database.IsAdmin(user.Role) {
-			status = "approved"
+			jsonError(w, "admin required", http.StatusForbidden)
+			return
 		}
-	}
-
-	plugins, err := s.DB.ListPlugins(status)
-	if err != nil {
-		slog.Error("list plugins failed", "status", status, "err", err)
-		jsonError(w, "list failed", http.StatusInternalServerError)
+		versions, err := s.DB.ListPendingVersions()
+		if err != nil {
+			jsonError(w, "list failed", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(versions)
 		return
 	}
-	// Don't expose script content in list
-	for i := range plugins {
-		plugins[i].Script = ""
+
+	// Default: list plugins with latest approved version
+	plugins, err := s.DB.ListPlugins()
+	if err != nil {
+		slog.Error("list plugins failed", "err", err)
+		jsonError(w, "list failed", http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(plugins)
 }
 
-// GET /api/plugins/{id} — get plugin detail (with script for admin/owner)
+// GET /api/webhook-plugins/{id} — get plugin detail
 func (s *Server) handleGetPlugin(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	plugin, err := s.DB.GetPlugin(id)
@@ -190,36 +176,39 @@ func (s *Server) handleGetPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := s.optionalUser(r)
-	userID := ""
-	if user != nil {
-		userID = user.ID
-	}
-	isAdmin := user != nil && database.IsAdmin(user.Role)
-	isOwner := userID != "" && plugin.SubmittedBy == userID
-
-	// Only admin and owner can see pending/rejected plugins
-	if plugin.Status != "approved" && !isAdmin && !isOwner {
-		jsonError(w, "not found", http.StatusNotFound)
-		return
-	}
-	// Hide script from non-admin non-owner (they can see it on GitHub)
-	if !isAdmin && !isOwner {
-		plugin.Script = ""
+	// Get latest version info
+	var latestVersion *database.PluginVersion
+	if plugin.LatestVersionID != "" {
+		latestVersion, _ = s.DB.GetPluginVersion(plugin.LatestVersionID)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(plugin)
+	json.NewEncoder(w).Encode(map[string]any{
+		"plugin":         plugin,
+		"latest_version": latestVersion,
+	})
 }
 
-// PUT /api/admin/plugins/{id}/review — approve or reject
-func (s *Server) handleReviewPlugin(w http.ResponseWriter, r *http.Request) {
+// GET /api/webhook-plugins/{id}/versions
+func (s *Server) handlePluginVersions(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	versions, err := s.DB.ListPluginVersions(id)
+	if err != nil {
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(versions)
+}
+
+// PUT /api/admin/webhook-plugins/{id}/review — review a version
+func (s *Server) handleReviewPlugin(w http.ResponseWriter, r *http.Request) {
+	versionID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
 	var req struct {
-		Status string `json:"status"` // "approved" or "rejected"
-		Reason string `json:"reason"` // rejection reason (optional)
+		Status string `json:"status"`
+		Reason string `json:"reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -230,14 +219,14 @@ func (s *Server) handleReviewPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.DB.UpdatePluginStatus(id, req.Status, userID, req.Reason); err != nil {
+	if err := s.DB.ReviewPluginVersion(versionID, req.Status, userID, req.Reason); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
 	jsonOK(w)
 }
 
-// DELETE /api/admin/plugins/{id}
+// DELETE /api/admin/webhook-plugins/{id}
 func (s *Server) handleDeletePlugin(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.DB.DeletePlugin(id); err != nil {
@@ -247,36 +236,41 @@ func (s *Server) handleDeletePlugin(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w)
 }
 
-// POST /api/plugins/{id}/install — get script for installation into a channel
+// POST /api/webhook-plugins/{id}/install — get script for a version
 func (s *Server) handleInstallPlugin(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	plugin, err := s.DB.GetPlugin(id)
-	if err != nil || plugin.Status != "approved" {
-		jsonError(w, "plugin not found or not approved", http.StatusNotFound)
+	pluginID := r.PathValue("id")
+	plugin, err := s.DB.GetPlugin(pluginID)
+	if err != nil || plugin.LatestVersionID == "" {
+		jsonError(w, "plugin not found or no approved version", http.StatusNotFound)
+		return
+	}
+
+	ver, err := s.DB.GetPluginVersion(plugin.LatestVersionID)
+	if err != nil || ver.Status != "approved" {
+		jsonError(w, "no approved version", http.StatusNotFound)
 		return
 	}
 
 	userID := auth.UserIDFromContext(r.Context())
-	s.DB.RecordPluginInstall(id, userID)
+	s.DB.RecordPluginInstall(pluginID, userID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"plugin_id":     plugin.ID,
-		"name":          plugin.Name,
-		"script":        plugin.Script,
-		"config_schema": plugin.ConfigSchema,
+		"plugin_id":  pluginID,
+		"version_id": ver.ID,
+		"version":    ver.Version,
+		"script":     ver.Script,
 	})
 }
 
 // POST /api/webhook-plugins/{id}/install-to-channel
-// Body: {"bot_id": "xxx", "channel_id": "xxx"}
 func (s *Server) handleInstallPluginToChannel(w http.ResponseWriter, r *http.Request) {
 	pluginID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
 	plugin, err := s.DB.GetPlugin(pluginID)
-	if err != nil || plugin.Status != "approved" {
-		jsonError(w, "plugin not found or not approved", http.StatusNotFound)
+	if err != nil || plugin.LatestVersionID == "" {
+		jsonError(w, "plugin not found or no approved version", http.StatusNotFound)
 		return
 	}
 
@@ -289,7 +283,6 @@ func (s *Server) handleInstallPluginToChannel(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Verify ownership
 	bot, err := s.DB.GetBot(req.BotID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "bot not found", http.StatusNotFound)
@@ -301,9 +294,9 @@ func (s *Server) handleInstallPluginToChannel(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Set plugin_id in webhook config, keep existing URL/auth
-	ch.WebhookConfig.PluginID = pluginID
-	ch.WebhookConfig.Script = "" // clear inline script when using plugin
+	// Set version ID as plugin_id in webhook config
+	ch.WebhookConfig.PluginID = plugin.LatestVersionID
+	ch.WebhookConfig.Script = ""
 	if err := s.DB.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig, &ch.WebhookConfig, ch.Enabled); err != nil {
 		jsonError(w, "update channel failed", http.StatusInternalServerError)
 		return
@@ -311,52 +304,31 @@ func (s *Server) handleInstallPluginToChannel(w http.ResponseWriter, r *http.Req
 
 	s.DB.RecordPluginInstall(pluginID, userID)
 
+	ver, _ := s.DB.GetPluginVersion(plugin.LatestVersionID)
+	versionStr := ""
+	if ver != nil {
+		versionStr = ver.Version
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"ok":             true,
-		"plugin_id":      plugin.ID,
-		"plugin_name":    plugin.Name,
-		"plugin_version": plugin.Version,
+		"ok": true, "plugin_id": pluginID, "version_id": plugin.LatestVersionID, "plugin_version": versionStr,
 	})
 }
 
-// GET /api/webhook-plugins/{id}/versions — list all versions of this plugin (by name)
-func (s *Server) handlePluginVersions(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	plugin, err := s.DB.GetPlugin(id)
+// GET /api/me/plugins
+func (s *Server) handleMyPlugins(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
+	plugins, err := s.DB.ListPluginsByOwner(userID)
 	if err != nil {
-		jsonError(w, "not found", http.StatusNotFound)
+		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
 	}
-
-	versions, err := s.DB.ListPluginVersions(plugin.Namespace, plugin.Name)
-	if err != nil {
-		jsonError(w, "query failed", http.StatusInternalServerError)
-		return
-	}
-
-	type versionResp struct {
-		ID        string `json:"id"`
-		Version   string `json:"version"`
-		Status    string `json:"status"`
-		Changelog string `json:"changelog,omitempty"`
-		CommitHash string `json:"commit_hash,omitempty"`
-		CreatedAt int64  `json:"created_at"`
-	}
-	result := make([]versionResp, len(versions))
-	for i, v := range versions {
-		result[i] = versionResp{
-			ID: v.ID, Version: v.Version, Status: v.Status,
-			Changelog: v.Changelog, CommitHash: v.CommitHash, CreatedAt: v.CreatedAt,
-		}
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(plugins)
 }
 
 // POST /api/webhook-plugins/debug/request
-// Executes onRequest phase only, returns modified request for frontend to send.
 func (s *Server) handleDebugRequest(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Script      string `json:"script"`
@@ -371,16 +343,13 @@ func (s *Server) handleDebugRequest(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "script required", http.StatusBadRequest)
 		return
 	}
-
 	msg := sink.MockPayload(req.MockMessage.Sender, req.MockMessage.Content, req.MockMessage.MsgType)
 	result := sink.DebugRequest(req.Script, msg, req.WebhookURL)
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
 
 // POST /api/webhook-plugins/debug/response
-// Executes onResponse phase with the HTTP response from frontend.
 func (s *Server) handleDebugResponse(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Script      string `json:"script"`
@@ -399,14 +368,26 @@ func (s *Server) handleDebugResponse(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "script required", http.StatusBadRequest)
 		return
 	}
-
 	msg := sink.MockPayload(req.MockMessage.Sender, req.MockMessage.Content, req.MockMessage.MsgType)
 	result := sink.DebugResponse(req.Script, msg, &sink.ResData{
 		Status: req.Response.Status, Headers: req.Response.Headers, Body: req.Response.Body,
 	})
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+// optionalUser tries to extract the current user from session cookie.
+func (s *Server) optionalUser(r *http.Request) *database.User {
+	cookie, err := r.Cookie("session")
+	if err != nil {
+		return nil
+	}
+	userID, err := auth.ValidateSession(s.DB, cookie.Value)
+	if err != nil {
+		return nil
+	}
+	user, _ := s.DB.GetUserByID(userID)
+	return user
 }
 
 // --- Helpers ---
@@ -416,7 +397,7 @@ var githubBlobRe = regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+)/blo
 func parseGithubBlobURL(url string) (rawURL, owner, repo, path string, err error) {
 	m := githubBlobRe.FindStringSubmatch(url)
 	if m == nil {
-		return "", "", "", "", fmt.Errorf("invalid GitHub URL, expected: https://github.com/user/repo/blob/branch/path/to/plugin.js")
+		return "", "", "", "", fmt.Errorf("invalid GitHub URL")
 	}
 	owner, repo, branch, path := m[1], m[2], m[3], m[4]
 	rawURL = fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/%s", owner, repo, branch, path)
@@ -434,10 +415,7 @@ func fetchURL(url string) (string, error) {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
+	return string(body), err
 }
 
 func fetchGithubCommitHash(owner, repo, path string) (string, error) {
@@ -448,9 +426,7 @@ func fetchGithubCommitHash(owner, repo, path string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	var commits []struct {
-		SHA string `json:"sha"`
-	}
+	var commits []struct{ SHA string `json:"sha"` }
 	if err := json.NewDecoder(resp.Body).Decode(&commits); err != nil || len(commits) == 0 {
 		return "", fmt.Errorf("no commits found")
 	}
@@ -458,31 +434,19 @@ func fetchGithubCommitHash(owner, repo, path string) (string, error) {
 }
 
 type pluginMeta struct {
-	Name        string
-	Description string
-	Author      string
-	Version     string
-	Namespace   string
-	Icon        string
-	License     string
-	Homepage    string
-	Match       string   // comma-separated msg types or "*"
-	Connect     string   // comma-separated domains or "*"
-	Grant       []string // "reply", "skip"
-	Changelog   string
-	Config      []database.ConfigField
+	Name, Description, Author, Version, Namespace, Icon, License, Homepage string
+	Match, Connect, Changelog                                              string
+	Grant                                                                  []string
+	Config                                                                 []database.ConfigField
 }
 
 var metaRe = regexp.MustCompile(`//\s*@(\w+)\s+(.+)`)
 
 func parsePluginMeta(script string) pluginMeta {
 	var meta pluginMeta
-	// Find metadata block: between ==WebhookPlugin== markers
-	// If no markers, fall back to scanning all lines (backward compat)
 	lines := strings.Split(script, "\n")
 	inBlock := false
 	hasBlock := strings.Contains(script, "==WebhookPlugin==")
-
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if hasBlock {
@@ -494,7 +458,6 @@ func parsePluginMeta(script string) pluginMeta {
 				continue
 			}
 		}
-
 		m := metaRe.FindStringSubmatch(trimmed)
 		if m == nil {
 			continue
@@ -521,15 +484,14 @@ func parsePluginMeta(script string) pluginMeta {
 			meta.Match = val
 		case "connect":
 			meta.Connect = val
+		case "changelog":
+			meta.Changelog = val
 		case "grant":
 			for _, g := range strings.Split(val, ",") {
-				g = strings.TrimSpace(g)
-				if g != "" {
+				if g = strings.TrimSpace(g); g != "" {
 					meta.Grant = append(meta.Grant, g)
 				}
 			}
-		case "changelog":
-			meta.Changelog = val
 		case "config":
 			parts := strings.SplitN(val, " ", 3)
 			if len(parts) >= 2 {
@@ -537,11 +499,18 @@ func parsePluginMeta(script string) pluginMeta {
 				if len(parts) == 3 {
 					desc = strings.Trim(parts[2], `"`)
 				}
-				meta.Config = append(meta.Config, database.ConfigField{
-					Name: parts[0], Type: parts[1], Description: desc,
-				})
+				meta.Config = append(meta.Config, database.ConfigField{Name: parts[0], Type: parts[1], Description: desc})
 			}
 		}
+	}
+	if meta.Version == "" {
+		meta.Version = "1.0.0"
+	}
+	if meta.Match == "" {
+		meta.Match = "*"
+	}
+	if meta.Connect == "" {
+		meta.Connect = "*"
 	}
 	return meta
 }
