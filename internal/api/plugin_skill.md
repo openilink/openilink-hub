@@ -95,10 +95,10 @@ Override the default 5-second script timeout. Useful for plugins that call slow 
 ```
 // @timeout  5     default (5 seconds)
 // @timeout  30    slow API (30 seconds)
-// @timeout  60    maximum allowed
+// @timeout  120   very slow API
 ```
 
-Range: 1–60 seconds. Values outside this range are clamped.
+Default: 5 seconds. Set higher for slow APIs. Admin will review the value during approval.
 
 ### @config Syntax
 
@@ -406,31 +406,62 @@ Once approved, users can install your plugin in two ways:
 1. **From the marketplace**: click "Install" to copy the script
 2. **From channel config**: go to Bot → Channel → Webhook → "Plugin Marketplace" → select your plugin → one-click install
 
-The channel's `webhook_config.plugin_id` is set to your plugin's ID. At runtime, the system fetches the script from the database — no manual copy needed.
+The channel's `webhook_config.plugin_id` is set to the **version ID** (not the plugin ID). At runtime, the system resolves the version ID to the approved script from the database.
+
+### Plugin ID vs Version ID
+
+The plugin system uses two-table architecture:
+
+- **Plugin** (`plugins` table): stable identity with a unique name. Has a fixed `plugin_id` that never changes.
+- **Version** (`plugin_versions` table): each release is a version with its own `version_id`.
+
+```
+Plugin: "Feishu Notification" (plugin_id: abc-123)
+├── v1.0.0 (version_id: ver-001) — approved
+├── v1.1.0 (version_id: ver-002) — approved ← latest
+└── v2.0.0 (version_id: ver-003) — pending review
+```
+
+When a user installs a plugin to a channel, the channel stores the **version_id** of the latest approved version. This means:
+- The channel always runs a specific, reviewed version
+- Upgrading requires explicit action (install newer version)
+- Old versions remain functional until the user upgrades
 
 ### Updating Your Plugin
 
 To publish a new version:
 
-1. Update your plugin code (bump `@version`)
+1. Update your plugin code (bump `@version`, add `@changelog`)
 2. Push to GitHub
-3. Submit the new URL (same repo, new commit)
-4. Admin reviews the new version
-5. Users can upgrade their channels to the new version from channel settings
+3. Submit again — same `@name` reuses the existing plugin, creates a new version
+4. If a pending version already exists, it gets overwritten (no duplicates)
+5. Admin reviews the new version
+6. On approval, the plugin's `latest_version_id` is updated
+7. Users can upgrade their channels to the new version
 
-Each version has a separate plugin ID. Channels pin to a specific version until the user explicitly upgrades.
+### @timeout and Performance
+
+Plugins that call slow APIs should declare `@timeout`:
+
+```
+// @timeout 30   ← gives the script 30 seconds instead of default 5
+```
+
+The admin will see this value during review and can reject if the timeout seems unreasonable. There is no hard cap — the admin decides what's acceptable.
 
 ## API Endpoints
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/api/webhook-plugins` | No | List approved plugins |
-| GET | `/api/webhook-plugins?status=pending` | Admin | List pending plugins |
-| GET | `/api/webhook-plugins/{id}` | No | Plugin detail |
-| POST | `/api/webhook-plugins/submit` | Yes | Submit plugin (github_url or script) |
-| POST | `/api/webhook-plugins/{id}/install` | Yes | Install (get script + increment count) |
-| PUT | `/api/admin/webhook-plugins/{id}/review` | Admin | Approve or reject |
-| DELETE | `/api/admin/webhook-plugins/{id}` | Admin | Delete plugin |
+| GET | `/api/webhook-plugins` | No | List plugins with latest approved version |
+| GET | `/api/webhook-plugins?status=pending` | Admin | List pending versions for review |
+| GET | `/api/webhook-plugins/{id}` | No | Plugin detail + latest version |
+| GET | `/api/webhook-plugins/{id}/versions` | No | Version history |
+| POST | `/api/webhook-plugins/submit` | Yes | Submit plugin (creates/updates plugin + version) |
+| POST | `/api/webhook-plugins/{id}/install` | Yes | Get latest approved version script |
+| POST | `/api/webhook-plugins/{id}/install-to-channel` | Yes | Install to a specific channel |
+| PUT | `/api/admin/webhook-plugins/{id}/review` | Admin | Approve or reject a version |
+| DELETE | `/api/admin/webhook-plugins/{id}` | Admin | Delete plugin and all versions |
 
 ## Tips for AI Agents
 

@@ -311,7 +311,7 @@ func (s *Webhook) Handle(d Delivery) {
 		} else {
 			script = resolvedScript
 			pluginVersion = resolvedVersion
-			if timeoutSec > 0 && timeoutSec <= 60 {
+			if timeoutSec > 0 {
 				scriptTimeout = time.Duration(timeoutSec) * time.Second
 			}
 		}

@@ -490,15 +490,7 @@ func parsePluginMeta(script string) pluginMeta {
 		case "changelog":
 			meta.Changelog = val
 		case "timeout":
-			if n, err := fmt.Sscanf(val, "%d", &meta.TimeoutSec); n == 0 || err != nil {
-				meta.TimeoutSec = 5
-			}
-			if meta.TimeoutSec < 1 {
-				meta.TimeoutSec = 1
-			}
-			if meta.TimeoutSec > 60 {
-				meta.TimeoutSec = 60
-			}
+			fmt.Sscanf(val, "%d", &meta.TimeoutSec)
 		case "grant":
 			for _, g := range strings.Split(val, ",") {
 				if g = strings.TrimSpace(g); g != "" {

@@ -179,7 +179,7 @@ func (db *DB) DeletePlugin(id string) error {
 func (db *DB) CreatePluginVersion(v *PluginVersion) (*PluginVersion, error) {
 	v.ID = uuid.New().String()
 	if v.TimeoutSec <= 0 {
-		v.TimeoutSec = 5
+		v.TimeoutSec = 5 // default
 	}
 	_, err := db.Exec(`INSERT INTO plugin_versions
 		(id, plugin_id, version, changelog, script, config_schema, github_url, commit_hash,
@@ -278,7 +278,7 @@ func (db *DB) getVersionByPluginAndStatus(pluginID, status string) (*PluginVersi
 
 func (db *DB) UpdatePluginVersion(id string, v *PluginVersion) error {
 	if v.TimeoutSec <= 0 {
-		v.TimeoutSec = 5
+		v.TimeoutSec = 5 // default
 	}
 	_, err := db.Exec(`UPDATE plugin_versions SET version=$1, changelog=$2, script=$3, config_schema=$4,
 		github_url=$5, commit_hash=$6, match_types=$7, connect_domains=$8, grant_perms=$9, timeout_sec=$10,
