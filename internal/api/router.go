@@ -47,6 +47,8 @@ func (s *Server) Handler() http.Handler {
 	// --- Public auth ---
 	mux.HandleFunc("POST /api/auth/register", s.handlePasswordRegister)
 	mux.HandleFunc("POST /api/auth/login", s.handlePasswordLogin)
+	mux.HandleFunc("POST /api/auth/passkey/register/begin", s.handleRegisterBegin)
+	mux.HandleFunc("POST /api/auth/passkey/register/finish", s.handleRegisterFinish)
 	mux.HandleFunc("POST /api/auth/passkey/login/begin", s.handleLoginBegin)
 	mux.HandleFunc("POST /api/auth/passkey/login/finish", s.handleLoginFinish)
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
