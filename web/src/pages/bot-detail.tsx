@@ -452,7 +452,7 @@ function ChannelsTab({ botId, channels, onRefresh }: { botId: string; channels: 
 
   return (
     <div className="space-y-3 mt-4">
-      {channels.map((ch) => <ChannelRow key={ch.id} botId={botId} channel={ch} onRefresh={onRefresh} />)}
+      {channels.map((ch) => <ChannelCard key={ch.id} botId={botId} channel={ch} onRefresh={onRefresh} />)}
       {creating ? (
         <form onSubmit={handleCreate} className="space-y-2">
           <div className="flex gap-2">
@@ -586,6 +586,47 @@ GET /api/v1/channels/status?key=KEY`}</pre>
   );
 }
 
+function ChannelCard({ botId, channel, onRefresh }: { botId: string; channel: any; onRefresh: () => void }) {
+  const nav = useNavigate();
+  const aiEnabled = channel.ai_config?.enabled;
+  const hasWebhook = !!channel.webhook_config?.url;
+  const hasPlugin = !!channel.webhook_config?.plugin_id;
+  const filterCount = (channel.filter_rule?.user_ids?.length || 0) + (channel.filter_rule?.keywords?.length || 0) + (channel.filter_rule?.message_types?.length || 0);
+
+  return (
+    <div
+      className="p-3 rounded-lg border bg-card cursor-pointer hover:border-primary/50 transition-colors"
+      onClick={() => nav(`/bot/${botId}/channel/${channel.id}`)}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Cable className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-sm font-medium">{channel.name}</span>
+          {channel.handle ? (
+            <span className="text-[10px] font-mono text-muted-foreground">@{channel.handle}</span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">全部消息</span>
+          )}
+          {!channel.enabled && <Badge variant="outline" className="text-[10px]">停用</Badge>}
+        </div>
+        <Button variant="ghost" size="sm" onClick={(e) => {
+          e.stopPropagation();
+          if (confirm("删除此渠道？")) { api.deleteChannel(botId, channel.id).then(onRefresh); }
+        }}>
+          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+        </Button>
+      </div>
+      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-muted-foreground">
+        {hasWebhook && <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded flex items-center gap-0.5"><Webhook className="w-2.5 h-2.5" /> Webhook</span>}
+        {hasPlugin && <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded flex items-center gap-0.5"><Puzzle className="w-2.5 h-2.5" /> 插件</span>}
+        {aiEnabled && <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded flex items-center gap-0.5"><Bot className="w-2.5 h-2.5" /> AI</span>}
+        {filterCount > 0 && <span>{filterCount} 条过滤规则</span>}
+      </div>
+    </div>
+  );
+}
+
+// Legacy: kept for backward compat but no longer used in channel list
 function ChannelRow({ botId, channel, onRefresh }: { botId: string; channel: any; onRefresh: () => void }) {
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedWs, setCopiedWs] = useState(false);
