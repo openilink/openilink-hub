@@ -132,8 +132,9 @@ function MyPluginsSection() {
                     <p className="text-[10px] text-muted-foreground truncate">{p.description}</p>
                   </div>
                 </div>
-                <div className="text-[10px] text-muted-foreground shrink-0 ml-2">
-                  {p.install_count} 安装
+                <div className="text-[10px] text-muted-foreground shrink-0 ml-2 text-right">
+                  <p>{p.install_count} 安装</p>
+                  <p>{new Date(p.created_at * 1000).toLocaleDateString()}</p>
                 </div>
               </div>
             );

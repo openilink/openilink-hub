@@ -478,7 +478,8 @@ function PluginReviewTab() {
                 <p className="text-xs text-muted-foreground mt-0.5">{detail.description}</p>
                 <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
                   <span>by {detail.author || "anonymous"}</span>
-                  <span>提交: {detail.submitter_name}</span>
+                  <span>拥有者: {detail.submitter_name}</span>
+                  <span>{new Date(detail.created_at * 1000).toLocaleDateString()}</span>
                   {detail.namespace && <span className="font-mono">{detail.namespace}</span>}
                   {detail.github_url && (
                     <a href={detail.github_url} target="_blank" rel="noopener" className="text-primary hover:underline flex items-center gap-0.5">

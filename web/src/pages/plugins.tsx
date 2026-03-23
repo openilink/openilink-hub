@@ -217,6 +217,7 @@ function PluginCard({ plugin, onRefresh, isAdmin, isLoggedIn, mode }: {
             {plugin.submitter_name && <span>拥有者: {plugin.submitter_name}</span>}
             {plugin.reviewer_name && <span>审核: {plugin.reviewer_name}</span>}
             <span>{plugin.install_count} 次安装</span>
+            <span>{new Date(plugin.created_at * 1000).toLocaleDateString()}</span>
             {(plugin.github_url || plugin.homepage) && (
               <a href={plugin.homepage || plugin.github_url} target="_blank" rel="noopener" className="flex items-center gap-0.5 hover:text-primary">
                 <Github className="w-3 h-3" /> 源码
