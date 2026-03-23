@@ -21,7 +21,7 @@ func defaultMsg() webhookPayload {
 
 func TestScriptTimeout(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { while(true) {} }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -35,7 +35,7 @@ func TestScriptTimeout(t *testing.T) {
 func TestScriptTimeoutInOnResponse(t *testing.T) {
 	s := &Webhook{}
 	// onRequest is fine, but onResponse loops
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {}
 		 function onResponse(ctx) { while(true) {} }`,
 		defaultMsg(), defaultReq(), "test")
@@ -47,7 +47,7 @@ func TestScriptTimeoutInOnResponse(t *testing.T) {
 func TestScriptTimeoutInParse(t *testing.T) {
 	s := &Webhook{}
 	// Top-level infinite loop during script parsing
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`while(true) {}`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -60,7 +60,7 @@ func TestScriptTimeoutInParse(t *testing.T) {
 
 func TestScriptStackOverflow(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { onRequest(ctx); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -71,7 +71,7 @@ func TestScriptStackOverflow(t *testing.T) {
 
 func TestScriptMutualRecursion(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function a() { b(); } function b() { a(); } function onRequest(ctx) { a(); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -81,7 +81,7 @@ func TestScriptMutualRecursion(t *testing.T) {
 
 func TestScriptReplyLimit(t *testing.T) {
 	s := &Webhook{}
-	_, _, replies, _, err := s.runScript(
+	_, _, replies, _, _, err := s.runScript(
 		`function onRequest(ctx) { for(var i=0; i<100; i++) reply("msg"+i); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err != nil {
@@ -96,7 +96,7 @@ func TestScriptReplyLimit(t *testing.T) {
 
 func TestScriptEvalDisabled(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { eval("1+1"); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -109,7 +109,7 @@ func TestScriptEvalDisabled(t *testing.T) {
 
 func TestScriptFunctionConstructorDisabled(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { var f = new Function("return 1"); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -122,7 +122,7 @@ func TestScriptFunctionConstructorDisabled(t *testing.T) {
 
 func TestScriptNoRequire(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { require("fs"); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -132,7 +132,7 @@ func TestScriptNoRequire(t *testing.T) {
 
 func TestScriptNoProcess(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { process.exit(1); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -143,7 +143,7 @@ func TestScriptNoProcess(t *testing.T) {
 func TestScriptNoGlobalThis(t *testing.T) {
 	// Accessing globalThis shouldn't expose anything dangerous
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { var x = globalThis; }`,
 		defaultMsg(), defaultReq(), "test")
 	// Should succeed — globalThis exists but is sandboxed
@@ -154,7 +154,7 @@ func TestScriptNoGlobalThis(t *testing.T) {
 
 func TestScriptPrototypePollution(t *testing.T) {
 	s := &Webhook{}
-	outReq, _, _, _, err := s.runScript(
+	outReq, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {
 			// Attempt prototype pollution
 			var obj = {};
@@ -172,7 +172,7 @@ func TestScriptPrototypePollution(t *testing.T) {
 
 func TestScriptConstructorOverwrite(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {
 			Object.prototype.toString = function() { return "hacked"; };
 		}`,
@@ -196,7 +196,7 @@ func TestScriptCannotModifyMsg(t *testing.T) {
 
 func TestScriptReqModification(t *testing.T) {
 	s := &Webhook{}
-	outReq, _, _, _, err := s.runScript(
+	outReq, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {
 			ctx.req.url = "http://evil.com";
 			ctx.req.method = "PUT";
@@ -224,7 +224,7 @@ func TestScriptReqModification(t *testing.T) {
 func TestScriptReqUrlPreservedIfNotModified(t *testing.T) {
 	s := &Webhook{}
 	req := &reqData{URL: "http://original.com", Method: "POST", Headers: map[string]string{"A": "1"}, Body: "orig"}
-	outReq, _, _, _, _ := s.runScript(
+	outReq, _, _, _, _, _ := s.runScript(
 		`function onRequest(ctx) { /* do nothing */ }`,
 		defaultMsg(), req, "test")
 	if outReq.URL != "http://original.com" {
@@ -242,7 +242,7 @@ func TestScriptReqUrlPreservedIfNotModified(t *testing.T) {
 
 func TestScriptSkip(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, skipped, err := s.runScript(
+	_, _, _, skipped, _, err := s.runScript(
 		`function onRequest(ctx) { skip(); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err != nil {
@@ -255,7 +255,7 @@ func TestScriptSkip(t *testing.T) {
 
 func TestScriptSkipStopsHTTP(t *testing.T) {
 	s := &Webhook{}
-	outReq, outRes, _, skipped, _ := s.runScript(
+	outReq, outRes, _, skipped, _, _ := s.runScript(
 		`function onRequest(ctx) { skip(); }`,
 		defaultMsg(), defaultReq(), "test")
 	if !skipped {
@@ -276,7 +276,7 @@ func TestScriptConditionalSkip(t *testing.T) {
 	// Message with "ignore" keyword → skip
 	msg := defaultMsg()
 	msg.Content = "please ignore this"
-	_, _, _, skipped, _ := s.runScript(
+	_, _, _, skipped, _, _ := s.runScript(
 		`function onRequest(ctx) { if (ctx.msg.content.indexOf("ignore") >= 0) skip(); }`,
 		msg, defaultReq(), "test")
 	if !skipped {
@@ -286,7 +286,7 @@ func TestScriptConditionalSkip(t *testing.T) {
 	// Normal message → don't skip
 	msg2 := defaultMsg()
 	msg2.Content = "hello world"
-	_, _, _, skipped2, _ := s.runScript(
+	_, _, _, skipped2, _, _ := s.runScript(
 		`function onRequest(ctx) { if (ctx.msg.content.indexOf("ignore") >= 0) skip(); }`,
 		msg2, defaultReq(), "test")
 	if skipped2 {
@@ -298,7 +298,7 @@ func TestScriptConditionalSkip(t *testing.T) {
 
 func TestScriptNormalExecution(t *testing.T) {
 	s := &Webhook{}
-	outReq, _, _, _, err := s.runScript(
+	outReq, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {
 			ctx.req.headers["X-Custom"] = "hello";
 			ctx.req.body = JSON.stringify({text: ctx.msg.content});
@@ -323,7 +323,7 @@ func TestScriptAccessAllMsgFields(t *testing.T) {
 		Content: "hi there", Timestamp: 1700000000000,
 		Items: []webhookItem{{Type: "text", Text: "hi there"}},
 	}
-	outReq, _, _, _, err := s.runScript(
+	outReq, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {
 			var m = ctx.msg;
 			var parts = [m.event, m.channel_id, m.bot_id, m.seq_id, m.sender, m.msg_type, m.content, m.timestamp];
@@ -349,7 +349,7 @@ func TestScriptAccessAllMsgFields(t *testing.T) {
 
 func TestScriptJSONParseStringify(t *testing.T) {
 	s := &Webhook{}
-	outReq, _, _, _, err := s.runScript(
+	outReq, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {
 			var obj = {key: "value", num: 42, arr: [1,2,3]};
 			ctx.req.body = JSON.stringify(obj);
@@ -373,7 +373,7 @@ func TestScriptJSONParseStringify(t *testing.T) {
 
 func TestScriptReply(t *testing.T) {
 	s := &Webhook{}
-	_, _, replies, _, _ := s.runScript(
+	_, _, replies, _, _, _ := s.runScript(
 		`function onRequest(ctx) { reply("hello"); reply("world"); }`,
 		defaultMsg(), defaultReq(), "test")
 	if len(replies) != 2 {
@@ -388,7 +388,7 @@ func TestScriptReplyFromOnResponse(t *testing.T) {
 	// Can't easily test onResponse with a real HTTP call in unit test,
 	// but we can verify the reply function works in onRequest
 	s := &Webhook{}
-	_, _, replies, _, _ := s.runScript(
+	_, _, replies, _, _, _ := s.runScript(
 		`function onRequest(ctx) { reply("from onRequest"); }`,
 		defaultMsg(), defaultReq(), "test")
 	if len(replies) != 1 || replies[0] != "from onRequest" {
@@ -400,7 +400,7 @@ func TestScriptReplyFromOnResponse(t *testing.T) {
 
 func TestScriptSyntaxError(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx { }`, // missing )
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -411,7 +411,7 @@ func TestScriptSyntaxError(t *testing.T) {
 
 func TestScriptRuntimeError(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { null.foo(); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -422,7 +422,7 @@ func TestScriptRuntimeError(t *testing.T) {
 
 func TestScriptUndefinedVariable(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { var x = undeclaredVar; }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -432,7 +432,7 @@ func TestScriptUndefinedVariable(t *testing.T) {
 
 func TestScriptThrowsError(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) { throw new Error("custom error"); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err == nil {
@@ -446,7 +446,7 @@ func TestScriptThrowsError(t *testing.T) {
 func TestScriptEmptyScript(t *testing.T) {
 	s := &Webhook{}
 	// No onRequest defined — should just pass through
-	outReq, _, _, skipped, err := s.runScript(
+	outReq, _, _, skipped, _, err := s.runScript(
 		`// no functions defined`,
 		defaultMsg(), defaultReq(), "test")
 	if err != nil {
@@ -463,7 +463,7 @@ func TestScriptEmptyScript(t *testing.T) {
 func TestScriptOnlyOnResponse(t *testing.T) {
 	s := &Webhook{}
 	// Only onResponse defined, no onRequest
-	outReq, _, _, _, err := s.runScript(
+	outReq, _, _, _, _, err := s.runScript(
 		`function onResponse(ctx) { reply("from response"); }`,
 		defaultMsg(), defaultReq(), "test")
 	if err != nil {
@@ -480,7 +480,7 @@ func TestScriptOnlyOnResponse(t *testing.T) {
 func TestScriptLargeStringAllocation(t *testing.T) {
 	s := &Webhook{}
 	// Try to allocate a huge string — should either work within limits or timeout
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {
 			var s = "x";
 			for (var i = 0; i < 20; i++) s = s + s; // 1MB
@@ -495,7 +495,7 @@ func TestScriptLargeStringAllocation(t *testing.T) {
 
 func TestScriptLargeArrayAllocation(t *testing.T) {
 	s := &Webhook{}
-	_, _, _, _, err := s.runScript(
+	_, _, _, _, _, err := s.runScript(
 		`function onRequest(ctx) {
 			var arr = [];
 			for (var i = 0; i < 100000; i++) arr.push(i);

@@ -318,10 +318,11 @@ func (s *Webhook) Handle(d Delivery) {
 		s.DB.Exec("UPDATE webhook_logs SET plugin_version = $1 WHERE id = $2", pluginVersion, logID)
 	}
 
-	// Step 1: Run script (onRequest)
+	// Step 1: Run script (onRequest + HTTP + onResponse)
+	var forwarded bool
 	if script != "" {
 		var err error
-		req, res, replies, skipped, err = s.runScript(script, msg, req, d.Channel.ID)
+		req, res, replies, skipped, forwarded, err = s.runScript(script, msg, req, d.Channel.ID)
 		if err != nil {
 			slog.Error("webhook script error", "channel", d.Channel.ID, "err", err)
 			s.DB.UpdateWebhookLogResult(logID, "error", err.Error(), nil)
@@ -367,7 +368,51 @@ func (s *Webhook) Handle(d Delivery) {
 		s.DB.UpdateWebhookLogResult(logID, "success", "", replies)
 	}
 
+	// Step 6: Forward binary response as media if requested
+	if forwarded && res != nil && res.RawBody != nil {
+		go s.forwardMedia(d, res)
+	}
+
 	s.sendReplies(d, replies)
+}
+
+// forwardMedia sends the binary HTTP response as a media message through the bot.
+func (s *Webhook) forwardMedia(d Delivery, res *resData) {
+	ct := res.ContentType
+	fileName := "response"
+	switch {
+	case strings.HasPrefix(ct, "image/"):
+		ext := strings.TrimPrefix(ct, "image/")
+		if i := strings.Index(ext, ";"); i > 0 { ext = ext[:i] }
+		fileName = "image." + ext
+	case strings.HasPrefix(ct, "audio/"):
+		fileName = "audio.mp3"
+	case strings.HasPrefix(ct, "video/"):
+		fileName = "video.mp4"
+	case strings.HasPrefix(ct, "application/pdf"):
+		fileName = "document.pdf"
+	default:
+		fileName = "file.bin"
+	}
+
+	_, err := d.Provider.Send(context.Background(), provider.OutboundMessage{
+		Recipient: d.Message.Sender,
+		Data:      res.RawBody,
+		FileName:  fileName,
+	})
+	if err != nil {
+		slog.Error("webhook forward media failed", "channel", d.Channel.ID, "err", err)
+		return
+	}
+
+	itemList, _ := json.Marshal([]map[string]any{{"type": "file", "file_name": fileName}})
+	s.DB.SaveMessage(&database.Message{
+		BotID:       d.BotDBID,
+		Direction:   "outbound",
+		ToUserID:    d.Message.Sender,
+		MessageType: 2,
+		ItemList:    itemList,
+	})
 }
 
 func truncate(s string, max int) string {
@@ -450,14 +495,14 @@ func parseScriptPerms(script string) (grants map[string]bool, matchTypes map[str
 }
 
 func (s *Webhook) runScript(script string, msg webhookPayload, req *reqData, channelID string) (
-	outReq *reqData, outRes *resData, replies []string, skipped bool, err error,
+	outReq *reqData, outRes *resData, replies []string, skipped bool, forwarded bool, err error,
 ) {
 	// Parse permissions from script metadata
 	grants, matchTypes, connectDomains := parseScriptPerms(script)
 
 	// @match enforcement: skip if message type doesn't match
 	if !matchTypes["*"] && !matchTypes[msg.MsgType] {
-		return req, nil, nil, false, nil // pass through without running script
+		return req, nil, nil, false, false, nil
 	}
 
 	vm := goja.New()
@@ -513,6 +558,20 @@ func (s *Webhook) runScript(script string, msg webhookPayload, req *reqData, cha
 		})
 	}
 
+	// forward() — forward binary response as media to user
+	if grants["forward"] || (len(grants) == 0 && !grants["none"]) {
+		vm.Set("forward", func() { forwarded = true })
+	} else {
+		vm.Set("forward", func() {
+			panic(vm.NewGoError(fmt.Errorf("forward() not granted — add @grant forward")))
+		})
+	}
+	if grants["none"] {
+		vm.Set("forward", func() {
+			panic(vm.NewGoError(fmt.Errorf("forward() blocked by @grant none")))
+		})
+	}
+
 	_ = connectDomains // used after script execution
 
 	// Define onRequest/onResponse as top-level functions (with timeout)
@@ -523,20 +582,20 @@ func (s *Webhook) runScript(script string, msg webhookPayload, req *reqData, cha
 	timer.Stop()
 	vm.ClearInterrupt()
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, nil, false, false, err
 	}
 
 	// Phase 1: onRequest
 	if fn := vm.Get("onRequest"); fn != nil && !goja.IsUndefined(fn) {
 		if callable, ok := goja.AssertFunction(fn); ok {
 			if _, err := runScriptWithTimeout(vm, callable, vm.Get("ctx")); err != nil {
-				return nil, nil, nil, false, err
+				return nil, nil, nil, false, false, err
 			}
 		}
 	}
 
 	if skipped {
-		return nil, nil, replies, true, nil
+		return nil, nil, replies, true, false, nil
 	}
 
 	// Extract modified req from ctx
@@ -545,7 +604,7 @@ func (s *Webhook) runScript(script string, msg webhookPayload, req *reqData, cha
 	// @connect enforcement: validate URL domain
 	if !connectDomains["*"] && outReq.URL != req.URL {
 		if !isDomainAllowed(outReq.URL, connectDomains) {
-			return nil, nil, nil, false, fmt.Errorf("URL domain not in @connect whitelist: %s", outReq.URL)
+			return nil, nil, nil, false, false, fmt.Errorf("URL domain not in @connect whitelist: %s", outReq.URL)
 		}
 	}
 
@@ -557,11 +616,18 @@ func (s *Webhook) runScript(script string, msg webhookPayload, req *reqData, cha
 		if fn := vm.Get("onResponse"); fn != nil && !goja.IsUndefined(fn) {
 			if callable, ok := goja.AssertFunction(fn); ok {
 				ctxObj := vm.Get("ctx").ToObject(vm)
-				ctxObj.Set("res", map[string]any{
-					"status":  outRes.Status,
-					"headers": outRes.Headers,
-					"body":    outRes.Body,
-				})
+				resObj := map[string]any{
+					"status":       outRes.Status,
+					"headers":      outRes.Headers,
+					"content_type": outRes.ContentType,
+					"size":         outRes.Size,
+				}
+				if outRes.RawBody != nil {
+					resObj["body"] = nil // binary — body not available in JS
+				} else {
+					resObj["body"] = outRes.Body
+				}
+				ctxObj.Set("res", resObj)
 				if _, err := runScriptWithTimeout(vm, callable, vm.Get("ctx")); err != nil {
 					slog.Error("webhook onResponse error", "channel", channelID, "err", err)
 				}
@@ -569,7 +635,7 @@ func (s *Webhook) runScript(script string, msg webhookPayload, req *reqData, cha
 		}
 	}
 
-	return outReq, outRes, replies, false, nil
+	return outReq, outRes, replies, false, forwarded, nil
 }
 
 func (s *Webhook) sendReplies(d Delivery, replies []string) {
@@ -609,9 +675,12 @@ type reqData struct {
 type ResData = resData
 
 type resData struct {
-	Status  int               `json:"status"`
-	Headers map[string]string `json:"headers"`
-	Body    string            `json:"body"`
+	Status      int               `json:"status"`
+	Headers     map[string]string `json:"headers"`
+	Body        string            `json:"body"`
+	ContentType string            `json:"content_type,omitempty"`
+	Size        int               `json:"size,omitempty"`
+	RawBody     []byte            `json:"-"` // binary content, not serialized
 }
 
 type webhookPayload struct {
@@ -695,6 +764,14 @@ func applyAuth(req *reqData, auth *database.WebhookAuth, body []byte) {
 	}
 }
 
+func isBinaryContentType(ct string) bool {
+	return strings.HasPrefix(ct, "image/") ||
+		strings.HasPrefix(ct, "audio/") ||
+		strings.HasPrefix(ct, "video/") ||
+		strings.HasPrefix(ct, "application/octet-stream") ||
+		strings.HasPrefix(ct, "application/pdf")
+}
+
 func doHTTP(req *reqData, channelID string) *resData {
 	httpReq, err := http.NewRequest(req.Method, req.URL, bytes.NewReader([]byte(req.Body)))
 	if err != nil {
@@ -719,7 +796,18 @@ func doHTTP(req *reqData, channelID string) *resData {
 	if resp.StatusCode >= 400 {
 		slog.Warn("webhook error status", "channel", channelID, "status", resp.StatusCode)
 	}
-	return &resData{Status: resp.StatusCode, Headers: headers, Body: string(respBody)}
+
+	ct := resp.Header.Get("Content-Type")
+	res := &resData{
+		Status: resp.StatusCode, Headers: headers,
+		ContentType: ct, Size: len(respBody),
+	}
+	if isBinaryContentType(ct) {
+		res.RawBody = respBody // keep binary, body stays empty
+	} else {
+		res.Body = string(respBody)
+	}
+	return res
 }
 
 func extractReqFromCtx(obj any, fallback *reqData) *reqData {

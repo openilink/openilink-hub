@@ -81,10 +81,11 @@ If a script modifies `ctx.req.url` to a domain not in the whitelist, execution i
 Declares which APIs the plugin needs. If `@grant` is not specified, all APIs are available (backward compatible). If specified, only declared APIs work.
 
 ```
-// @grant  none          no side effects (reply/skip both blocked)
-// @grant  reply         can call reply()
-// @grant  skip          can call skip()
-// @grant  reply,skip    can call both
+// @grant  none              no side effects (reply/skip/forward all blocked)
+// @grant  reply             can call reply()
+// @grant  forward           can call forward()
+// @grant  skip              can call skip()
+// @grant  reply,forward     can reply text and forward binary
 ```
 
 ### @config Syntax
@@ -139,13 +140,19 @@ Each item has:
 |---|---|---|
 | `ctx.res.status` | number | HTTP status code |
 | `ctx.res.headers` | object | Response headers |
-| `ctx.res.body` | string | Response body |
+| `ctx.res.body` | string/null | Response body (null for binary responses) |
+| `ctx.res.content_type` | string | Response Content-Type header |
+| `ctx.res.size` | number | Response body size in bytes |
+
+When the response is binary (image, audio, video, PDF), `ctx.res.body` is `null`.
+Use `ctx.res.content_type` to detect the type and call `forward()` to send it to the user.
 
 ## Global Functions
 
 | Function | Description |
 |---|---|
 | `reply(text)` | Send a text message back to the sender via the bot (max 10 per execution) |
+| `forward()` | Forward the binary HTTP response as a media message to the sender (image, audio, video, file) |
 | `skip()` | Cancel this webhook delivery (no HTTP request will be made) |
 | `JSON.parse(str)` | Parse JSON string |
 | `JSON.stringify(obj)` | Serialize to JSON string |
@@ -262,6 +269,39 @@ function onRequest(ctx) {
 }
 ```
 
+### 4. Media Forward (forward)
+
+Sends a request to an API that returns binary (image/file), then forwards the response to the user.
+
+```javascript
+// ==WebhookPlugin==
+// @name         Image Generator
+// @namespace    github.com/openilink
+// @version      1.0.0
+// @description  Generate image from text and send to user
+// @author       openilink
+// @icon         🎨
+// @match        text
+// @connect      api.example.com
+// @grant        forward,reply
+// ==/WebhookPlugin==
+
+function onRequest(ctx) {
+  ctx.req.url = "https://api.example.com/generate";
+  ctx.req.body = JSON.stringify({ prompt: ctx.msg.content });
+}
+
+function onResponse(ctx) {
+  if (ctx.res.content_type && ctx.res.content_type.indexOf("image/") === 0) {
+    forward(); // send image to user
+    reply("Image generated (" + ctx.res.size + " bytes)");
+  } else if (ctx.res.body) {
+    var data = JSON.parse(ctx.res.body);
+    if (data.error) reply("Error: " + data.error);
+  }
+}
+```
+
 ## Publishing a Plugin
 
 ### Step 1: Create a GitHub Repository
@@ -363,9 +403,11 @@ When generating a plugin:
 
 1. Always include `// @name` — submission will fail without it
 2. Use `JSON.stringify()` to set `ctx.req.body` — it must be a string
-3. Use `JSON.parse()` to read `ctx.res.body` in onResponse
+3. Use `JSON.parse()` to read `ctx.res.body` in onResponse (check for null first — binary responses have body=null)
 4. Call `skip()` to conditionally cancel delivery
-5. Call `reply(text)` to send a message back through the bot
-6. Don't use ES6+ syntax (no arrow functions, no const/let, no template literals) — the runtime is ES5
-7. Don't try to access external resources — the sandbox blocks all I/O
-8. Keep the script simple and focused — complex logic should live in the webhook receiver
+5. Call `reply(text)` to send a text message back through the bot
+6. Call `forward()` to forward binary HTTP responses (images, files) to the user — check `ctx.res.content_type` first
+7. Don't use ES6+ syntax (no arrow functions, no const/let, no template literals) — the runtime is ES5
+8. Don't try to access external resources — the sandbox blocks all I/O
+9. Keep the script simple and focused — complex logic should live in the webhook receiver
+10. Declare `@grant forward` if the plugin needs to forward binary responses
