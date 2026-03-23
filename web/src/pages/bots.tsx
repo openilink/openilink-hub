@@ -63,6 +63,18 @@ export function BotsPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold">Bot 管理</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">管理你的微信 Bot，扫码绑定新 Bot</p>
+        </div>
+        {!binding && (
+          <Button onClick={startBind} variant="outline" size="sm">
+            <Plus className="w-4 h-4 mr-1" /> 绑定新 Bot
+          </Button>
+        )}
+      </div>
+
       {binding ? (
         <Card className="flex flex-col items-center gap-4 py-8">
           <QrCanvas url={qrUrl} />
@@ -76,11 +88,7 @@ export function BotsPage() {
           )}
           <Button variant="ghost" size="sm" onClick={() => { setBinding(false); setQrUrl(""); }}>取消</Button>
         </Card>
-      ) : (
-        <Button onClick={startBind} className="w-full" variant="outline">
-          <Plus className="w-4 h-4 mr-2" /> 绑定新 Bot
-        </Button>
-      )}
+      ) : null}
 
       {bots.map((bot) => (
         <BotCard

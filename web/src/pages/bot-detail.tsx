@@ -317,7 +317,7 @@ export function BotDetailPage() {
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-sm">{bot.name}</h2>
+          <h1 className="font-semibold text-base">{bot.name}</h1>
           <p className="text-xs text-muted-foreground font-mono truncate">{bot.extra?.bot_id}</p>
         </div>
         <Badge variant={bot.status === "connected" ? "default" : bot.status === "session_expired" ? "destructive" : "outline"}>
@@ -328,11 +328,11 @@ export function BotDetailPage() {
             <QrCode className="w-3.5 h-3.5 mr-1" /> 重新绑定
           </Button>
         )}
-        <div className="flex border rounded-lg overflow-hidden">
-          <button className={`px-3 py-1 text-xs cursor-pointer ${tab === "chat" ? "bg-secondary" : "text-muted-foreground"}`} onClick={() => setTab("chat")}>消息</button>
-          <button className={`px-3 py-1 text-xs cursor-pointer ${tab === "channels" ? "bg-secondary" : "text-muted-foreground"}`} onClick={() => setTab("channels")}>通道</button>
-          <button className={`px-3 py-1 text-xs cursor-pointer ${tab === "settings" ? "bg-secondary" : "text-muted-foreground"}`} onClick={() => setTab("settings")}>设置</button>
-        </div>
+      </div>
+      <div className="flex border rounded-lg overflow-hidden w-fit mt-3">
+        <button className={`px-3 py-1.5 text-xs cursor-pointer ${tab === "chat" ? "bg-secondary font-medium" : "text-muted-foreground"}`} onClick={() => setTab("chat")}>消息</button>
+        <button className={`px-3 py-1.5 text-xs cursor-pointer ${tab === "channels" ? "bg-secondary font-medium" : "text-muted-foreground"}`} onClick={() => setTab("channels")}>通道</button>
+        <button className={`px-3 py-1.5 text-xs cursor-pointer ${tab === "settings" ? "bg-secondary font-medium" : "text-muted-foreground"}`} onClick={() => setTab("settings")}>设置</button>
       </div>
 
       {/* Session expired rebind dialog */}

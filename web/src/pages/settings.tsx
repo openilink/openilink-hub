@@ -59,7 +59,10 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold">设置</h2>
+      <div>
+        <h1 className="text-lg font-semibold">设置</h1>
+        <p className="text-xs text-muted-foreground mt-0.5">账号信息、系统配置</p>
+      </div>
 
       <Card className="space-y-3">
         <h3 className="text-sm font-medium">账号信息</h3>

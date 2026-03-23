@@ -54,11 +54,10 @@ export function ChannelDetailPage() {
         </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <Cable className="w-4 h-4 text-muted-foreground" />
-            <h2 className="font-semibold text-sm">{channel.name}</h2>
-            {channel.handle && <span className="text-xs text-muted-foreground font-mono">@{channel.handle}</span>}
+            <h1 className="font-semibold text-base">{channel.name}</h1>
+            {channel.handle && <span className="text-xs text-muted-foreground font-mono bg-secondary px-1.5 py-0.5 rounded">@{channel.handle}</span>}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">{bot.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{bot.name} · 渠道</p>
         </div>
         <button onClick={handleToggle}>
           <Badge variant={channel.enabled ? "default" : "outline"}>
@@ -71,9 +70,9 @@ export function ChannelDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border rounded-lg overflow-hidden w-fit">
+      <div className="flex border rounded-lg overflow-hidden w-fit mt-1">
         {tabs.map((t) => (
-          <button key={t.key} className={`px-3 py-1 text-xs cursor-pointer ${tab === t.key ? "bg-secondary" : "text-muted-foreground"}`} onClick={() => setTab(t.key)}>
+          <button key={t.key} className={`px-3 py-1.5 text-xs cursor-pointer ${tab === t.key ? "bg-secondary font-medium" : "text-muted-foreground"}`} onClick={() => setTab(t.key)}>
             {t.label}
           </button>
         ))}
