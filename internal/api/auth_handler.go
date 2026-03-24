@@ -176,7 +176,7 @@ func (s *Server) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 
 	transportsJSON, _ := json.Marshal(cred.Transport)
 	if err := s.DB.SaveCredential(&database.Credential{
-		ID:              string(cred.ID),
+		ID:              auth.EncodeCredentialID(cred.ID),
 		UserID:          user.ID,
 		PublicKey:       cred.PublicKey,
 		AttestationType: cred.AttestationType,
@@ -366,7 +366,7 @@ func (s *Server) handlePasskeyBindFinish(w http.ResponseWriter, r *http.Request)
 
 	transportsJSON, _ := json.Marshal(cred.Transport)
 	if err := s.DB.SaveCredential(&database.Credential{
-		ID:              string(cred.ID),
+		ID:              auth.EncodeCredentialID(cred.ID),
 		UserID:          user.ID,
 		PublicKey:       cred.PublicKey,
 		AttestationType: cred.AttestationType,

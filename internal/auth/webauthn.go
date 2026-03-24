@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"sync"
 	"time"
@@ -20,6 +21,17 @@ func (u *WebAuthnUser) WebAuthnID() []byte                         { return []by
 func (u *WebAuthnUser) WebAuthnName() string                       { return u.user.Username }
 func (u *WebAuthnUser) WebAuthnDisplayName() string                { return u.user.DisplayName }
 func (u *WebAuthnUser) WebAuthnCredentials() []webauthn.Credential { return u.creds }
+
+func EncodeCredentialID(id []byte) string {
+	return base64.RawURLEncoding.EncodeToString(id)
+}
+
+func DecodeCredentialID(id string) []byte {
+	if decoded, err := base64.RawURLEncoding.DecodeString(id); err == nil {
+		return decoded
+	}
+	return []byte(id)
+}
 
 // SessionStore keeps in-flight WebAuthn ceremony data (short-lived).
 type SessionStore struct {
@@ -67,7 +79,7 @@ func LoadWebAuthnUser(db *database.DB, user *database.User) (*WebAuthnUser, erro
 		_ = json.Unmarshal([]byte(dc.Transport), &transports)
 
 		creds = append(creds, webauthn.Credential{
-			ID:              []byte(dc.ID),
+			ID:              DecodeCredentialID(dc.ID),
 			PublicKey:       dc.PublicKey,
 			AttestationType: dc.AttestationType,
 			Transport:       transports,
