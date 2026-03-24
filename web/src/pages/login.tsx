@@ -66,7 +66,7 @@ const loginCopy = {
   registerFailed: "注册失败",
 } as const;
 
-function localizeAuthError(rawMessage: unknown): string {
+function localizeAuthError(rawMessage: unknown, fallback: string = loginCopy.loginFailed): string {
   const original = typeof rawMessage === "string" ? rawMessage.trim() : "";
   const key = original.toLowerCase();
   const translations: Record<string, string> = {
@@ -85,7 +85,7 @@ function localizeAuthError(rawMessage: unknown): string {
     "register failed": loginCopy.registerFailed,
   };
 
-  if (!key) return loginCopy.loginFailed;
+  if (!key) return fallback;
 
   if (key.startsWith("registration failed:")) {
     const reason = original.slice("registration failed:".length).trim();
@@ -150,7 +150,7 @@ export function LoginPage() {
 
       navigate("/dashboard");
     } catch (err: any) {
-      setError(localizeAuthError(err?.message ?? err));
+      setError(localizeAuthError(err?.message ?? err, mode === "register" ? copy.registerFailed : copy.loginFailed));
     }
 
     setLoading(false);
@@ -213,7 +213,7 @@ export function LoginPage() {
       navigate("/dashboard");
     } catch (err: any) {
       if (err.name !== "NotAllowedError") {
-        setError(localizeAuthError(err?.message ?? err ?? copy.passkeyLoginFailed));
+        setError(localizeAuthError(err?.message ?? err, copy.passkeyLoginFailed));
       }
     }
 
@@ -290,7 +290,7 @@ export function LoginPage() {
       navigate("/dashboard");
     } catch (err: any) {
       if (err.name !== "NotAllowedError") {
-        setError(localizeAuthError(err?.message ?? err ?? copy.passkeyRegisterFailed));
+        setError(localizeAuthError(err?.message ?? err, copy.passkeyRegisterFailed));
       }
     }
 
