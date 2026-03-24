@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -99,7 +100,7 @@ func setup(t *testing.T) *testEnv {
 	return &testEnv{
 		t: t, db: db, srv: ts, cfg: cfg,
 		client: &http.Client{Jar: jar},
-		mgr: mgr, hub: hub,
+		mgr:    mgr, hub: hub,
 	}
 }
 
@@ -255,6 +256,23 @@ func readWSTimeout(t *testing.T, ws *websocket.Conn, d time.Duration) map[string
 	var m map[string]any
 	json.Unmarshal(msg, &m)
 	return m
+}
+
+func readWSUntilType(t *testing.T, ws *websocket.Conn, d time.Duration, want string) map[string]any {
+	t.Helper()
+	ws.SetReadDeadline(time.Now().Add(d))
+	defer ws.SetReadDeadline(time.Time{})
+	for {
+		_, msg, err := ws.ReadMessage()
+		if err != nil {
+			return nil
+		}
+		var m map[string]any
+		json.Unmarshal(msg, &m)
+		if got, _ := m["type"].(string); got == want {
+			return m
+		}
+	}
 }
 
 func drainWS(t *testing.T, ws *websocket.Conn) {
@@ -2001,6 +2019,56 @@ func TestWebhookAutoReplyWithoutScript(t *testing.T) {
 	}
 }
 
+func TestWebhookForwardWAVAsVoice(t *testing.T) {
+	env := setup(t)
+	defer env.close()
+
+	hookSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/wav")
+		w.Write([]byte("RIFF\x00\x00\x00\x00WAVEfmt mock-wav-data"))
+	}))
+	defer hookSrv.Close()
+
+	env.register("waveforward", "password123")
+	botObj := env.createBotForUser("Bot1")
+	env.mgr.StartBot(context.Background(), botObj)
+
+	ch, _ := env.db.CreateChannel(botObj.ID, "WaveForward", "", nil, nil)
+	script := `// @grant reply
+function onResponse(ctx) { reply({forward: true}); }`
+	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
+		&database.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
+
+	inst, _ := env.mgr.GetInstance(botObj.ID)
+	mock := inst.Provider.(*mockProvider.Provider)
+	mock.SimulateInbound(provider.InboundMessage{
+		ExternalID: "fwav-1",
+		Sender:     "audio@wx",
+		Timestamp:  time.Now().UnixMilli(),
+		Items:      []provider.MessageItem{{Type: "text", Text: "forward wav"}},
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, m := range mock.SentMessages() {
+			if m.FileName == "audio.wav" {
+				goto SENT
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("webhook forwarded wav was not sent as voice media")
+
+SENT:
+	msgs, _ := env.db.ListMessages(botObj.ID, 20, 0)
+	for _, m := range msgs {
+		if m.Direction == "outbound" && strings.Contains(string(m.ItemList), `"voice"`) {
+			return
+		}
+	}
+	t.Fatal("forwarded wav was not stored as outbound voice message")
+}
+
 func TestWebhookNotTriggeredWithoutURL(t *testing.T) {
 	env := setup(t)
 	defer env.close()
@@ -2217,6 +2285,292 @@ func TestMediaStorageAndProxy(t *testing.T) {
 	t.Logf("Full media URL: %s", mediaURL)
 }
 
+func TestChannelMediaVoiceProxyUsesVoiceDecoder(t *testing.T) {
+	env := setup(t)
+	defer env.close()
+
+	env.register("voiceproxy", "password123")
+	botObj := env.createBotForUser("Bot1")
+	env.mgr.StartBot(context.Background(), botObj)
+	ch, _ := env.db.CreateChannel(botObj.ID, "VoiceChan", "", nil, nil)
+
+	resp := httpGet(t, env.srv.URL+"/api/v1/channels/media?key="+ch.APIKey+"&eqp=voice-eqp&aes=voice-aes&mt=voice&sr=16000")
+	defer resp.Body.Close()
+	assertCode(t, "voice media proxy", resp.StatusCode, 200)
+
+	var body bytes.Buffer
+	body.ReadFrom(resp.Body)
+	if !strings.Contains(body.String(), "mock-wav-data") {
+		t.Fatalf("voice proxy body = %q, want decoded wav data", body.String())
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "audio/wav") {
+		t.Fatalf("voice proxy content-type = %q, want audio/wav", ct)
+	}
+
+	inst, _ := env.mgr.GetInstance(botObj.ID)
+	mock := inst.Provider.(*mockProvider.Provider)
+	if got := mock.DownloadVoiceCalls(); got != 1 {
+		t.Fatalf("DownloadVoiceCalls = %d, want 1", got)
+	}
+	if got := mock.DownloadMediaCalls(); got != 0 {
+		t.Fatalf("DownloadMediaCalls = %d, want 0", got)
+	}
+}
+
+func TestChannelMediaVoiceRawProxyUsesRawMedia(t *testing.T) {
+	env := setup(t)
+	defer env.close()
+
+	env.register("voicerawproxy", "password123")
+	botObj := env.createBotForUser("Bot1")
+	env.mgr.StartBot(context.Background(), botObj)
+	ch, _ := env.db.CreateChannel(botObj.ID, "VoiceRawChan", "", nil, nil)
+
+	resp := httpGet(t, env.srv.URL+"/api/v1/channels/media?key="+ch.APIKey+"&eqp=voice-eqp&aes=voice-aes&mt=voice&raw=1")
+	defer resp.Body.Close()
+	assertCode(t, "voice raw media proxy", resp.StatusCode, 200)
+
+	var body bytes.Buffer
+	body.ReadFrom(resp.Body)
+	if body.String() != "mock-media-data" {
+		t.Fatalf("voice raw proxy body = %q, want mock-media-data", body.String())
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "audio/silk") {
+		t.Fatalf("voice raw proxy content-type = %q, want audio/silk", ct)
+	}
+
+	inst, _ := env.mgr.GetInstance(botObj.ID)
+	mock := inst.Provider.(*mockProvider.Provider)
+	if got := mock.DownloadVoiceCalls(); got != 0 {
+		t.Fatalf("DownloadVoiceCalls = %d, want 0", got)
+	}
+	if got := mock.DownloadMediaCalls(); got != 1 {
+		t.Fatalf("DownloadMediaCalls = %d, want 1", got)
+	}
+}
+
+func TestVoiceMediaReadyWSAndWebhook(t *testing.T) {
+	env := setup(t)
+	defer env.close()
+
+	var received []map[string]any
+	hookSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		received = append(received, body)
+		w.WriteHeader(200)
+	}))
+	defer hookSrv.Close()
+
+	env.register("voiceready", "password123")
+	botObj := env.createBotForUser("Bot1")
+	env.mgr.StartBot(context.Background(), botObj)
+	ch, _ := env.db.CreateChannel(botObj.ID, "VoiceReady", "", nil, nil)
+	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
+		&database.WebhookConfig{URL: hookSrv.URL}, true)
+
+	ws := env.connectWS(t, ch.APIKey)
+	defer ws.Close()
+	readWS(t, ws) // init
+
+	inst, _ := env.mgr.GetInstance(botObj.ID)
+	mock := inst.Provider.(*mockProvider.Provider)
+	mock.SimulateInbound(provider.InboundMessage{
+		ExternalID: "voice-pre",
+		Sender:     "voice@wx",
+		Timestamp:  time.Now().UnixMilli(),
+		Items:      []provider.MessageItem{{Type: "text", Text: "warmup"}},
+	})
+	mock.SimulateInbound(provider.InboundMessage{
+		ExternalID: "voice-1",
+		Sender:     "voice@wx",
+		Timestamp:  time.Now().UnixMilli(),
+		Items: []provider.MessageItem{{
+			Type: "voice",
+			Text: "语音转写",
+			Media: &provider.Media{
+				EncryptQueryParam: "voice-eqp",
+				AESKey:            "voice-aes",
+				MediaType:         "voice",
+				PlayTime:          3,
+				SampleRate:        16000,
+				BitsPerSample:     16,
+				EncodeType:        6,
+			},
+		}},
+	})
+
+	wsReady := readWSUntilType(t, ws, 3*time.Second, "message_media_ready")
+	if wsReady == nil {
+		t.Fatal("ws did not receive message_media_ready")
+	}
+
+	data := wsReady["data"].(map[string]any)
+	items := data["items"].([]any)
+	item := items[0].(map[string]any)
+	media := item["media"].(map[string]any)
+	wsMediaURL := media["url"].(string)
+	wsRawURL := media["raw_url"].(string)
+	if media["sample_rate"] != float64(16000) {
+		t.Fatalf("ws sample_rate = %v, want 16000", media["sample_rate"])
+	}
+	if !strings.Contains(wsMediaURL, "mt=voice") || !strings.Contains(wsMediaURL, "key="+ch.APIKey) {
+		t.Fatalf("ws media url = %q, want voice proxy url with channel key", wsMediaURL)
+	}
+	if !strings.Contains(wsRawURL, "raw=1") || !strings.Contains(wsRawURL, "key="+ch.APIKey) {
+		t.Fatalf("ws raw url = %q, want raw voice proxy url with channel key", wsRawURL)
+	}
+
+	var readyWebhook map[string]any
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, body := range received {
+			if body["event"] == "message_media_ready" {
+				readyWebhook = body
+				break
+			}
+		}
+		if readyWebhook != nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if readyWebhook == nil {
+		t.Fatalf("webhook events = %#v, want message_media_ready", received)
+	}
+
+	hookItems := readyWebhook["items"].([]any)
+	hookItem := hookItems[0].(map[string]any)
+	if hookItem["sample_rate"] != float64(16000) {
+		t.Fatalf("webhook sample_rate = %v, want 16000", hookItem["sample_rate"])
+	}
+	hookMediaURL := hookItem["media_url"].(string)
+	parsed, err := url.Parse(hookMediaURL)
+	if err != nil {
+		t.Fatalf("parse webhook media url: %v", err)
+	}
+	if parsed.Query().Get("key") != ch.APIKey {
+		t.Fatalf("webhook media key = %q, want %q", parsed.Query().Get("key"), ch.APIKey)
+	}
+	if parsed.Query().Get("mt") != "voice" {
+		t.Fatalf("webhook media mt = %q, want voice", parsed.Query().Get("mt"))
+	}
+	if parsed.Query().Get("sr") != "16000" {
+		t.Fatalf("webhook media sr = %q, want 16000", parsed.Query().Get("sr"))
+	}
+	hookRawURL := hookItem["raw_url"].(string)
+	rawParsed, err := url.Parse(hookRawURL)
+	if err != nil {
+		t.Fatalf("parse webhook raw url: %v", err)
+	}
+	if rawParsed.Query().Get("key") != ch.APIKey {
+		t.Fatalf("webhook raw key = %q, want %q", rawParsed.Query().Get("key"), ch.APIKey)
+	}
+	if rawParsed.Query().Get("raw") != "1" {
+		t.Fatalf("webhook raw flag = %q, want 1", rawParsed.Query().Get("raw"))
+	}
+
+	msgs, err := env.db.GetMessagesSince(botObj.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("load stored messages: %v", err)
+	}
+	if len(msgs) < 2 {
+		t.Fatalf("stored messages = %d, want at least 2", len(msgs))
+	}
+	voiceMsg := msgs[len(msgs)-1]
+	var storedItems []provider.MessageItem
+	if err := json.Unmarshal(voiceMsg.ItemList, &storedItems); err != nil {
+		t.Fatalf("unmarshal stored item_list: %v", err)
+	}
+	if len(storedItems) != 1 || storedItems[0].Media == nil {
+		t.Fatalf("stored items = %#v, want one voice media item", storedItems)
+	}
+	if storedItems[0].Media.URL == "" {
+		t.Fatal("stored voice url is empty")
+	}
+	if storedItems[0].Media.RawURL == "" {
+		t.Fatal("stored voice raw_url is empty")
+	}
+
+	resp := httpGet(t, env.srv.URL+"/api/v1/channels/messages?key="+ch.APIKey+"&limit=10")
+	defer resp.Body.Close()
+	assertCode(t, "channel messages", resp.StatusCode, 200)
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode channel messages: %v", err)
+	}
+	channelMsgs := body["messages"].([]any)
+	if len(channelMsgs) < 2 {
+		t.Fatalf("channel messages len = %d, want at least 2", len(channelMsgs))
+	}
+	channelItemList := channelMsgs[len(channelMsgs)-1].(map[string]any)["item_list"].([]any)
+	channelMedia := channelItemList[0].(map[string]any)["media"].(map[string]any)
+	channelMediaURL := channelMedia["url"].(string)
+	channelRawURL := channelMedia["raw_url"].(string)
+	if !strings.Contains(channelMediaURL, "key="+ch.APIKey) {
+		t.Fatalf("channel media url = %q, want api key", channelMediaURL)
+	}
+	if !strings.Contains(channelRawURL, "raw=1") || !strings.Contains(channelRawURL, "key="+ch.APIKey) {
+		t.Fatalf("channel raw url = %q, want raw voice url with api key", channelRawURL)
+	}
+
+	if err := env.db.UpdateChannelLastSeq(ch.ID, msgs[len(msgs)-2].ID); err != nil {
+		t.Fatalf("reset channel last_seq: %v", err)
+	}
+	replayWS := env.connectWS(t, ch.APIKey)
+	defer replayWS.Close()
+	readWS(t, replayWS) // init
+	replayMsg := readWSUntilType(t, replayWS, 3*time.Second, "message")
+	if replayMsg == nil {
+		t.Fatal("ws replay did not receive message")
+	}
+	replayData := replayMsg["data"].(map[string]any)
+	replayItems := replayData["items"].([]any)
+	replayMedia := replayItems[0].(map[string]any)["media"].(map[string]any)
+	replayRawURL := replayMedia["raw_url"].(string)
+	if !strings.Contains(replayRawURL, "raw=1") || !strings.Contains(replayRawURL, "key="+ch.APIKey) {
+		t.Fatalf("ws replay raw url = %q, want raw voice url with api key", replayRawURL)
+	}
+}
+
+func TestBotSendVoiceWAV(t *testing.T) {
+	env := setup(t)
+	defer env.close()
+
+	env.register("voicesend", "password123")
+	botObj := env.createBotForUser("Bot1")
+	env.mgr.StartBot(context.Background(), botObj)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, _ := writer.CreateFormFile("file", "reply.wav")
+	part.Write([]byte("RIFF\x00\x00\x00\x00WAVEfmt mock-wav-data"))
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", env.srv.URL+"/api/bots/"+botObj.ID+"/send", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	for _, c := range env.client.Jar.Cookies(req.URL) {
+		req.AddCookie(c)
+	}
+	resp, err := env.client.Do(req)
+	if err != nil {
+		t.Fatalf("send wav voice: %v", err)
+	}
+	defer resp.Body.Close()
+	assertCode(t, "send wav voice", resp.StatusCode, 200)
+
+	msgs, _ := env.db.ListMessages(botObj.ID, 10, 0)
+	found := false
+	for _, m := range msgs {
+		if m.Direction == "outbound" && strings.Contains(string(m.ItemList), `"voice"`) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("outbound voice message not saved in DB")
+	}
+}
 
 // ==================== Webhook Plugin E2E (two-table schema) ====================
 
@@ -2339,7 +2693,9 @@ function onResponse(ctx) {
 	sent := mock.SentMessages()
 	replyFound := false
 	for _, m := range sent {
-		if m.Text == "auto-reply" { replyFound = true }
+		if m.Text == "auto-reply" {
+			replyFound = true
+		}
 	}
 	if !replyFound {
 		t.Error("reply not sent")

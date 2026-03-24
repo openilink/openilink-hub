@@ -78,6 +78,9 @@ func (s *Server) handleChannelMessages(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
 	}
+	for i := range msgs {
+		msgs[i].ItemList = marshalChannelItemList(msgs[i].ItemList, ch.APIKey)
+	}
 
 	// Update last_seq
 	if len(msgs) > 0 {

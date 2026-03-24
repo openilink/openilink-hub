@@ -32,22 +32,26 @@ type InitData struct {
 }
 
 type MessageItem struct {
-	Type     string   `json:"type"` // text, image, voice, file, video
-	Text     string   `json:"text,omitempty"`
-	FileName string   `json:"file_name,omitempty"`
-	Media    *Media   `json:"media,omitempty"`
-	RefMsg   *RefMsg  `json:"ref_msg,omitempty"`
+	Type     string  `json:"type"` // text, image, voice, file, video
+	Text     string  `json:"text,omitempty"`
+	FileName string  `json:"file_name,omitempty"`
+	Media    *Media  `json:"media,omitempty"`
+	RefMsg   *RefMsg `json:"ref_msg,omitempty"`
 }
 
 type Media struct {
-	URL         string `json:"url,omitempty"`
-	AESKey      string `json:"aes_key,omitempty"`
-	FileSize    int64  `json:"file_size,omitempty"`
-	MediaType   string `json:"media_type,omitempty"`
-	PlayTime    int    `json:"play_time,omitempty"`
-	PlayLength  int    `json:"play_length,omitempty"`
-	ThumbWidth  int    `json:"thumb_width,omitempty"`
-	ThumbHeight int    `json:"thumb_height,omitempty"`
+	URL           string `json:"url,omitempty"`
+	RawURL        string `json:"raw_url,omitempty"`
+	AESKey        string `json:"aes_key,omitempty"`
+	FileSize      int64  `json:"file_size,omitempty"`
+	MediaType     string `json:"media_type,omitempty"`
+	PlayTime      int    `json:"play_time,omitempty"`
+	SampleRate    int    `json:"sample_rate,omitempty"`
+	BitsPerSample int    `json:"bits_per_sample,omitempty"`
+	EncodeType    int    `json:"encode_type,omitempty"`
+	PlayLength    int    `json:"play_length,omitempty"`
+	ThumbWidth    int    `json:"thumb_width,omitempty"`
+	ThumbHeight   int    `json:"thumb_height,omitempty"`
 }
 
 type RefMsg struct {

@@ -63,7 +63,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					SeqID:     m.ID,
 					Sender:    m.FromUserID,
 					Timestamp: ts,
-					Items:     parseRelayItems(m.ItemList),
+					Items:     parseRelayItems(m.ItemList, ch.APIKey),
 				})
 				conn.Send(env)
 			}
@@ -75,20 +75,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go conn.WritePump()
 	conn.ReadPump() // blocks
-}
-
-func parseRelayItems(itemList json.RawMessage) []relay.MessageItem {
-	var items []struct {
-		Type     string `json:"type"`
-		Text     string `json:"text,omitempty"`
-		FileName string `json:"file_name,omitempty"`
-	}
-	json.Unmarshal(itemList, &items)
-	result := make([]relay.MessageItem, len(items))
-	for i, item := range items {
-		result[i] = relay.MessageItem{Type: item.Type, Text: item.Text, FileName: item.FileName}
-	}
-	return result
 }
 
 // SetupUpstreamHandler creates the handler for messages from channel clients.

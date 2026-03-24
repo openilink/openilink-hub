@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
-	"encoding/base64"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -280,7 +281,6 @@ func DebugResponse(script string, mockMsg webhookPayload, response *resData) *De
 	return result
 }
 
-
 // MockPayload creates a test webhookPayload for debugging.
 func MockPayload(sender, content, msgType string) webhookPayload {
 	if sender == "" {
@@ -470,14 +470,14 @@ func contentTypeToFileInfo(ct string) (fileName, itemType string) {
 
 	// Document types
 	docMap := map[string]string{
-		"application/pdf":  ".pdf",
-		"application/zip":  ".zip",
-		"application/gzip": ".gz",
-		"application/x-tar": ".tar",
-		"application/x-rar-compressed": ".rar",
-		"application/x-7z-compressed":  ".7z",
-		"application/msword":           ".doc",
-		"application/vnd.ms-excel":     ".xls",
+		"application/pdf":               ".pdf",
+		"application/zip":               ".zip",
+		"application/gzip":              ".gz",
+		"application/x-tar":             ".tar",
+		"application/x-rar-compressed":  ".rar",
+		"application/x-7z-compressed":   ".7z",
+		"application/msword":            ".doc",
+		"application/vnd.ms-excel":      ".xls",
 		"application/vnd.ms-powerpoint": ".ppt",
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   ".docx",
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         ".xlsx",
@@ -890,13 +890,17 @@ type webhookPayload struct {
 }
 
 type webhookItem struct {
-	Type     string `json:"type"`               // "text", "image", "voice", "file", "video"
+	Type     string `json:"type"` // "text", "image", "voice", "file", "video"
 	Text     string `json:"text,omitempty"`
 	FileName string `json:"file_name,omitempty"`
 	MediaURL string `json:"media_url,omitempty"` // download URL (MinIO or CDN proxy)
+	RawURL   string `json:"raw_url,omitempty"`
 	FileSize int64  `json:"file_size,omitempty"`
 	// Voice
-	PlayTime int `json:"play_time,omitempty"`
+	PlayTime      int `json:"play_time,omitempty"`
+	SampleRate    int `json:"sample_rate,omitempty"`
+	BitsPerSample int `json:"bits_per_sample,omitempty"`
+	EncodeType    int `json:"encode_type,omitempty"`
 	// Video
 	PlayLength  int `json:"play_length,omitempty"`
 	ThumbWidth  int `json:"thumb_width,omitempty"`
@@ -909,35 +913,72 @@ type webhookItem struct {
 func buildPayload(d Delivery) webhookPayload {
 	items := make([]webhookItem, len(d.Message.Items))
 	for i, item := range d.Message.Items {
-		items[i] = convertWebhookItem(item)
+		items[i] = convertWebhookItem(item, d.Channel.APIKey)
+	}
+	event := d.Event
+	if event == "" {
+		event = "message"
 	}
 	return webhookPayload{
-		Event: "message", ChannelID: d.Channel.ID, BotID: d.BotDBID,
+		Event: event, ChannelID: d.Channel.ID, BotID: d.BotDBID,
 		SeqID: d.SeqID, Sender: d.Message.Sender, MsgType: d.MsgType,
 		Content: d.Content, Timestamp: d.Message.Timestamp, Items: items,
 	}
 }
 
-func convertWebhookItem(item provider.MessageItem) webhookItem {
+func convertWebhookItem(item provider.MessageItem, apiKey string) webhookItem {
 	wi := webhookItem{
 		Type:     item.Type,
 		Text:     item.Text,
 		FileName: item.FileName,
 	}
 	if item.Media != nil {
-		wi.MediaURL = item.Media.URL
+		wi.MediaURL = withChannelMediaURL(item.Media.URL, apiKey)
+		wi.RawURL = withChannelMediaURL(item.Media.RawURL, apiKey)
 		wi.FileSize = item.Media.FileSize
 		wi.PlayTime = item.Media.PlayTime
+		wi.SampleRate = item.Media.SampleRate
+		wi.BitsPerSample = item.Media.BitsPerSample
+		wi.EncodeType = item.Media.EncodeType
 		wi.PlayLength = item.Media.PlayLength
 		wi.ThumbWidth = item.Media.ThumbWidth
 		wi.ThumbHeight = item.Media.ThumbHeight
 	}
 	if item.RefMsg != nil {
 		wi.RefTitle = item.RefMsg.Title
-		ref := convertWebhookItem(item.RefMsg.Item)
+		ref := convertWebhookItem(item.RefMsg.Item, apiKey)
 		wi.RefItem = &ref
 	}
 	return wi
+}
+
+func withChannelMediaURL(rawURL, apiKey string) string {
+	if rawURL == "" || apiKey == "" {
+		return rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	switch {
+	case strings.HasPrefix(u.Path, "/api/v1/media/"),
+		u.Path == "/api/v1/channels/media",
+		strings.HasSuffix(path.Clean(u.Path), "/api/v1/channels/media"),
+		strings.Contains(u.Path, "/api/v1/media/"):
+	default:
+		return rawURL
+	}
+	q := u.Query()
+	if q.Get("key") == "" {
+		q.Set("key", apiKey)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func isVoiceContentType(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(strings.Split(ct, ";")[0]))
+	return ct == "audio/wav" || ct == "audio/x-wav" || ct == "audio/silk"
 }
 
 // --- HTTP helpers ---
@@ -979,8 +1020,8 @@ func isBinaryContentType(ct string) bool {
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",   // .docx
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",         // .xlsx
 		"application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
-		"application/msword",        // .doc
-		"application/vnd.ms-excel",  // .xls
+		"application/msword",            // .doc
+		"application/vnd.ms-excel",      // .xls
 		"application/vnd.ms-powerpoint": // .ppt
 		return true
 	}

@@ -159,6 +159,29 @@ func (db *DB) UpdateMediaStatus(botID, status string, keys json.RawMessage) erro
 	return err
 }
 
+func (db *DB) UpdateMessageMediaStatus(id int64, status string, keys json.RawMessage) error {
+	if keys == nil {
+		keys = json.RawMessage(`{}`)
+	}
+	_, err := db.Exec("UPDATE messages SET media_status = $1, media_keys = $2 WHERE id = $3",
+		status, keys, id)
+	return err
+}
+
+func (db *DB) UpdateMessageMedia(id int64, status string, keys, itemList json.RawMessage) error {
+	if keys == nil {
+		keys = json.RawMessage(`{}`)
+	}
+	if itemList == nil {
+		itemList = json.RawMessage(`[]`)
+	}
+	_, err := db.Exec(
+		"UPDATE messages SET media_status = $1, media_keys = $2, item_list = $3 WHERE id = $4",
+		status, keys, itemList, id,
+	)
+	return err
+}
+
 func (db *DB) UpdateMessagePayload(id int64, payload json.RawMessage) error {
 	// Legacy: updates media_status and media_keys from old-style payload
 	var p map[string]any

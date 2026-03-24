@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	ilink "github.com/openilink/openilink-sdk-go"
 	"github.com/openilink/openilink-hub/internal/provider"
+	ilink "github.com/openilink/openilink-sdk-go"
 	"github.com/youthlin/silk"
 )
 
@@ -85,11 +85,23 @@ func (p *Provider) Start(ctx context.Context, opts provider.StartOptions) error 
 		var lastRawBody []byte
 
 		err := p.client.Monitor(ctx, func(msg ilink.WeixinMessage) {
+			slog.Info("ilink inbound message",
+				"message_id", msg.MessageID,
+				"from", msg.FromUserID,
+				"to", msg.ToUserID,
+				"state", msg.MessageState,
+				"items", summarizeItems(msg.ItemList),
+				"context_token", msg.ContextToken != "")
 			if opts.OnMessage != nil {
 				im := convertInbound(msg)
 				// Attach raw HTTP response body (contains all messages from this poll)
 				if lastRawBody != nil {
 					im.Raw = json.RawMessage(lastRawBody)
+				}
+				if len(im.Items) == 0 && len(msg.ItemList) > 0 {
+					slog.Warn("ilink inbound message converted to zero items",
+						"message_id", msg.MessageID,
+						"raw_item_types", summarizeItems(msg.ItemList))
 				}
 				opts.OnMessage(im)
 			}
@@ -114,6 +126,12 @@ func (p *Provider) Start(ctx context.Context, opts provider.StartOptions) error 
 			OnResponse: func(resp *ilink.GetUpdatesResp) {
 				if raw := resp.RawResponse(); raw != nil {
 					lastRawBody = raw.Body
+				}
+				if len(resp.Msgs) > 0 {
+					slog.Info("ilink getUpdates response",
+						"msg_count", len(resp.Msgs),
+						"buf", resp.GetUpdatesBuf,
+						"timeout_ms", resp.LongPollingTimeoutMs)
 				}
 			},
 		})
@@ -159,7 +177,7 @@ func (p *Provider) Send(ctx context.Context, msg provider.OutboundMessage) (stri
 	if len(msg.Data) > 0 && msg.FileName != "" {
 		// Voice: encode WAV/PCM to SILK before sending
 		if isVoiceFile(msg.FileName) {
-			clientID, err := p.sendVoice(ctx, recipient, msg.ContextToken, msg.Data)
+			clientID, err := p.sendVoice(ctx, recipient, msg.ContextToken, msg.FileName, msg.Data)
 			if err != nil {
 				slog.Error("send voice failed", "err", err)
 			}
@@ -233,10 +251,9 @@ func decodeSILK(data []byte, sampleRate int) ([]byte, error) {
 func isVoiceFile(filename string) bool {
 	lower := strings.ToLower(filename)
 	return strings.HasSuffix(lower, ".wav") ||
-		strings.HasSuffix(lower, ".mp3") ||
-		strings.HasSuffix(lower, ".ogg") ||
+		strings.HasSuffix(lower, ".pcm") ||
 		strings.HasSuffix(lower, ".silk") ||
-		strings.HasSuffix(lower, ".pcm")
+		strings.HasSuffix(lower, ".wave")
 }
 
 // wavInfo holds parsed WAV header information.
@@ -306,10 +323,29 @@ func stereoToMono(pcm []byte) []byte {
 }
 
 // sendVoice encodes audio to SILK, uploads to CDN, and sends as voice message.
-func (p *Provider) sendVoice(ctx context.Context, recipient, contextToken string, data []byte) (string, error) {
+func (p *Provider) sendVoice(ctx context.Context, recipient, contextToken, fileName string, data []byte) (string, error) {
+	lower := strings.ToLower(fileName)
+	switch {
+	case strings.HasSuffix(lower, ".silk"):
+		return p.sendEncodedVoice(ctx, recipient, contextToken, data, 24000, 16, 1000)
+	case strings.HasSuffix(lower, ".pcm"):
+		playTime := len(data) * 1000 / (2 * 24000)
+		if playTime <= 0 {
+			playTime = 1000
+		}
+		silkData, err := silk.Encode(bytes.NewReader(data), silk.SampleRate(24000), silk.Stx(true))
+		if err != nil {
+			return "", fmt.Errorf("silk encode pcm: %w", err)
+		}
+		return p.sendEncodedVoice(ctx, recipient, contextToken, silkData, 24000, 16, playTime)
+	}
+
 	wav, err := parseWAV(data)
 	if err != nil {
 		return "", fmt.Errorf("parse wav: %w", err)
+	}
+	if !strings.HasPrefix(string(data[:min(len(data), 4)]), "RIFF") {
+		return "", fmt.Errorf("unsupported voice format: %s (supported: .wav, .pcm, .silk)", fileName)
 	}
 
 	pcm := wav.PCMData
@@ -328,15 +364,6 @@ func (p *Provider) sendVoice(ctx context.Context, recipient, contextToken string
 		return "", fmt.Errorf("silk encode (rate=%d, pcm=%d bytes): %w", wav.SampleRate, len(pcm), err)
 	}
 	slog.Info("voice silk encoded", "silk_bytes", len(silkData), "header", fmt.Sprintf("%x", silkData[:min(10, len(silkData))]))
-	if err != nil {
-		return "", fmt.Errorf("silk encode: %w", err)
-	}
-
-	// Upload as voice
-	uploaded, err := p.client.UploadFile(ctx, silkData, recipient, ilink.MediaVoice)
-	if err != nil {
-		return "", fmt.Errorf("upload voice: %w", err)
-	}
 
 	// Calculate play time in milliseconds from PCM data
 	// PCM is 16-bit (2 bytes per sample), mono
@@ -345,7 +372,16 @@ func (p *Provider) sendVoice(ctx context.Context, recipient, contextToken string
 		playTime = 1000
 	}
 
-	// Build and send voice message
+	return p.sendEncodedVoice(ctx, recipient, contextToken, silkData, wav.SampleRate, 16, playTime)
+}
+
+func (p *Provider) sendEncodedVoice(ctx context.Context, recipient, contextToken string, silkData []byte, sampleRate, bitsPerSample, playTime int) (string, error) {
+	// Upload as voice
+	uploaded, err := p.client.UploadFile(ctx, silkData, recipient, ilink.MediaVoice)
+	if err != nil {
+		return "", fmt.Errorf("upload voice: %w", err)
+	}
+
 	clientID := fmt.Sprintf("voice-%d", time.Now().UnixMilli())
 	msg := &ilink.SendMessageReq{
 		Msg: &ilink.WeixinMessage{
@@ -363,8 +399,8 @@ func (p *Provider) sendVoice(ctx context.Context, recipient, contextToken string
 						EncryptType:       ilink.EncryptAES128ECB,
 					},
 					EncodeType:    4,
-					SampleRate:    wav.SampleRate,
-					BitsPerSample: 16,
+					SampleRate:    sampleRate,
+					BitsPerSample: bitsPerSample,
 					PlayTime:      playTime,
 				},
 			}},
@@ -434,6 +470,9 @@ func convertItem(item ilink.MessageItem) *provider.MessageItem {
 			mi.Media = convertCDNMedia(item.VoiceItem.Media, "voice")
 			if mi.Media != nil {
 				mi.Media.PlayTime = item.VoiceItem.PlayTime
+				mi.Media.SampleRate = item.VoiceItem.SampleRate
+				mi.Media.BitsPerSample = item.VoiceItem.BitsPerSample
+				mi.Media.EncodeType = item.VoiceItem.EncodeType
 			}
 		}
 
@@ -461,7 +500,35 @@ func convertItem(item ilink.MessageItem) *provider.MessageItem {
 		}
 
 	default:
-		return nil
+		switch {
+		case item.TextItem != nil:
+			mi.Type = "text"
+			mi.Text = item.TextItem.Text
+		case item.ImageItem != nil:
+			mi.Type = "image"
+			mi.Media = convertCDNMedia(item.ImageItem.Media, "image")
+		case item.VoiceItem != nil:
+			mi.Type = "voice"
+			mi.Text = item.VoiceItem.Text
+			mi.Media = convertCDNMedia(item.VoiceItem.Media, "voice")
+			if mi.Media != nil {
+				mi.Media.PlayTime = item.VoiceItem.PlayTime
+				mi.Media.SampleRate = item.VoiceItem.SampleRate
+				mi.Media.BitsPerSample = item.VoiceItem.BitsPerSample
+				mi.Media.EncodeType = item.VoiceItem.EncodeType
+			}
+			slog.Warn("ilink item type mismatch, recovered as voice", "item_type", item.Type)
+		case item.FileItem != nil:
+			mi.Type = "file"
+			mi.FileName = item.FileItem.FileName
+			mi.Media = convertCDNMedia(item.FileItem.Media, "file")
+		case item.VideoItem != nil:
+			mi.Type = "video"
+			mi.Media = convertCDNMedia(item.VideoItem.Media, "video")
+		default:
+			slog.Warn("ilink unsupported item", "item_type", item.Type)
+			return nil
+		}
 	}
 
 	// Convert referenced/quoted message
@@ -476,6 +543,27 @@ func convertItem(item ilink.MessageItem) *provider.MessageItem {
 	}
 
 	return mi
+}
+
+func summarizeItems(items []ilink.MessageItem) []string {
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		label := fmt.Sprintf("%d", item.Type)
+		switch {
+		case item.TextItem != nil:
+			label += ":text"
+		case item.ImageItem != nil:
+			label += ":image"
+		case item.VoiceItem != nil:
+			label += ":voice"
+		case item.FileItem != nil:
+			label += ":file"
+		case item.VideoItem != nil:
+			label += ":video"
+		}
+		out = append(out, label)
+	}
+	return out
 }
 
 func convertCDNMedia(m *ilink.CDNMedia, mediaType string) *provider.Media {

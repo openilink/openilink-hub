@@ -84,12 +84,17 @@ type MessageItem struct {
 type Media struct {
 	URL               string `json:"url,omitempty"`
 	StorageKey        string `json:"-"` // MinIO object key, not serialized
+	RawURL            string `json:"raw_url,omitempty"`
+	RawStorageKey     string `json:"-"` // MinIO object key for raw media, not serialized
 	EncryptQueryParam string `json:"encrypt_query_param,omitempty"`
 	AESKey            string `json:"aes_key,omitempty"`
 	FileSize          int64  `json:"file_size,omitempty"`
 	MediaType         string `json:"media_type,omitempty"` // "image", "voice", "file", "video"
 	// Voice-specific
-	PlayTime int `json:"play_time,omitempty"` // seconds
+	PlayTime      int `json:"play_time,omitempty"`       // seconds
+	SampleRate    int `json:"sample_rate,omitempty"`     // Hz
+	BitsPerSample int `json:"bits_per_sample,omitempty"` // e.g. 16
+	EncodeType    int `json:"encode_type,omitempty"`
 	// Video/image thumbnail
 	ThumbEQP    string `json:"thumb_eqp,omitempty"`
 	ThumbAESKey string `json:"thumb_aes_key,omitempty"`

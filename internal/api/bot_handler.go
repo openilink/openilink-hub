@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	ilinkProvider "github.com/openilink/openilink-hub/internal/provider/ilink"
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/database"
 	"github.com/openilink/openilink-hub/internal/provider"
+	ilinkProvider "github.com/openilink/openilink-hub/internal/provider/ilink"
 )
 
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
@@ -368,13 +368,21 @@ func detectMediaType(filename, mime string) string {
 		strings.HasSuffix(lower, ".mp4"), strings.HasSuffix(lower, ".mov"),
 		strings.HasSuffix(lower, ".avi"):
 		return "video"
-	case strings.HasPrefix(mime, "audio/"),
-		strings.HasSuffix(lower, ".mp3"), strings.HasSuffix(lower, ".wav"),
-		strings.HasSuffix(lower, ".ogg"):
+	case isSupportedVoiceUpload(lower, mime):
 		return "voice"
 	default:
 		return "file"
 	}
+}
+
+func isSupportedVoiceUpload(lowerName, mime string) bool {
+	mime = strings.ToLower(strings.TrimSpace(strings.Split(mime, ";")[0]))
+	return strings.HasSuffix(lowerName, ".wav") ||
+		strings.HasSuffix(lowerName, ".pcm") ||
+		strings.HasSuffix(lowerName, ".silk") ||
+		mime == "audio/wav" ||
+		mime == "audio/x-wav" ||
+		mime == "audio/silk"
 }
 
 func detectContentType(msgType string) string {

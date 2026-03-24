@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 	"sync"
+	"time"
 
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/database"
@@ -42,9 +43,9 @@ type Manager struct {
 	db        *database.DB
 	hub       *relay.Hub
 	sinks     []sink.Sink
-	store     *storage.Storage    // optional, for media files
-	baseURL   string              // Hub origin for proxy URLs
-	dlSem     chan struct{}        // semaphore for concurrent media downloads
+	store     *storage.Storage        // optional, for media files
+	baseURL   string                  // Hub origin for proxy URLs
+	dlSem     chan struct{}           // semaphore for concurrent media downloads
 	appDisp   *appdelivery.Dispatcher // app event delivery
 }
 
@@ -258,9 +259,21 @@ func (m *Manager) RetryMediaDownload(msgID int64) error {
 			keys["0"] = item.Media.URL
 			status = "ready"
 		}
+		if item.Media.RawStorageKey != "" {
+			keys["0_silk"] = item.Media.RawStorageKey
+			status = "ready"
+		} else if item.Media.RawURL != "" {
+			keys["0_raw"] = item.Media.RawURL
+			status = "ready"
+		}
+		if item.Media.ThumbURL != "" {
+			keys["0_thumb"] = item.Media.ThumbURL
+		}
 		keysJSON, _ := json.Marshal(keys)
-		m.db.Exec("UPDATE messages SET media_status = $1, media_keys = $2 WHERE id = $3",
-			status, keysJSON, msgID)
+		itemListJSON, _ := json.Marshal(fakeMsg.Items)
+		if err := m.db.UpdateMessageMedia(msgID, status, keysJSON, itemListJSON); err != nil {
+			slog.Error("media retry update failed", "msgID", msgID, "err", err)
+		}
 		slog.Info("media retry done", "msgID", msgID, "status", status)
 	}()
 	return nil
@@ -285,21 +298,28 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 		}
 	}()
 
+	slog.Info("hub inbound message",
+		"bot", inst.DBID,
+		"external_id", msg.ExternalID,
+		"sender", msg.Sender,
+		"items", len(msg.Items),
+		"context_token", msg.ContextToken != "")
+
 	parsed := m.parseMessage(msg)
 
 	// Phase 1: Store message (independent of channels)
 	msgID := m.storeMessage(inst, msg, parsed)
 
-	// Phase 1b: Async media download (independent of channels)
-	if parsed.hasMedia && msgID > 0 {
-		go m.downloadMedia(inst, msg, msgID)
-	}
-
 	// Phase 2: Route to channels
 	matched := m.matchChannels(inst.DBID, msg.Sender, parsed)
 
+	// Phase 1b: Async media download (independent of channels)
+	if parsed.hasMedia && msgID > 0 {
+		go m.downloadMedia(inst, msg, matched, msgID)
+	}
+
 	// Phase 3: Deliver to sinks
-	m.deliverToChannels(inst, msg, parsed, matched, msgID)
+	m.deliverToChannels(inst, msg, parsed, matched, msgID, "message", nil)
 
 	// Phase 4: Deliver to Apps
 	go m.deliverToApps(inst, msg, parsed)
@@ -338,10 +358,7 @@ func (m *Manager) parseMessage(msg provider.InboundMessage) parsedMessage {
 		}
 	}
 
-	items := make([]relay.MessageItem, len(msg.Items))
-	for i, item := range msg.Items {
-		items[i] = convertRelayItem(item)
-	}
+	items := ConvertRelayItems(msg.Items, "")
 
 	return parsedMessage{
 		msgType: msgType, content: content, hasMedia: hasMedia, relayItems: items,
@@ -379,7 +396,7 @@ func (m *Manager) buildDBMessage(botDBID string, channelID *string, msg provider
 		ToUserID:     msg.Recipient,
 		CreateTimeMs: &msg.Timestamp,
 		SessionID:    msg.SessionID,
-		GroupID:       msg.GroupID,
+		GroupID:      msg.GroupID,
 		MessageState: msg.MessageState,
 		ItemList:     itemList,
 		ContextToken: msg.ContextToken,
@@ -400,7 +417,7 @@ func (m *Manager) storeMessage(inst *Instance, msg provider.InboundMessage, p pa
 
 // downloadMedia downloads media files async and updates stored messages.
 // Uses semaphore to limit concurrent downloads.
-func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msgID int64) {
+func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, matched []database.Channel, msgID int64) {
 	// Acquire download slot
 	m.dlSem <- struct{}{}
 	defer func() { <-m.dlSem }()
@@ -408,12 +425,12 @@ func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msg
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("media download panic", "err", r, "bot", inst.DBID)
-			m.db.UpdateMediaStatus(inst.DBID, "failed", nil)
+			m.db.UpdateMessageMediaStatus(msgID, "failed", nil)
 		}
 	}()
 
 	slog.Info("media download start", "bot", inst.DBID, "msg", msg.ExternalID)
-	silkKeys := m.processMedia(inst, &msg)
+	m.processMedia(inst, &msg)
 
 	// Collect storage keys
 	keys := map[string]string{}
@@ -430,19 +447,34 @@ func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msg
 			keys[idx] = item.Media.URL
 			status = "ready"
 		}
+		if item.Media.RawStorageKey != "" {
+			keys[idx+"_silk"] = item.Media.RawStorageKey
+			status = "ready"
+		} else if item.Media.RawURL != "" {
+			keys[idx+"_raw"] = item.Media.RawURL
+			status = "ready"
+		}
 		if item.Media.ThumbURL != "" {
 			keys[idx+"_thumb"] = item.Media.ThumbURL
-		}
-		if sk, ok := silkKeys[i]; ok {
-			keys[idx+"_silk"] = sk
 		}
 	}
 
 	keysJSON, _ := json.Marshal(keys)
-	if err := m.db.UpdateMediaStatus(inst.DBID, status, keysJSON); err != nil {
+	itemListJSON, _ := json.Marshal(msg.Items)
+	if err := m.db.UpdateMessageMedia(msgID, status, keysJSON, itemListJSON); err != nil {
 		slog.Error("media status update failed", "bot", inst.DBID, "err", err)
 	}
 	slog.Info("media download done", "bot", inst.DBID, "msg", msg.ExternalID, "status", status)
+	if status == "ready" && len(matched) > 0 {
+		m.deliverToChannels(inst, msg, m.parseMessage(msg), matched, msgID, "message_media_ready", func(sk sink.Sink) bool {
+			switch sk.Name() {
+			case "ws", "webhook":
+				return true
+			default:
+				return false
+			}
+		})
+	}
 }
 
 // matchChannels finds channels that should receive this message.
@@ -477,7 +509,7 @@ func (m *Manager) matchChannels(botDBID, sender string, p parsedMessage) []datab
 
 // deliverToChannels fans out to matched channels' sinks concurrently.
 // Uses the global msgID as seqID — no per-channel message copies.
-func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage, p parsedMessage, matched []database.Channel, msgID int64) {
+func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage, p parsedMessage, matched []database.Channel, msgID int64, event string, useSink func(sink.Sink) bool) {
 	if len(matched) == 0 {
 		return
 	}
@@ -495,19 +527,23 @@ func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage,
 				strings.TrimSpace(deliveryContent), "@"+ch.Handle))
 		}
 
-		env := relay.NewEnvelope("message", relay.MessageData{
+		env := relay.NewEnvelope(event, relay.MessageData{
 			SeqID: msgID, ExternalID: msg.ExternalID,
 			Sender: msg.Sender, Recipient: msg.Recipient, GroupID: msg.GroupID,
 			Timestamp: msg.Timestamp, MessageState: msg.MessageState,
-			Items: p.relayItems, ContextToken: msg.ContextToken, SessionID: msg.SessionID,
+			Items: ConvertRelayItems(msg.Items, ch.APIKey), ContextToken: msg.ContextToken, SessionID: msg.SessionID,
 		})
 
 		d := sink.Delivery{
+			Event:   event,
 			BotDBID: inst.DBID, Provider: inst.Provider, Channel: ch,
 			Message: msg, Envelope: env, SeqID: msgID,
 			MsgType: p.msgType, Content: deliveryContent,
 		}
 		for _, s := range m.sinks {
+			if useSink != nil && !useSink(s) {
+				continue
+			}
 			wg.Add(1)
 			go func(sk sink.Sink, delivery sink.Delivery) {
 				defer wg.Done()
@@ -528,10 +564,9 @@ func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage,
 // processMedia handles media items:
 // - With MinIO: download → store → set URL to MinIO
 // - Without MinIO: set URL to Hub proxy endpoint
-func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map[int]string {
+func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	silkKeys := map[int]string{} // index → raw SILK storage key
 	for i := range msg.Items {
 		item := &msg.Items[i]
 		if item.Media == nil || item.Media.EncryptQueryParam == "" {
@@ -539,25 +574,45 @@ func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map
 		}
 
 		if m.store != nil {
-			var data []byte
-			var err error
-
 			if item.Type == "voice" {
-				// Store raw SILK before decoding to WAV
 				rawSilk, rawErr := inst.Provider.DownloadMedia(ctx, item.Media.EncryptQueryParam, item.Media.AESKey)
 				if rawErr == nil && len(rawSilk) > 0 {
 					now := time.Now()
 					silkKey := fmt.Sprintf("%s/%d/%02d/%02d/%s_%d_raw.silk",
 						inst.DBID, now.Year(), now.Month(), now.Day(),
 						msg.ExternalID, i)
-					if _, err := m.store.Put(ctx, silkKey, "audio/silk", rawSilk); err == nil {
-						silkKeys[i] = silkKey
+					rawURL, err := m.store.Put(ctx, silkKey, "audio/silk", rawSilk)
+					if err == nil {
+						item.Media.RawStorageKey = silkKey
+						item.Media.RawURL = rawURL
+						if item.Media.FileSize == 0 {
+							item.Media.FileSize = int64(len(rawSilk))
+						}
+					}
+				} else if rawErr != nil {
+					slog.Warn("raw voice download failed", "bot", inst.DBID, "type", item.Type, "err", rawErr)
+				}
+				data, decoded, err := m.downloadVoiceWithFallback(ctx, inst, item)
+				if err != nil {
+					slog.Error("voice decode failed", "bot", inst.DBID, "type", item.Type, "err", err)
+				} else if decoded {
+					now := time.Now()
+					key := fmt.Sprintf("%s/%d/%02d/%02d/%s_%d%s",
+						inst.DBID, now.Year(), now.Month(), now.Day(),
+						msg.ExternalID, i, mediaExt(item.Type))
+					url, err := m.store.Put(ctx, key, mediaContentType(item.Type), data)
+					if err != nil {
+						slog.Error("media store failed", "bot", inst.DBID, "key", key, "err", err)
+					} else {
+						item.Media.URL = url
+						item.Media.StorageKey = key
+						item.Media.FileSize = int64(len(data))
 					}
 				}
-				data, err = m.downloadVoiceWithFallback(ctx, inst, item)
-			} else {
-				data, err = inst.Provider.DownloadMedia(ctx, item.Media.EncryptQueryParam, item.Media.AESKey)
+				continue
 			}
+
+			data, err := inst.Provider.DownloadMedia(ctx, item.Media.EncryptQueryParam, item.Media.AESKey)
 			if err != nil {
 				slog.Error("media download failed", "bot", inst.DBID, "type", item.Type, "err", err)
 				continue
@@ -590,45 +645,46 @@ func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map
 				}
 			}
 		} else {
-			// Fallback: proxy URL via Hub
-			item.Media.URL = fmt.Sprintf("%s/api/v1/channels/media?eqp=%s&aes=%s&ct=%s",
-				m.baseURL, item.Media.EncryptQueryParam, item.Media.AESKey,
-				mediaContentType(item.Type))
+			item.Media.URL = buildChannelMediaURL(m.baseURL, item.Type, item.Media, false)
+			if item.Type == "voice" {
+				item.Media.RawURL = buildChannelMediaURL(m.baseURL, item.Type, item.Media, true)
+			}
 		}
 	}
-	return silkKeys
 }
 
-// downloadVoiceWithFallback tries SILK decode at 24kHz, then with item's SampleRate, then raw file.
-func (m *Manager) downloadVoiceWithFallback(ctx context.Context, inst *Instance, item *provider.MessageItem) ([]byte, error) {
+// downloadVoiceWithFallback tries SILK decode at common sample rates and reports whether a WAV was produced.
+func (m *Manager) downloadVoiceWithFallback(ctx context.Context, inst *Instance, item *provider.MessageItem) ([]byte, bool, error) {
 	eqp := item.Media.EncryptQueryParam
 	aes := item.Media.AESKey
 
-	// Try 1: SILK decode at 24kHz (most common)
-	data, err := inst.Provider.DownloadVoice(ctx, eqp, aes, 24000)
-	if err == nil {
-		slog.Info("voice decoded", "rate", 24000)
-		return data, nil
+	rates := []int{24000}
+	if item.Media != nil && item.Media.SampleRate > 0 && item.Media.SampleRate != 24000 {
+		rates = append(rates, item.Media.SampleRate)
 	}
-	slog.Warn("voice decode 24kHz failed, trying fallback", "err", err)
+	has16k := false
+	for _, rate := range rates {
+		if rate == 16000 {
+			has16k = true
+			break
+		}
+	}
+	if !has16k {
+		rates = append(rates, 16000)
+	}
 
-	// Try 2: SILK decode at 16kHz
-	data, err = inst.Provider.DownloadVoice(ctx, eqp, aes, 16000)
-	if err == nil {
-		slog.Info("voice decoded", "rate", 16000)
-		return data, nil
+	var lastErr error
+	for _, rate := range rates {
+		data, err := inst.Provider.DownloadVoice(ctx, eqp, aes, rate)
+		if err == nil {
+			slog.Info("voice decoded", "rate", rate)
+			return data, true, nil
+		}
+		lastErr = err
+		slog.Warn("voice decode failed", "rate", rate, "err", err)
 	}
-	slog.Warn("voice decode 16kHz failed, storing raw", "err", err)
 
-	// Try 3: store raw file (SILK or whatever format)
-	data, err = inst.Provider.DownloadMedia(ctx, eqp, aes)
-	if err != nil {
-		return nil, err
-	}
-	// Change extension to .silk since we couldn't decode
-	item.Type = "file"
-	slog.Info("voice stored as raw file")
-	return data, nil
+	return nil, false, lastErr
 }
 
 func mediaExt(itemType string) string {
@@ -703,7 +759,15 @@ func matchFilter(rule database.FilterRule, sender, text, msgType string) bool {
 	return true
 }
 
-func convertRelayItem(item provider.MessageItem) relay.MessageItem {
+func ConvertRelayItems(items []provider.MessageItem, apiKey string) []relay.MessageItem {
+	out := make([]relay.MessageItem, len(items))
+	for i, item := range items {
+		out[i] = ConvertRelayItem(item, apiKey)
+	}
+	return out
+}
+
+func ConvertRelayItem(item provider.MessageItem, apiKey string) relay.MessageItem {
 	ri := relay.MessageItem{
 		Type:     item.Type,
 		Text:     item.Text,
@@ -711,22 +775,62 @@ func convertRelayItem(item provider.MessageItem) relay.MessageItem {
 	}
 	if item.Media != nil {
 		ri.Media = &relay.Media{
-			URL:         item.Media.URL,
-			AESKey:      item.Media.AESKey,
-			FileSize:    item.Media.FileSize,
-			MediaType:   item.Media.MediaType,
-			PlayTime:    item.Media.PlayTime,
-			PlayLength:  item.Media.PlayLength,
-			ThumbWidth:  item.Media.ThumbWidth,
-			ThumbHeight: item.Media.ThumbHeight,
+			URL:           withChannelMediaURL(item.Media.URL, apiKey),
+			RawURL:        withChannelMediaURL(item.Media.RawURL, apiKey),
+			AESKey:        item.Media.AESKey,
+			FileSize:      item.Media.FileSize,
+			MediaType:     item.Media.MediaType,
+			PlayTime:      item.Media.PlayTime,
+			SampleRate:    item.Media.SampleRate,
+			BitsPerSample: item.Media.BitsPerSample,
+			EncodeType:    item.Media.EncodeType,
+			PlayLength:    item.Media.PlayLength,
+			ThumbWidth:    item.Media.ThumbWidth,
+			ThumbHeight:   item.Media.ThumbHeight,
 		}
 	}
 	if item.RefMsg != nil {
-		refItem := convertRelayItem(item.RefMsg.Item)
+		refItem := ConvertRelayItem(item.RefMsg.Item, apiKey)
 		ri.RefMsg = &relay.RefMsg{
 			Title: item.RefMsg.Title,
 			Item:  refItem,
 		}
 	}
 	return ri
+}
+
+func buildChannelMediaURL(baseURL, itemType string, media *provider.Media, raw bool) string {
+	values := url.Values{}
+	values.Set("eqp", media.EncryptQueryParam)
+	values.Set("aes", media.AESKey)
+	values.Set("mt", itemType)
+	if raw {
+		values.Set("raw", "1")
+		values.Set("ct", "audio/silk")
+	} else {
+		values.Set("ct", mediaContentType(itemType))
+	}
+	if itemType == "voice" && media.SampleRate > 0 {
+		values.Set("sr", strconv.Itoa(media.SampleRate))
+	}
+	return fmt.Sprintf("%s/api/v1/channels/media?%s", baseURL, values.Encode())
+}
+
+func withChannelMediaURL(rawURL, apiKey string) string {
+	if rawURL == "" || apiKey == "" {
+		return rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	if !strings.Contains(u.Path, "/api/v1/media/") && !strings.HasSuffix(u.Path, "/api/v1/channels/media") {
+		return rawURL
+	}
+	q := u.Query()
+	if q.Get("key") == "" {
+		q.Set("key", apiKey)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }

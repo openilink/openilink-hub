@@ -23,6 +23,9 @@ type AI struct {
 func (s *AI) Name() string { return "ai" }
 
 func (s *AI) Handle(d Delivery) {
+	if d.Event != "" && d.Event != "message" {
+		return
+	}
 	if !d.Channel.AIConfig.Enabled || d.MsgType != "text" || d.Content == "" {
 		return
 	}

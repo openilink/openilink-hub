@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	ilink "github.com/openilink/openilink-sdk-go"
 	"github.com/youthlin/silk"
 )
 
@@ -129,10 +130,10 @@ func TestStereoToMono(t *testing.T) {
 	// Create stereo PCM: L=1000, R=-1000 → mono should be 0
 	stereo := make([]byte, 8) // 2 samples × 2 channels × 2 bytes
 	neg1000 := int16(-1000)
-	binary.LittleEndian.PutUint16(stereo[0:], 1000)              // L
-	binary.LittleEndian.PutUint16(stereo[2:], uint16(neg1000))   // R
-	binary.LittleEndian.PutUint16(stereo[4:], 500)               // L
-	binary.LittleEndian.PutUint16(stereo[6:], 500)               // R
+	binary.LittleEndian.PutUint16(stereo[0:], 1000)            // L
+	binary.LittleEndian.PutUint16(stereo[2:], uint16(neg1000)) // R
+	binary.LittleEndian.PutUint16(stereo[4:], 500)             // L
+	binary.LittleEndian.PutUint16(stereo[6:], 500)             // R
 
 	mono := stereoToMono(stereo)
 	if len(mono) != 4 {
@@ -216,6 +217,40 @@ func buildWAV(pcm []byte, sampleRate, channels, bitsPerSample int) []byte {
 	binary.LittleEndian.PutUint32(buf[40:], uint32(dataSize))
 	copy(buf[44:], pcm)
 	return buf
+}
+
+func TestConvertItemFallbackVoiceByPayload(t *testing.T) {
+	item := ilink.MessageItem{
+		Type: 99,
+		VoiceItem: &ilink.VoiceItem{
+			Text: "fallback voice",
+			Media: &ilink.CDNMedia{
+				EncryptQueryParam: "eqp",
+				AESKey:            "aes",
+			},
+			SampleRate:    16000,
+			BitsPerSample: 16,
+			EncodeType:    6,
+			PlayTime:      2,
+		},
+	}
+
+	got := convertItem(item)
+	if got == nil {
+		t.Fatal("convertItem returned nil")
+	}
+	if got.Type != "voice" {
+		t.Fatalf("type = %q, want voice", got.Type)
+	}
+	if got.Text != "fallback voice" {
+		t.Fatalf("text = %q", got.Text)
+	}
+	if got.Media == nil {
+		t.Fatal("media is nil")
+	}
+	if got.Media.SampleRate != 16000 || got.Media.EncodeType != 6 {
+		t.Fatalf("media = %+v", got.Media)
+	}
 }
 
 func min(a, b int) int {

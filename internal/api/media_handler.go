@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/openilink/openilink-hub/internal/auth"
@@ -11,9 +12,9 @@ import (
 // Proxy: downloads from CDN via bot provider, decrypts and streams back.
 // Used when MinIO is not configured.
 func (s *Server) handleChannelMedia(w http.ResponseWriter, r *http.Request) {
-	ch, err := s.authenticateChannel(r)
+	ch, authErr := s.authenticateChannel(r)
 	if ch == nil {
-		if err != nil {
+		if authErr != nil {
 			http.Error(w, "invalid key", http.StatusUnauthorized)
 		} else {
 			http.Error(w, "api key required", http.StatusUnauthorized)
@@ -34,17 +35,43 @@ func (s *Server) handleChannelMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := inst.Provider.DownloadMedia(r.Context(), eqp, aes)
+	mediaType := r.URL.Query().Get("mt")
+	contentType := r.URL.Query().Get("ct")
+	raw := r.URL.Query().Get("raw") == "1"
+
+	var (
+		data []byte
+		err  error
+	)
+	if mediaType == "voice" && !raw {
+		sampleRate := 24000
+		if v := r.URL.Query().Get("sr"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				sampleRate = n
+			}
+		}
+		data, err = inst.Provider.DownloadVoice(r.Context(), eqp, aes, sampleRate)
+		if err != nil {
+			data, err = inst.Provider.DownloadMedia(r.Context(), eqp, aes)
+			if err == nil && contentType == "" {
+				contentType = "audio/silk"
+			}
+		}
+	} else {
+		data, err = inst.Provider.DownloadMedia(r.Context(), eqp, aes)
+		if mediaType == "voice" && raw && contentType == "" {
+			contentType = "audio/silk"
+		}
+	}
 	if err != nil {
 		http.Error(w, "download failed", http.StatusBadGateway)
 		return
 	}
 
-	ct := r.URL.Query().Get("ct")
-	if ct == "" {
-		ct = http.DetectContentType(data)
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
 	}
-	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Write(data)
 }

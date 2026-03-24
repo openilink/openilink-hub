@@ -16,18 +16,20 @@ func init() {
 
 // Provider is a mock provider for testing.
 type Provider struct {
-	mu        sync.Mutex
-	status    string
-	onMsg     func(provider.InboundMessage)
-	onStatus  func(string)
-	sent      []provider.OutboundMessage
+	mu             sync.Mutex
+	status         string
+	onMsg          func(provider.InboundMessage)
+	onStatus       func(string)
+	sent           []provider.OutboundMessage
+	mediaDownloads int
+	voiceDownloads int
 }
 
 func New() *Provider {
 	return &Provider{status: "disconnected"}
 }
 
-func (p *Provider) Name() string  { return "mock" }
+func (p *Provider) Name() string { return "mock" }
 func (p *Provider) Status() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -59,10 +61,16 @@ func (p *Provider) Send(_ context.Context, msg provider.OutboundMessage) (string
 func (p *Provider) SendTyping(_ context.Context, _, _ string, _ bool) error { return nil }
 
 func (p *Provider) DownloadMedia(_ context.Context, _, _ string) ([]byte, error) {
+	p.mu.Lock()
+	p.mediaDownloads++
+	p.mu.Unlock()
 	return []byte("mock-media-data"), nil
 }
 
 func (p *Provider) DownloadVoice(_ context.Context, _, _ string, _ int) ([]byte, error) {
+	p.mu.Lock()
+	p.voiceDownloads++
+	p.mu.Unlock()
 	// Return a minimal WAV header for testing
 	return []byte("RIFF\x00\x00\x00\x00WAVEfmt mock-wav-data"), nil
 }
@@ -76,12 +84,12 @@ func (p *Provider) GetConfig(_ context.Context, _, _ string) (*provider.BotConfi
 func (p *Provider) SimulateInbound(msg provider.InboundMessage) {
 	if msg.Raw == nil {
 		raw, _ := json.Marshal(map[string]any{
-			"message_id":   msg.ExternalID,
-			"from_user_id": msg.Sender,
-			"to_user_id":   msg.Recipient,
+			"message_id":     msg.ExternalID,
+			"from_user_id":   msg.Sender,
+			"to_user_id":     msg.Recipient,
 			"create_time_ms": msg.Timestamp,
-			"item_list":    msg.Items,
-			"_mock":        true,
+			"item_list":      msg.Items,
+			"_mock":          true,
 		})
 		msg.Raw = raw
 	}
@@ -100,6 +108,18 @@ func (p *Provider) SentMessages() []provider.OutboundMessage {
 	out := make([]provider.OutboundMessage, len(p.sent))
 	copy(out, p.sent)
 	return out
+}
+
+func (p *Provider) DownloadMediaCalls() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.mediaDownloads
+}
+
+func (p *Provider) DownloadVoiceCalls() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.voiceDownloads
 }
 
 // Credentials returns mock credentials JSON.
