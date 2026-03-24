@@ -35,6 +35,9 @@ flowchart TD
     end
     
     A -->|iLink 协议| B[OpenILink SDK]
+    subgraph OpeniLink Capabilities
+      C[OpenILink Hub]
+    end
     B --> C[OpenILink Hub]
     
     C --> D[WebSocket]
@@ -49,7 +52,6 @@ flowchart TD
     H --> J
     I --> J
     
-    style C fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 <details>
@@ -118,8 +120,6 @@ flowchart TB
         MinIO[(MinIO<br/>媒体存储)]
         PK[Passkey<br/>WebAuthn]
     end
-    
-    style Broker fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
 ## 快速开始
