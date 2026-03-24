@@ -34,7 +34,6 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
-  SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
@@ -166,7 +165,7 @@ export function Layout() {
 
   return (
     <SidebarProvider>
-      <Sidebar collapsible="icon">
+      <Sidebar>
         {/* Logo */}
         <SidebarHeader>
           <SidebarMenu>
@@ -209,8 +208,6 @@ export function Layout() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-
-          <SidebarSeparator />
 
           {/* Webhook 插件 */}
           <SidebarGroup>
@@ -273,64 +270,61 @@ export function Layout() {
 
           {/* 系统管理（仅管理员） */}
           {isAdmin && (
-            <>
-              <SidebarSeparator />
-              <SidebarGroup>
-                <SidebarGroupLabel>系统管理</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive("/dashboard/admin")}
-                        tooltip="概览"
-                      >
-                        <Link to="/dashboard/admin">
-                          <BarChart3 />
-                          <span>概览</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive("/dashboard/admin/users")}
-                        tooltip="用户管理"
-                      >
-                        <Link to="/dashboard/admin/users">
-                          <Users />
-                          <span>用户管理</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive("/dashboard/admin/config")}
-                        tooltip="系统配置"
-                      >
-                        <Link to="/dashboard/admin/config">
-                          <Settings />
-                          <span>系统配置</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive("/dashboard/admin/apps")}
-                        tooltip="App 管理"
-                      >
-                        <Link to="/dashboard/admin/apps">
-                          <Blocks />
-                          <span>App 管理</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </>
+            <SidebarGroup>
+              <SidebarGroupLabel>系统管理</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive("/dashboard/admin")}
+                      tooltip="概览"
+                    >
+                      <Link to="/dashboard/admin">
+                        <BarChart3 />
+                        <span>概览</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive("/dashboard/admin/users")}
+                      tooltip="用户管理"
+                    >
+                      <Link to="/dashboard/admin/users">
+                        <Users />
+                        <span>用户管理</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive("/dashboard/admin/config")}
+                      tooltip="系统配置"
+                    >
+                      <Link to="/dashboard/admin/config">
+                        <Settings />
+                        <span>系统配置</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive("/dashboard/admin/apps")}
+                      tooltip="App 管理"
+                    >
+                      <Link to="/dashboard/admin/apps">
+                        <Blocks />
+                        <span>App 管理</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
           )}
         </SidebarContent>
 
@@ -349,7 +343,7 @@ export function Layout() {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            <SidebarSeparator className="mx-0" />
+
             <SidebarMenuItem>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
