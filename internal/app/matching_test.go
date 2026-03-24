@@ -34,6 +34,15 @@ func (m *mockAppStore) GetApp(id string) (*database.App, error) {
 	return nil, errors.New("not found")
 }
 
+func (m *mockAppStore) GetInstallationByHandle(botID, handle string) (*database.AppInstallation, error) {
+	for i := range m.installations {
+		if m.installations[i].Handle == handle {
+			return &m.installations[i], nil
+		}
+	}
+	return nil, errors.New("not found")
+}
+
 func newMatchDispatcher(store *mockAppStore) *Dispatcher {
 	return &Dispatcher{
 		appDB: store,
@@ -386,6 +395,103 @@ func TestMatchEvent_GetAppError(t *testing.T) {
 	// App lookup fails, so no match.
 	if len(matched) != 0 {
 		t.Errorf("matched %d, want 0", len(matched))
+	}
+}
+
+// ==================== ParseMention tests ====================
+
+func TestParseMention(t *testing.T) {
+	tests := []struct {
+		input   string
+		handle  string
+		command string
+		text    string
+	}{
+		{"@echo-work hello", "echo-work", "", "hello"},
+		{"@echo-work /echo hello world", "echo-work", "/echo", "hello world"},
+		{"@echo-work /ECHO", "echo-work", "/echo", ""},
+		{"@Echo-Work", "echo-work", "", ""},
+		{"@github", "github", "", ""},
+		{"@github /prs list", "github", "/prs", "list"},
+		{"hello", "", "", ""},
+		{"", "", "", ""},
+		{"/echo hello", "", "", ""},
+		{"@ hello", "", "", ""},
+		{"  @echo hello  ", "echo", "", "hello"},
+	}
+
+	for _, tt := range tests {
+		handle, command, text := ParseMention(tt.input)
+		if handle != tt.handle || command != tt.command || text != tt.text {
+			t.Errorf("ParseMention(%q) = (%q, %q, %q), want (%q, %q, %q)",
+				tt.input, handle, command, text, tt.handle, tt.command, tt.text)
+		}
+	}
+}
+
+// ==================== MatchHandle tests ====================
+
+func TestMatchHandle_Success(t *testing.T) {
+	store := &mockAppStore{
+		installations: []database.AppInstallation{
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, RequestURL: "http://a.com"},
+			{ID: "i2", AppID: "a1", BotID: "b1", Handle: "echo-family", Enabled: true, RequestURL: "http://b.com"},
+		},
+		apps: map[string]*database.App{"a1": {ID: "a1"}},
+	}
+	d := newMatchDispatcher(store)
+
+	inst, err := d.MatchHandle("b1", "echo-work")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if inst == nil || inst.ID != "i1" {
+		t.Errorf("expected i1, got %v", inst)
+	}
+}
+
+func TestMatchHandle_NotFound(t *testing.T) {
+	store := &mockAppStore{
+		installations: []database.AppInstallation{
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, RequestURL: "http://a.com"},
+		},
+		apps: map[string]*database.App{"a1": {ID: "a1"}},
+	}
+	d := newMatchDispatcher(store)
+
+	inst, _ := d.MatchHandle("b1", "nonexistent")
+	if inst != nil {
+		t.Errorf("expected nil, got %v", inst)
+	}
+}
+
+func TestMatchHandle_Disabled(t *testing.T) {
+	store := &mockAppStore{
+		installations: []database.AppInstallation{
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: false, RequestURL: "http://a.com"},
+		},
+		apps: map[string]*database.App{"a1": {ID: "a1"}},
+	}
+	d := newMatchDispatcher(store)
+
+	inst, _ := d.MatchHandle("b1", "echo-work")
+	if inst != nil {
+		t.Errorf("expected nil for disabled, got %v", inst)
+	}
+}
+
+func TestMatchHandle_NoRequestURL(t *testing.T) {
+	store := &mockAppStore{
+		installations: []database.AppInstallation{
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, RequestURL: ""},
+		},
+		apps: map[string]*database.App{"a1": {ID: "a1"}},
+	}
+	d := newMatchDispatcher(store)
+
+	inst, _ := d.MatchHandle("b1", "echo-work")
+	if inst != nil {
+		t.Errorf("expected nil for empty request_url, got %v", inst)
 	}
 }
 

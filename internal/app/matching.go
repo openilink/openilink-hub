@@ -9,6 +9,50 @@ import (
 	"github.com/openilink/openilink-hub/internal/database"
 )
 
+// ParseMention extracts handle, command, and text from @handle messages.
+// Returns handle, command (with / prefix or empty), remaining text.
+// Examples:
+//   "@echo-work hello"          → "echo-work", "", "hello"
+//   "@echo-work /echo hello"    → "echo-work", "/echo", "hello"
+//   "@echo-work"                → "echo-work", "", ""
+//   "hello"                     → "", "", ""
+func ParseMention(content string) (handle, command, text string) {
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, "@") {
+		return "", "", ""
+	}
+	parts := strings.SplitN(content[1:], " ", 2)
+	handle = strings.ToLower(parts[0])
+	if handle == "" {
+		return "", "", ""
+	}
+	remaining := ""
+	if len(parts) > 1 {
+		remaining = strings.TrimSpace(parts[1])
+	}
+	if strings.HasPrefix(remaining, "/") {
+		cmdParts := strings.SplitN(remaining[1:], " ", 2)
+		command = "/" + strings.ToLower(cmdParts[0])
+		if len(cmdParts) > 1 {
+			text = strings.TrimSpace(cmdParts[1])
+		}
+		return handle, command, text
+	}
+	return handle, "", remaining
+}
+
+// MatchHandle finds an enabled installation with the given handle on a bot.
+func (d *Dispatcher) MatchHandle(botID, handle string) (*database.AppInstallation, error) {
+	inst, err := d.store().GetInstallationByHandle(botID, handle)
+	if err != nil {
+		return nil, err
+	}
+	if !inst.Enabled || inst.RequestURL == "" {
+		return nil, nil
+	}
+	return inst, nil
+}
+
 // MatchCommand parses a slash command from the message content and finds
 // installations on the given bot whose app has registered that command.
 // Content format: "/commandname args..." or "@bothandle /commandname args..."

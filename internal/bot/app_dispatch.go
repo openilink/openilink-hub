@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
@@ -21,9 +22,14 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	content := p.content
 	slog.Debug("deliverToApps", "bot", inst.DBID, "content", content, "msg_type", p.msgType)
 
-	// Check for slash command: /command args or @command args
+	// Check for @handle mention → route to specific app installation
+	if m.tryDeliverMention(inst, msg, p, content) {
+		return
+	}
+
+	// Check for slash command: /command args
 	if m.tryDeliverCommand(inst, msg, p, content) {
-		return // command handled, don't also deliver as generic event
+		return
 	}
 
 	// Deliver as generic event to subscribed apps
@@ -53,6 +59,66 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 			m.sendAppReply(inst, msg.Sender, result.Reply)
 		}
 	}
+}
+
+// tryDeliverMention checks if the message starts with @handle and routes to that installation.
+func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string) bool {
+	trimmed := strings.TrimSpace(content)
+	if !strings.HasPrefix(trimmed, "@") {
+		return false
+	}
+	// Extract handle: @echo-work hello → handle="echo-work", text="hello"
+	parts := strings.SplitN(trimmed[1:], " ", 2)
+	handle := strings.ToLower(parts[0])
+	if handle == "" {
+		return false
+	}
+
+	text := ""
+	if len(parts) > 1 {
+		text = strings.TrimSpace(parts[1])
+	}
+
+	installation, err := m.appDisp.DB.GetInstallationByHandle(inst.DBID, handle)
+	if err != nil || installation == nil || !installation.Enabled || installation.RequestURL == "" {
+		return false
+	}
+
+	// @handle /command args → deliver as command to this specific installation
+	if strings.HasPrefix(text, "/") {
+		cmdParts := strings.SplitN(text[1:], " ", 2)
+		command := "/" + strings.ToLower(cmdParts[0])
+		cmdArgs := ""
+		if len(cmdParts) > 1 {
+			cmdArgs = strings.TrimSpace(cmdParts[1])
+		}
+		event := appdelivery.NewEvent("command", map[string]any{
+			"command": command,
+			"text":    cmdArgs,
+			"sender":  map[string]any{"id": msg.Sender, "name": msg.Sender},
+			"group":   groupInfo(msg),
+			"handle":  handle,
+		})
+		result := m.appDisp.DeliverWithRetry(installation, event)
+		if result != nil && result.Reply != "" {
+			m.sendAppReply(inst, msg.Sender, result.Reply)
+		}
+		return true
+	}
+
+	// @handle text → deliver as message to this specific installation
+	event := appdelivery.NewEvent("message.text", map[string]any{
+		"sender":  map[string]any{"id": msg.Sender, "name": msg.Sender},
+		"group":   groupInfo(msg),
+		"content": text,
+		"handle":  handle,
+	})
+
+	result := m.appDisp.DeliverWithRetry(installation, event)
+	if result != nil && result.Reply != "" {
+		m.sendAppReply(inst, msg.Sender, result.Reply)
+	}
+	return true
 }
 
 // tryDeliverCommand checks if the message is a /command or @command and delivers it.

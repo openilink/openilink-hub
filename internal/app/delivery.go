@@ -75,6 +75,7 @@ type eventLogger interface {
 type appStore interface {
 	ListInstallationsByBot(botID string) ([]database.AppInstallation, error)
 	GetApp(id string) (*database.App, error)
+	GetInstallationByHandle(botID, handle string) (*database.AppInstallation, error)
 }
 
 // Dispatcher delivers events to app installations.

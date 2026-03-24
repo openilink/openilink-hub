@@ -49,6 +49,7 @@ type AppInstallation struct {
 	SigningSecret string          `json:"signing_secret"`
 	RequestURL    string          `json:"request_url"`
 	URLVerified   bool            `json:"url_verified"`
+	Handle        string          `json:"handle,omitempty"`
 	Config        json.RawMessage `json:"config"`
 	Enabled       bool            `json:"enabled"`
 	CreatedAt     int64           `json:"created_at"`
@@ -217,13 +218,13 @@ func (db *DB) InstallApp(appID, botID string) (*AppInstallation, error) {
 func (db *DB) GetInstallation(id string) (*AppInstallation, error) {
 	i := &AppInstallation{}
 	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token, i.signing_secret,
-		i.request_url, i.url_verified, i.config, i.enabled,
+		i.request_url, i.url_verified, i.handle, i.config, i.enabled,
 		EXTRACT(EPOCH FROM i.created_at)::BIGINT, EXTRACT(EPOCH FROM i.updated_at)::BIGINT,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,'')
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.id = $1`, id).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken, &i.SigningSecret,
-		&i.RequestURL, &i.URLVerified, &i.Config, &i.Enabled,
+		&i.RequestURL, &i.URLVerified, &i.Handle, &i.Config, &i.Enabled,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon)
 	if err != nil {
@@ -236,13 +237,13 @@ func (db *DB) GetInstallation(id string) (*AppInstallation, error) {
 func (db *DB) GetInstallationByToken(token string) (*AppInstallation, error) {
 	i := &AppInstallation{}
 	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token, i.signing_secret,
-		i.request_url, i.url_verified, i.config, i.enabled,
+		i.request_url, i.url_verified, i.handle, i.config, i.enabled,
 		EXTRACT(EPOCH FROM i.created_at)::BIGINT, EXTRACT(EPOCH FROM i.updated_at)::BIGINT,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,'')
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.app_token = $1`, token).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken, &i.SigningSecret,
-		&i.RequestURL, &i.URLVerified, &i.Config, &i.Enabled,
+		&i.RequestURL, &i.URLVerified, &i.Handle, &i.Config, &i.Enabled,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon)
 	if err != nil {
@@ -263,7 +264,7 @@ func (db *DB) ListInstallationsByBot(botID string) ([]AppInstallation, error) {
 
 func (db *DB) listInstallations(where string, arg any) ([]AppInstallation, error) {
 	rows, err := db.Query(fmt.Sprintf(`SELECT i.id, i.app_id, i.bot_id, i.app_token, i.signing_secret,
-		i.request_url, i.url_verified, i.config, i.enabled,
+		i.request_url, i.url_verified, i.handle, i.config, i.enabled,
 		EXTRACT(EPOCH FROM i.created_at)::BIGINT, EXTRACT(EPOCH FROM i.updated_at)::BIGINT,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,'')
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
@@ -276,7 +277,7 @@ func (db *DB) listInstallations(where string, arg any) ([]AppInstallation, error
 	for rows.Next() {
 		var i AppInstallation
 		if err := rows.Scan(&i.ID, &i.AppID, &i.BotID, &i.AppToken, &i.SigningSecret,
-			&i.RequestURL, &i.URLVerified, &i.Config, &i.Enabled,
+			&i.RequestURL, &i.URLVerified, &i.Handle, &i.Config, &i.Enabled,
 			&i.CreatedAt, &i.UpdatedAt,
 			&i.AppName, &i.AppSlug, &i.AppIcon); err != nil {
 			return nil, err
@@ -286,10 +287,10 @@ func (db *DB) listInstallations(where string, arg any) ([]AppInstallation, error
 	return list, rows.Err()
 }
 
-// UpdateInstallation updates request_url, config, enabled.
-func (db *DB) UpdateInstallation(id, requestURL string, config json.RawMessage, enabled bool) error {
-	_, err := db.Exec(`UPDATE app_installations SET request_url=$1, config=$2, enabled=$3, updated_at=NOW() WHERE id=$4`,
-		requestURL, config, enabled, id)
+// UpdateInstallation updates request_url, handle, config, enabled.
+func (db *DB) UpdateInstallation(id, requestURL, handle string, config json.RawMessage, enabled bool) error {
+	_, err := db.Exec(`UPDATE app_installations SET request_url=$1, handle=$2, config=$3, enabled=$4, updated_at=NOW() WHERE id=$5`,
+		requestURL, handle, config, enabled, id)
 	return err
 }
 
@@ -304,6 +305,25 @@ func (db *DB) RegenerateInstallationToken(id string) (string, error) {
 	token := "app_" + generateToken(32)
 	_, err := db.Exec("UPDATE app_installations SET app_token=$1, updated_at=NOW() WHERE id=$2", token, id)
 	return token, err
+}
+
+// GetInstallationByHandle returns the installation matching a handle on a bot.
+func (db *DB) GetInstallationByHandle(botID, handle string) (*AppInstallation, error) {
+	i := &AppInstallation{}
+	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token, i.signing_secret,
+		i.request_url, i.url_verified, i.handle, i.config, i.enabled,
+		EXTRACT(EPOCH FROM i.created_at)::BIGINT, EXTRACT(EPOCH FROM i.updated_at)::BIGINT,
+		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,'')
+		FROM app_installations i JOIN apps a ON a.id = i.app_id
+		WHERE i.bot_id = $1 AND i.handle = $2`, botID, handle).Scan(
+		&i.ID, &i.AppID, &i.BotID, &i.AppToken, &i.SigningSecret,
+		&i.RequestURL, &i.URLVerified, &i.Handle, &i.Config, &i.Enabled,
+		&i.CreatedAt, &i.UpdatedAt,
+		&i.AppName, &i.AppSlug, &i.AppIcon)
+	if err != nil {
+		return nil, err
+	}
+	return i, nil
 }
 
 // DeleteInstallation removes an installation.

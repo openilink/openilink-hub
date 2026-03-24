@@ -108,6 +108,7 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 
 	var req struct {
 		RequestURL *string          `json:"request_url"`
+		Handle     *string          `json:"handle"`
 		Config     json.RawMessage  `json:"config"`
 		Enabled    *bool            `json:"enabled"`
 	}
@@ -120,6 +121,10 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 	if req.RequestURL != nil {
 		requestURL = *req.RequestURL
 	}
+	handle := inst.Handle
+	if req.Handle != nil {
+		handle = *req.Handle
+	}
 	cfg := inst.Config
 	if req.Config != nil {
 		cfg = req.Config
@@ -129,7 +134,7 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 		enabled = *req.Enabled
 	}
 
-	if err := s.DB.UpdateInstallation(inst.ID, requestURL, cfg, enabled); err != nil {
+	if err := s.DB.UpdateInstallation(inst.ID, requestURL, handle, cfg, enabled); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
