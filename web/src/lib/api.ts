@@ -4,15 +4,16 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   });
+  const data = await res.json();
   if (res.status === 401) {
     const path = window.location.pathname;
+    const isAuthRequest = url.startsWith("/api/auth/");
     const isPublic = path === "/" || path.startsWith("/webhook-plugins");
-    if (!isPublic) {
+    if (!isAuthRequest && !isPublic) {
       window.location.href = "/login";
+      throw new Error("unauthorized");
     }
-    throw new Error("unauthorized");
   }
-  const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data as T;
 }

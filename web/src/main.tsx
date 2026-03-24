@@ -49,6 +49,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="admin" element={<AdminPage tab="dashboard" />} />
               <Route path="admin/users" element={<AdminPage tab="users" />} />
               <Route path="admin/config" element={<AdminPage tab="config" />} />
+              <Route path="admin/apps" element={<AdminPage tab="apps" />} />
             </Route>
           </Routes>
         </BrowserRouter>
