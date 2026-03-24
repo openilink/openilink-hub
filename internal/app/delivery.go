@@ -34,6 +34,7 @@ type Event struct {
 	ID        string `json:"id"`
 	Timestamp int64  `json:"timestamp"`
 	Data      any    `json:"data"`
+	TraceID   string `json:"-"` // not in JSON, used to pass message trace_id
 }
 
 // DeliveryResult holds the outcome of an event delivery attempt.
@@ -126,7 +127,10 @@ func (d *Dispatcher) DeliverEvent(inst *database.AppInstallation, event *Event) 
 		return nil, fmt.Errorf("installation %s has no request_url configured", inst.ID)
 	}
 
-	traceID := "tr_" + uuid.New().String()
+	traceID := event.TraceID
+	if traceID == "" {
+		traceID = "tr_" + uuid.New().String()
+	}
 
 	envelope := eventEnvelope{
 		V:              envelopeVersion,

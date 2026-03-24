@@ -100,6 +100,14 @@ func (t *TraceBuilder) Flush() {
 		t.botID, t.traceID, t.msgID, t.sender, t.content, t.msgType, spansJSON)
 }
 
+// AppendSpan adds a span to an existing trace by trace_id.
+func (db *DB) AppendSpan(traceID string, span TraceSpan) error {
+	spanJSON, _ := json.Marshal(span)
+	_, err := db.Exec(`UPDATE message_traces SET spans = spans || $1::jsonb WHERE trace_id = $2`,
+		spanJSON, traceID)
+	return err
+}
+
 // ListTraces returns recent message traces for a bot.
 func (db *DB) ListTraces(botID string, limit int) ([]MessageTrace, error) {
 	if limit <= 0 || limit > 200 {

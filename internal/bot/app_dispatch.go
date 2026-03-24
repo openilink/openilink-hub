@@ -61,6 +61,7 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 		"msg_type":   p.msgType,
 		"items":      p.relayItems,
 	})
+	event.TraceID = trace.TraceID()
 
 	for i := range installations {
 		done := trace.StartTimer("deliver_app", installations[i].AppName+" ("+installations[i].RequestURL+")")
@@ -115,6 +116,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 			"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
 			"group": groupInfo(msg), "handle": handle,
 		})
+		event.TraceID = trace.TraceID()
 		done := trace.StartTimer("deliver_app", installation.AppName+" /"+command+" ("+installation.RequestURL+")")
 		result := m.appDisp.DeliverWithRetry(installation, event)
 		if result != nil {
@@ -130,6 +132,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
 		"group": groupInfo(msg), "content": text, "handle": handle,
 	})
+	event.TraceID = trace.TraceID()
 	done := trace.StartTimer("deliver_app", installation.AppName+" @"+handle+" ("+installation.RequestURL+")")
 	result := m.appDisp.DeliverWithRetry(installation, event)
 	if result != nil {
@@ -159,6 +162,7 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 		"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
 		"group": groupInfo(msg),
 	})
+	event.TraceID = trace.TraceID()
 
 	for i := range installations {
 		done := trace.StartTimer("deliver_app", installations[i].AppName+" /"+command+" ("+installations[i].RequestURL+")")
