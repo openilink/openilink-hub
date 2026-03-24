@@ -1,8 +1,6 @@
 openilink-hub
 AGENTS.md
-internal/web/dist/*
-!internal/web/dist/.gitkeep
-web/dist/
+dist/
 *.db
 *.db-wal
 *.db-shm
