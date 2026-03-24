@@ -99,7 +99,7 @@ function MarketplaceTab() {
               <div className="flex flex-wrap gap-1">
                 {app.commands.map((cmd: any) => (
                   <Badge key={cmd.name || cmd} variant="outline" className="text-xs font-mono">
-                    /{typeof cmd === "string" ? cmd : cmd.name}
+                    /{(typeof cmd === "string" ? cmd : cmd.name).replace(/^\//, "")}
                   </Badge>
                 ))}
               </div>
@@ -156,11 +156,8 @@ function InstallModal({ app, onClose }: { app: any; onClose: () => void }) {
     try {
       await api.installApp(app.id, { bot_id: botId, handle: handle.trim() || undefined });
       const firstCmd = app.commands?.[0];
-      const cmdName = firstCmd
-        ? typeof firstCmd === "string"
-          ? firstCmd
-          : firstCmd.name
-        : undefined;
+      const rawName = firstCmd ? (typeof firstCmd === "string" ? firstCmd : firstCmd.name) : undefined;
+      const cmdName = rawName ? "/" + rawName.replace(/^\//, "") : undefined;
       setSuccess({ handle: handle.trim(), command: cmdName });
     } catch (err: any) {
       setError(err.message);
