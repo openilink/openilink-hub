@@ -41,10 +41,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 
 export function Layout() {
   const navigate = useNavigate();
@@ -286,23 +286,6 @@ export function Layout() {
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-56">
-                  <DropdownMenuItem asChild>
-                    <a
-                      href="https://github.com/openilink/openilink-hub"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Github />
-                      GitHub
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-                  >
-                    {resolvedTheme === "dark" ? <Sun /> : <Moon />}
-                    切换主题
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout}>
                     <LogOut />
                     退出登录
@@ -319,6 +302,24 @@ export function Layout() {
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
+          <div className="ml-auto flex items-center gap-1">
+            <Button variant="ghost" size="icon-sm" asChild>
+              <a
+                href="https://github.com/openilink/openilink-hub"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Github />
+              </a>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            >
+              {resolvedTheme === "dark" ? <Sun /> : <Moon />}
+            </Button>
+          </div>
         </header>
         <main className="flex-1 overflow-auto">
           <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8 sm:py-10 lg:px-10">
