@@ -374,6 +374,7 @@ func (s *Server) notifyAppInstalled(app *database.App, inst *database.AppInstall
 		"signing_secret":  inst.SigningSecret,
 		"bot_id":          inst.BotID,
 		"handle":          inst.Handle,
+		"hub_url":         s.Config.RPOrigin,
 	})
 
 	client := &http.Client{Timeout: 10 * time.Second}
