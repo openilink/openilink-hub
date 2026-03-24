@@ -4,7 +4,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   });
-  const data = await res.json();
+
   if (res.status === 401) {
     const path = window.location.pathname;
     const isAuthRequest = url.startsWith("/api/auth/");
@@ -14,7 +14,9 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
       throw new Error("unauthorized");
     }
   }
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
   return data as T;
 }
 
