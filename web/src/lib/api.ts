@@ -65,6 +65,7 @@ export const api = {
   reconnectBot: (id: string) => request(`/api/bots/${id}/reconnect`, { method: "POST" }),
   deleteBot: (id: string) => request(`/api/bots/${id}`, { method: "DELETE" }),
   listBotApps: (botId: string) => request<any[]>(`/api/bots/${botId}/apps`),
+  listTraces: (botId: string, limit = 50) => request<any[]>(`/api/bots/${botId}/traces?limit=${limit}`),
   updateBot: (id: string, data: { name?: string; reminder_hours?: number }) =>
     request(`/api/bots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   botContacts: (id: string) => request<any[]>(`/api/bots/${id}/contacts`),

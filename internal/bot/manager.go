@@ -287,22 +287,39 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 
 	parsed := m.parseMessage(msg)
 
+	// Create trace for this message
+	trace := database.NewTraceBuilder(m.db, inst.DBID, msg.Sender, parsed.content, parsed.msgType)
+	trace.Add("receive", "from "+msg.Sender, "ok", parsed.msgType+": "+parsed.content, 0)
+
 	// Phase 1: Store message (independent of channels)
 	msgID := m.storeMessage(inst, msg, parsed)
+	trace.SetMessageID(msgID)
+	trace.Add("store", "message #"+fmt.Sprintf("%d", msgID), "ok", "", 0)
 
 	// Phase 1b: Async media download (independent of channels)
 	if parsed.hasMedia && msgID > 0 {
 		go m.downloadMedia(inst, msg, msgID)
+		trace.Add("media", "async download started", "ok", "", 0)
 	}
 
 	// Phase 2: Route to channels
 	matched := m.matchChannels(inst.DBID, msg.Sender, parsed)
+	if len(matched) > 0 {
+		names := make([]string, len(matched))
+		for i, ch := range matched {
+			names[i] = ch.Name
+		}
+		trace.Add("match_channel", fmt.Sprintf("%d channels: %s", len(matched), strings.Join(names, ", ")), "ok", "", 0)
+	}
 
 	// Phase 3: Deliver to sinks
 	m.deliverToChannels(inst, msg, parsed, matched, msgID)
 
-	// Phase 4: Deliver to Apps
-	go m.deliverToApps(inst, msg, parsed)
+	// Phase 4: Deliver to Apps (with trace)
+	m.deliverToApps(inst, msg, parsed, trace)
+
+	// Flush trace to DB
+	trace.Flush()
 }
 
 // parsedMessage holds extracted info from an inbound message.

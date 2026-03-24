@@ -130,3 +130,34 @@ func (s *Server) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(logs)
 }
+
+func (s *Server) handleListTraces(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
+	botID := r.PathValue("id")
+
+	bot, err := s.DB.GetBot(botID)
+	if err != nil || bot.UserID != userID {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+
+	traces, err := s.DB.ListTraces(botID, limit)
+	if err != nil {
+		slog.Error("list traces failed", "bot", botID, "err", err)
+		jsonError(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if traces == nil {
+		traces = []database.MessageTrace{}
+	}
+	json.NewEncoder(w).Encode(traces)
+}

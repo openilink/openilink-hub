@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,8 +17,7 @@ import (
 )
 
 // deliverToApps dispatches a message to matching App installations.
-// It handles both slash commands and event subscriptions.
-func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p parsedMessage) {
+func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p parsedMessage, trace *database.TraceBuilder) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("deliverToApps panic", "bot", inst.DBID, "err", r)
@@ -25,15 +25,14 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	}()
 
 	content := p.content
-	slog.Debug("deliverToApps", "bot", inst.DBID, "content", content, "msg_type", p.msgType)
 
 	// Check for @handle mention → route to specific app installation
-	if m.tryDeliverMention(inst, msg, p, content) {
+	if m.tryDeliverMention(inst, msg, p, content, trace) {
 		return
 	}
 
 	// Check for slash command: /command args
-	if m.tryDeliverCommand(inst, msg, p, content) {
+	if m.tryDeliverCommand(inst, msg, p, content, trace) {
 		return
 	}
 
@@ -41,12 +40,17 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	eventType := "message." + p.msgType
 	installations, err := m.appDisp.MatchEvent(inst.DBID, eventType)
 	if err != nil {
-		slog.Error("app match event failed", "bot", inst.DBID, "err", err)
+		trace.Add("match_event", "error", "error", err.Error(), 0)
 		return
 	}
 
 	if len(installations) == 0 {
+		trace.Add("match_event", "no subscribers for "+eventType, "skip", "", 0)
 		return
+	}
+
+	for i := range installations {
+		trace.Add("match_event", installations[i].AppName+" subscribes "+eventType, "ok", "", 0)
 	}
 
 	event := appdelivery.NewEvent(eventType, map[string]any{
@@ -59,18 +63,27 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	})
 
 	for i := range installations {
+		done := trace.StartTimer("deliver_app", installations[i].AppName+" ("+installations[i].RequestURL+")")
 		result := m.appDisp.DeliverWithRetry(&installations[i], event)
+		if result != nil {
+			reply := result.Reply
+			if result.ReplyURL != "" {
+				reply = "[media] " + result.ReplyURL
+			}
+			done("ok", reply)
+		} else {
+			done("error", "no result")
+		}
 		m.sendAppResult(inst, msg.Sender, result)
 	}
 }
 
 // tryDeliverMention checks if the message starts with @handle and routes to that installation.
-func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string) bool {
+func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string, trace *database.TraceBuilder) bool {
 	trimmed := strings.TrimSpace(content)
 	if !strings.HasPrefix(trimmed, "@") {
 		return false
 	}
-	// Extract handle: @echo-work hello → handle="echo-work", text="hello"
 	parts := strings.SplitN(trimmed[1:], " ", 2)
 	handle := strings.ToLower(parts[0])
 	if handle == "" {
@@ -84,10 +97,12 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 
 	installation, err := m.appDisp.DB.GetInstallationByHandle(inst.DBID, handle)
 	if err != nil || installation == nil || !installation.Enabled || installation.RequestURL == "" {
+		trace.Add("match_handle", "@"+handle+" not found", "skip", "", 0)
 		return false
 	}
 
-	// @handle /command args → deliver as command to this specific installation
+	trace.Add("match_handle", "@"+handle+" → "+installation.AppName, "ok", "", 0)
+
 	if strings.HasPrefix(text, "/") {
 		cmdParts := strings.SplitN(text[1:], " ", 2)
 		command := strings.ToLower(cmdParts[0])
@@ -96,50 +111,63 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 			cmdArgs = strings.TrimSpace(cmdParts[1])
 		}
 		event := appdelivery.NewEvent("command", map[string]any{
-			"command": command,
-			"text":    cmdArgs,
-			"sender":  map[string]any{"id": msg.Sender, "name": msg.Sender},
-			"group":   groupInfo(msg),
-			"handle":  handle,
+			"command": command, "text": cmdArgs,
+			"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
+			"group": groupInfo(msg), "handle": handle,
 		})
+		done := trace.StartTimer("deliver_app", installation.AppName+" /"+command+" ("+installation.RequestURL+")")
 		result := m.appDisp.DeliverWithRetry(installation, event)
+		if result != nil {
+			done("ok", result.Reply)
+		} else {
+			done("error", "no result")
+		}
 		m.sendAppResult(inst, msg.Sender, result)
 		return true
 	}
 
-	// @handle text → deliver as message to this specific installation
 	event := appdelivery.NewEvent("message.text", map[string]any{
-		"sender":  map[string]any{"id": msg.Sender, "name": msg.Sender},
-		"group":   groupInfo(msg),
-		"content": text,
-		"handle":  handle,
+		"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
+		"group": groupInfo(msg), "content": text, "handle": handle,
 	})
-
+	done := trace.StartTimer("deliver_app", installation.AppName+" @"+handle+" ("+installation.RequestURL+")")
 	result := m.appDisp.DeliverWithRetry(installation, event)
+	if result != nil {
+		done("ok", result.Reply)
+	} else {
+		done("error", "no result")
+	}
 	m.sendAppResult(inst, msg.Sender, result)
 	return true
 }
 
-// tryDeliverCommand checks if the message is a /command or @command and delivers it.
-func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string) bool {
+// tryDeliverCommand checks if the message is a /command and delivers it.
+func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string, trace *database.TraceBuilder) bool {
 	installations, command, args, err := m.appDisp.MatchCommand(inst.DBID, content)
 	if err != nil {
-		slog.Error("app match command failed", "bot", inst.DBID, "err", err)
+		trace.Add("match_command", "error", "error", err.Error(), 0)
 		return false
 	}
 	if len(installations) == 0 {
 		return false
 	}
 
+	trace.Add("match_command", "/"+command+" → "+fmt.Sprintf("%d apps", len(installations)), "ok", "args: "+args, 0)
+
 	event := appdelivery.NewEvent("command", map[string]any{
-		"command": command,
-		"text":    args,
-		"sender":  map[string]any{"id": msg.Sender, "name": msg.Sender},
-		"group":   groupInfo(msg),
+		"command": command, "text": args,
+		"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
+		"group": groupInfo(msg),
 	})
 
 	for i := range installations {
+		done := trace.StartTimer("deliver_app", installations[i].AppName+" /"+command+" ("+installations[i].RequestURL+")")
 		result := m.appDisp.DeliverWithRetry(&installations[i], event)
+		if result != nil {
+			done("ok", result.Reply)
+		} else {
+			done("error", "no result")
+		}
 		m.sendAppResult(inst, msg.Sender, result)
 	}
 	return true
