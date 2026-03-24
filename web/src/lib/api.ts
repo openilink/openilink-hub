@@ -100,6 +100,8 @@ export const api = {
     request<{ messages: any[]; next_cursor: string; has_more: boolean }>(
       `/api/bots/${botId}/messages?limit=${limit}${cursor ? "&cursor=" + cursor : ""}`,
     ),
+  sendMessage: (botId: string, data: any) =>
+    request(`/api/bots/${botId}/send`, { method: "POST", body: JSON.stringify(data) }),
 
   // Admin: system config
   getOAuthConfig: () => request<Record<string, any>>("/api/admin/config/oauth"),
