@@ -93,12 +93,20 @@ export function BotDetailPage() {
               <Badge variant={bot.status === "connected" ? "default" : "destructive"} className="rounded-full px-3 py-0.5 text-[10px] font-black uppercase tracking-widest">
                 {bot.status}
               </Badge>
+              {bot.can_send === false && (
+                <Badge variant="outline" className="rounded-full px-3 py-0.5 text-[10px] font-bold text-orange-600 border-orange-300">
+                  不可发送
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-widest">
                <Cpu className="h-3 w-3" /> {bot.provider}
                <Separator orientation="vertical" className="h-3 mx-1" />
                <span className="font-mono">{bot.id.slice(0, 12)}...</span>
             </div>
+            {bot.send_disabled_reason && (
+              <p className="text-xs text-orange-600 mt-1">{bot.send_disabled_reason}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -143,7 +151,7 @@ export function BotDetailPage() {
         </div>
       </Tabs>
 
-      <ChatPanel botId={id!} open={chatOpen} onOpenChange={setChatOpen} />
+      <ChatPanel botId={id!} canSend={bot.can_send} sendDisabledReason={bot.send_disabled_reason} open={chatOpen} onOpenChange={setChatOpen} />
     </div>
   );
 }

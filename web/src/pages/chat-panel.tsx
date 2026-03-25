@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, Terminal } from "lucide-react";
+import { Send, Terminal, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -42,13 +42,16 @@ function MessageContent({ m }: { m: Message }) {
 
 interface ChatPanelProps {
   botId: string;
+  canSend?: boolean;
+  sendDisabledReason?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function ChatPanel({ botId, open, onOpenChange }: ChatPanelProps) {
+export function ChatPanel({ botId, canSend = true, sendDisabledReason, open, onOpenChange }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [sendError, setSendError] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = async () => {
@@ -69,6 +72,21 @@ export function ChatPanel({ botId, open, onOpenChange }: ChatPanelProps) {
     if (scrollRef.current)
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || !canSend) return;
+    setSendError("");
+    const text = input;
+    setInput("");
+    try {
+      await api.sendMessage(botId, { text });
+      fetchMessages();
+    } catch (err: any) {
+      setSendError(err?.message || "发送失败");
+      setInput(text); // restore input on error
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -114,24 +132,29 @@ export function ChatPanel({ botId, open, onOpenChange }: ChatPanelProps) {
           ))}
         </div>
 
-        <div className="p-4 bg-muted/20 border-t">
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!input.trim()) return;
-              api.sendMessage(botId, { text: input });
-              setInput("");
-            }}
-          >
+        <div className="p-4 bg-muted/20 border-t space-y-2">
+          {!canSend && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+              <Ban className="h-3.5 w-3.5 shrink-0" />
+              <span>{sendDisabledReason || "当前无法发送消息"}</span>
+            </div>
+          )}
+          {sendError && (
+            <div className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+              {sendError}
+            </div>
+          )}
+          <form className="flex gap-2" onSubmit={handleSend}>
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="输入消息..."
+              placeholder={canSend ? "输入消息..." : "无法发送"}
+              disabled={!canSend}
               className="h-11 rounded-xl bg-background border-none shadow-inner"
             />
             <Button
               type="submit"
+              disabled={!canSend}
               className="h-11 rounded-xl px-6 gap-2 font-bold shadow-lg shadow-primary/20"
             >
               发送 <Send className="h-4 w-4" />

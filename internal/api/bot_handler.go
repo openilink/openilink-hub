@@ -26,14 +26,16 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type botResp struct {
-		ID            string          `json:"id"`
-		Name          string          `json:"name"`
-		Provider      string          `json:"provider"`
-		Status        string          `json:"status"`
-		MsgCount      int64           `json:"msg_count"`
-		ReminderHours int             `json:"reminder_hours"`
-		CreatedAt     int64           `json:"created_at"`
-		Extra         json.RawMessage `json:"extra,omitempty"`
+		ID                 string          `json:"id"`
+		Name               string          `json:"name"`
+		Provider           string          `json:"provider"`
+		Status             string          `json:"status"`
+		CanSend            bool            `json:"can_send"`
+		SendDisabledReason string          `json:"send_disabled_reason,omitempty"`
+		MsgCount           int64           `json:"msg_count"`
+		ReminderHours      int             `json:"reminder_hours"`
+		CreatedAt          int64           `json:"created_at"`
+		Extra              json.RawMessage `json:"extra,omitempty"`
 	}
 	var result []botResp
 	for _, b := range bots {
@@ -41,10 +43,12 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		if inst, ok := s.BotManager.GetInstance(b.ID); ok {
 			status = inst.Status()
 		}
+		canSend, reason := s.checkSendability(b.ID, status)
 		extra := extractPublicCredentials(b.Provider, b.Credentials)
 		result = append(result, botResp{
 			ID: b.ID, Name: b.Name, Provider: b.Provider,
-			Status: status, MsgCount: b.MsgCount, ReminderHours: b.ReminderHours,
+			Status: status, CanSend: canSend, SendDisabledReason: reason,
+			MsgCount: b.MsgCount, ReminderHours: b.ReminderHours,
 			CreatedAt: b.CreatedAt, Extra: extra,
 		})
 	}
@@ -68,6 +72,22 @@ func extractPublicCredentials(prov string, creds json.RawMessage) json.RawMessag
 		return data
 	}
 	return nil
+}
+
+const contextTokenMaxAge = 24 * time.Hour
+
+// checkSendability returns whether a bot can send messages and a reason if not.
+func (s *Server) checkSendability(botID, status string) (bool, string) {
+	if status == "session_expired" {
+		return false, "会话已过期，请重新扫码绑定"
+	}
+	if status != "connected" {
+		return false, "Bot 未连接"
+	}
+	if !s.DB.HasFreshContextToken(botID, contextTokenMaxAge) {
+		return false, "超过 24 小时未收到消息，无法主动发送"
+	}
+	return true, ""
 }
 
 func (s *Server) handleBindStart(w http.ResponseWriter, r *http.Request) {
@@ -333,13 +353,19 @@ func (s *Server) handleBotSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := bot.Status
 	inst, ok := s.BotManager.GetInstance(botID)
+	if ok {
+		status = inst.Status()
+	}
+
+	canSend, reason := s.checkSendability(botID, status)
+	if !canSend {
+		jsonError(w, reason, http.StatusConflict)
+		return
+	}
 	if !ok {
-		if bot.Status == "session_expired" {
-			jsonError(w, "session expired", http.StatusConflict)
-		} else {
-			jsonError(w, "bot not connected", http.StatusServiceUnavailable)
-		}
+		jsonError(w, "bot not connected", http.StatusServiceUnavailable)
 		return
 	}
 

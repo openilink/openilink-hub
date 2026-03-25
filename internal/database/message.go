@@ -1,6 +1,10 @@
 package database
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 // Message mirrors WeChat's WeixinMessage structure + Hub operational fields.
 type Message struct {
@@ -167,6 +171,17 @@ func (db *DB) GetLatestContextToken(botID string) string {
 		botID,
 	).Scan(&token)
 	return token
+}
+
+// HasFreshContextToken checks if the bot has a context_token from a message
+// received within the given duration. WeChat context_tokens expire after ~24h.
+func (db *DB) HasFreshContextToken(botID string, maxAge time.Duration) bool {
+	var count int
+	db.QueryRow(
+		"SELECT COUNT(*) FROM messages WHERE bot_id = $1 AND context_token != '' AND created_at > NOW() - $2::INTERVAL LIMIT 1",
+		botID, fmt.Sprintf("%d seconds", int(maxAge.Seconds())),
+	).Scan(&count)
+	return count > 0
 }
 
 // UpdateMediaStatus updates media_status and media_keys for all downloading messages of a bot.
