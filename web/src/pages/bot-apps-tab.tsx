@@ -6,7 +6,7 @@ import { Badge } from "../components/ui/badge";
 import { api } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Blocks, Plus, Trash2, Loader2, Eye, Zap,
+  Blocks, Plus, Trash2, Loader2, Eye, Zap, Search,
 } from "lucide-react";
 import { AppIcon } from "../components/app-icon";
 import { SCOPE_DESCRIPTIONS } from "../lib/constants";
@@ -44,51 +44,69 @@ export function BotAppsTab({ botId }: { botId: string }) {
   }
 
   return (
-    <div className="space-y-4 mt-4">
+    <div className="space-y-6 mt-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium">已安装的应用</p>
+        <div>
+          <h3 className="text-sm font-semibold">已安装的应用</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">管理此账号上安装的应用，控制权限和状态。</p>
+        </div>
         <Button variant="outline" size="sm" onClick={() => setShowInstall(true)}>
           <Plus className="w-3.5 h-3.5 mr-1" /> 安装应用
         </Button>
       </div>
 
-      {installations.length === 0 && (
-        <div className="text-center py-12 space-y-3">
-          <Blocks className="w-10 h-10 mx-auto text-muted-foreground/50" />
+      {installations.length === 0 ? (
+        <div className="text-center py-16 space-y-3 border-2 border-dashed rounded-2xl">
+          <Blocks className="w-10 h-10 mx-auto text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">暂无安装的应用</p>
           <Button variant="outline" size="sm" onClick={() => setShowInstall(true)}>
-            浏览应用
+            浏览应用市场
           </Button>
         </div>
-      )}
-
-      <div className="space-y-2">
-        {installations.map((inst) => (
-          <Card key={inst.id}>
-            <CardContent className="py-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 min-w-0">
-                  <AppIcon icon={inst.app_icon} iconUrl={inst.app_icon_url} size="h-8 w-8" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{inst.app_name}</span>
-                      {inst.handle && <Badge variant="outline" className="text-xs font-mono">@{inst.handle}</Badge>}
+      ) : (
+        <div className="space-y-3">
+          {installations.map((inst) => (
+            <Card key={inst.id}>
+              <CardContent className="py-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3">
+                    <AppIcon icon={inst.app_icon} iconUrl={inst.app_icon_url} size="h-10 w-10" />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">{inst.app_name}</span>
+                        {inst.handle && (
+                          <Badge variant="secondary" className="text-[10px] font-mono">@{inst.handle}</Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {(inst.app_tools || []).slice(0, 3).map((t: any) => (
+                          <Badge key={t.name || t.command} variant="outline" className="text-[9px] font-mono">
+                            /{t.command || t.name}
+                          </Badge>
+                        ))}
+                        {(inst.app_tools || []).length > 3 && (
+                          <Badge variant="outline" className="text-[9px]">+{(inst.app_tools || []).length - 3}</Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={inst.enabled ? "default" : "outline"} className="text-[10px]">
+                      {inst.enabled ? "运行中" : "已停用"}
+                    </Badge>
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleToggle(inst)}>
+                      {inst.enabled ? "停用" : "启用"}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => handleUninstall(inst.app_id, inst.id)}>
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleToggle(inst)}>
-                    {inst.enabled ? "停用" : "启用"}
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => handleUninstall(inst.app_id, inst.id)}>
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <InstallDialog botId={botId} open={showInstall} onOpenChange={setShowInstall} onInstalled={load} />
     </div>
@@ -106,10 +124,11 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
   const [handle, setHandle] = useState("");
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!open) { setConfirmApp(null); return; }
+    if (!open) { setConfirmApp(null); setSearch(""); return; }
     setLoading(true);
     Promise.all([api.listApps(), api.listApps({ listed: true })]).then(([my, listed]) => {
       const seen = new Set<string>();
@@ -240,6 +259,10 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
   }
 
   // Step 1: Pick an app
+  const filtered = apps.filter(a =>
+    !search || a.name.toLowerCase().includes(search.toLowerCase()) || (a.slug || "").toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -252,27 +275,41 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
           <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : apps.length === 0 ? (
           <div className="text-center py-8 space-y-2">
+            <Blocks className="w-8 h-8 mx-auto text-muted-foreground/40" />
             <p className="text-xs text-muted-foreground">没有可用的应用</p>
           </div>
         ) : (
-          <div className="space-y-1 max-h-64 overflow-y-auto">
-            {apps.map((app) => (
-              <div key={app.id} className="flex items-center justify-between p-2 rounded-lg border bg-background">
-                <div className="flex items-center gap-2 min-w-0">
-                  {app.icon && <span>{app.icon}</span>}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-medium">{app.name}</span>
-                      <span className="text-xs text-muted-foreground font-mono">{app.slug}</span>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="搜索应用..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {filtered.map((app) => (
+                <div key={app.id} className="flex items-center justify-between p-2.5 rounded-lg border bg-background hover:bg-muted/30 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-9 w-9" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium">{app.name}</span>
+                      </div>
+                      {app.description && <p className="text-xs text-muted-foreground truncate">{app.description}</p>}
                     </div>
-                    {app.description && <p className="text-xs text-muted-foreground truncate">{app.description}</p>}
                   </div>
+                  <Button size="sm" variant="outline" onClick={() => { setConfirmApp(app); setHandle(app.slug || ""); setError(""); }}>
+                    安装
+                  </Button>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => { setConfirmApp(app); setHandle(app.slug || ""); setError(""); }}>
-                  安装
-                </Button>
-              </div>
-            ))}
+              ))}
+              {filtered.length === 0 && (
+                <p className="text-center text-xs text-muted-foreground py-4">没有匹配的应用</p>
+              )}
+            </div>
           </div>
         )}
       </DialogContent>
