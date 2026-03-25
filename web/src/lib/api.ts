@@ -186,8 +186,6 @@ export const api = {
     request(`/api/apps/${appId}/installations/${iid}`, { method: "DELETE" }),
   regenerateToken: (appId: string, iid: string) =>
     request<any>(`/api/apps/${appId}/installations/${iid}/regenerate-token`, { method: "POST" }),
-  verifyUrl: (appId: string, _iid?: string) =>
-    request<any>(`/api/apps/${appId}/verify-url`, { method: "POST" }),
   listEventLogs: (appId: string, iid: string, limit = 50) =>
     request<any[]>(`/api/apps/${appId}/installations/${iid}/event-logs?limit=${limit}`),
   listApiLogs: (appId: string, iid: string, limit = 50) =>

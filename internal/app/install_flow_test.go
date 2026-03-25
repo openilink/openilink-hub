@@ -13,28 +13,26 @@ import (
 	"github.com/openilink/openilink-hub/internal/database"
 )
 
-// --- Mock install DB that tracks UpdateInstallation and SetInstallationURLVerified calls ---
+// --- Mock install DB that tracks UpdateAppRequestURL and SetAppURLVerified calls ---
 
 type mockInstallDB struct {
 	mu              sync.Mutex
 	updatedURL      string
-	updatedHandle   string
 	urlVerified     bool
 	urlVerifiedID   string
 	updateCallCount int
 	verifyCallCount int
 }
 
-func (m *mockInstallDB) UpdateInstallation(id, requestURL, handle string, config json.RawMessage, enabled bool) error {
+func (m *mockInstallDB) UpdateAppRequestURL(id, requestURL string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.updatedURL = requestURL
-	m.updatedHandle = handle
 	m.updateCallCount++
 	return nil
 }
 
-func (m *mockInstallDB) SetInstallationURLVerified(id string, verified bool) error {
+func (m *mockInstallDB) SetAppURLVerified(id string, verified bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.urlVerifiedID = id
@@ -144,13 +142,15 @@ func (m *mockInstallAppServer) getChallenges() []string {
 func simulateNotifyAppInstalled(
 	client *http.Client,
 	redirectURL string,
+	appID string,
+	signingSecret string,
 	inst *database.AppInstallation,
 	db *mockInstallDB,
 ) (requestURL string, err error) {
 	payload, _ := json.Marshal(map[string]string{
 		"installation_id": inst.ID,
 		"app_token":       inst.AppToken,
-		"signing_secret":  inst.AppSigningSecret,
+		"signing_secret":  signingSecret,
 		"bot_id":          inst.BotID,
 		"handle":          inst.Handle,
 	})
@@ -172,14 +172,14 @@ func simulateNotifyAppInstalled(
 		return "", nil
 	}
 
-	_ = db.UpdateInstallation(inst.ID, result.RequestURL, inst.Handle, inst.Config, inst.Enabled)
+	_ = db.UpdateAppRequestURL(appID, result.RequestURL)
 	return result.RequestURL, nil
 }
 
 // simulateAutoVerifyURL replicates the core logic of api.Server.autoVerifyURL.
 func simulateAutoVerifyURL(
 	client *http.Client,
-	instID, requestURL string,
+	appID, requestURL string,
 	db *mockInstallDB,
 ) bool {
 	challenge := "test-verify-challenge-abc123"
@@ -203,7 +203,7 @@ func simulateAutoVerifyURL(
 		return false
 	}
 	if result.Challenge == challenge {
-		_ = db.SetInstallationURLVerified(instID, true)
+		_ = db.SetAppURLVerified(appID, true)
 		return true
 	}
 	return false
@@ -228,7 +228,7 @@ func TestInstallFlow_FullNotifyAndVerify(t *testing.T) {
 	}
 
 	// Step 1: Notify the App
-	requestURL, err := simulateNotifyAppInstalled(client, mock.server.URL+"/callback", inst, db)
+	requestURL, err := simulateNotifyAppInstalled(client, mock.server.URL+"/callback", inst.AppID, "sec_xyz789", inst, db)
 	if err != nil {
 		t.Fatalf("notifyAppInstalled failed: %v", err)
 	}
@@ -260,15 +260,15 @@ func TestInstallFlow_FullNotifyAndVerify(t *testing.T) {
 	}
 
 	// Step 2: Auto-verify the URL
-	verified := simulateAutoVerifyURL(client, inst.ID, requestURL, db)
+	verified := simulateAutoVerifyURL(client, inst.AppID, requestURL, db)
 	if !verified {
 		t.Fatal("auto verify should have succeeded")
 	}
 	if !db.urlVerified {
 		t.Error("db.urlVerified should be true")
 	}
-	if db.urlVerifiedID != inst.ID {
-		t.Errorf("db.urlVerifiedID = %q, want %q", db.urlVerifiedID, inst.ID)
+	if db.urlVerifiedID != inst.AppID {
+		t.Errorf("db.urlVerifiedID = %q, want %q", db.urlVerifiedID, inst.AppID)
 	}
 
 	// Verify the mock received the challenge
@@ -297,7 +297,7 @@ func TestInstallFlow_NotifyAppReturns500(t *testing.T) {
 		Handle:        "failbot",
 	}
 
-	requestURL, err := simulateNotifyAppInstalled(client, mock.server.URL+"/callback", inst, db)
+	requestURL, err := simulateNotifyAppInstalled(client, mock.server.URL+"/callback", inst.AppID, "sec_fail", inst, db)
 	// Should not crash, should handle gracefully
 	if err != nil {
 		t.Fatalf("should not return error for 500, got: %v", err)
@@ -306,7 +306,7 @@ func TestInstallFlow_NotifyAppReturns500(t *testing.T) {
 		t.Errorf("should return empty request_url for 500, got %q", requestURL)
 	}
 	if db.updateCallCount != 0 {
-		t.Errorf("db.UpdateInstallation should not be called on failure, called %d times", db.updateCallCount)
+		t.Errorf("db.UpdateAppRequestURL should not be called on failure, called %d times", db.updateCallCount)
 	}
 }
 
@@ -329,7 +329,7 @@ func TestInstallFlow_NotifyAppReturnsNoRequestURL(t *testing.T) {
 		Handle:        "no-url-bot",
 	}
 
-	requestURL, err := simulateNotifyAppInstalled(client, mock.server.URL+"/callback", inst, db)
+	requestURL, err := simulateNotifyAppInstalled(client, mock.server.URL+"/callback", inst.AppID, "sec_nurl", inst, db)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestInstallFlow_NotifyAppReturnsNoRequestURL(t *testing.T) {
 		t.Errorf("should return empty request_url, got %q", requestURL)
 	}
 	if db.updateCallCount != 0 {
-		t.Errorf("db.UpdateInstallation should not be called without request_url, called %d times", db.updateCallCount)
+		t.Errorf("db.UpdateAppRequestURL should not be called without request_url, called %d times", db.updateCallCount)
 	}
 }
 
@@ -354,7 +354,7 @@ func TestInstallFlow_AutoVerifyWrongChallenge(t *testing.T) {
 	db := &mockInstallDB{}
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	verified := simulateAutoVerifyURL(client, "inst-004", srv.URL, db)
+	verified := simulateAutoVerifyURL(client, "app-004", srv.URL, db)
 	if verified {
 		t.Error("should not verify with wrong challenge")
 	}
@@ -362,7 +362,7 @@ func TestInstallFlow_AutoVerifyWrongChallenge(t *testing.T) {
 		t.Error("db.urlVerified should remain false")
 	}
 	if db.verifyCallCount != 0 {
-		t.Errorf("SetInstallationURLVerified should not be called with wrong challenge, called %d times", db.verifyCallCount)
+		t.Errorf("SetAppURLVerified should not be called with wrong challenge, called %d times", db.verifyCallCount)
 	}
 }
 
@@ -377,12 +377,12 @@ func TestInstallFlow_AutoVerifyServerError(t *testing.T) {
 	db := &mockInstallDB{}
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	verified := simulateAutoVerifyURL(client, "inst-005", srv.URL, db)
+	verified := simulateAutoVerifyURL(client, "app-005", srv.URL, db)
 	if verified {
 		t.Error("should not verify with server error")
 	}
 	if db.verifyCallCount != 0 {
-		t.Errorf("SetInstallationURLVerified should not be called on error, called %d times", db.verifyCallCount)
+		t.Errorf("SetAppURLVerified should not be called on error, called %d times", db.verifyCallCount)
 	}
 }
 
@@ -392,12 +392,12 @@ func TestInstallFlow_AutoVerifyUnreachable(t *testing.T) {
 	db := &mockInstallDB{}
 	client := &http.Client{Timeout: 1 * time.Second}
 
-	verified := simulateAutoVerifyURL(client, "inst-006", "http://127.0.0.1:1", db)
+	verified := simulateAutoVerifyURL(client, "app-006", "http://127.0.0.1:1", db)
 	if verified {
 		t.Error("should not verify with unreachable server")
 	}
 	if db.verifyCallCount != 0 {
-		t.Error("SetInstallationURLVerified should not be called")
+		t.Error("SetAppURLVerified should not be called")
 	}
 }
 
@@ -421,7 +421,7 @@ func TestInstallFlow_EndToEnd_DynamicURL(t *testing.T) {
 	}
 
 	// Step 1: Notify
-	requestURL, err := simulateNotifyAppInstalled(client, mock.server.URL, inst, db)
+	requestURL, err := simulateNotifyAppInstalled(client, mock.server.URL, inst.AppID, "sec_e2e", inst, db)
 	if err != nil {
 		t.Fatalf("notify failed: %v", err)
 	}
@@ -429,16 +429,16 @@ func TestInstallFlow_EndToEnd_DynamicURL(t *testing.T) {
 		t.Fatal("expected request_url")
 	}
 	if db.updateCallCount != 1 {
-		t.Errorf("expected 1 UpdateInstallation call, got %d", db.updateCallCount)
+		t.Errorf("expected 1 UpdateAppRequestURL call, got %d", db.updateCallCount)
 	}
 
 	// Step 2: Verify
-	verified := simulateAutoVerifyURL(client, inst.ID, requestURL, db)
+	verified := simulateAutoVerifyURL(client, inst.AppID, requestURL, db)
 	if !verified {
 		t.Fatal("verify should succeed")
 	}
 	if db.verifyCallCount != 1 {
-		t.Errorf("expected 1 SetInstallationURLVerified call, got %d", db.verifyCallCount)
+		t.Errorf("expected 1 SetAppURLVerified call, got %d", db.verifyCallCount)
 	}
 	if !db.urlVerified {
 		t.Error("should be verified")

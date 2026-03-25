@@ -7,8 +7,8 @@ ALTER TABLE apps ADD COLUMN url_verified BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- 2. Migrate data: take non-empty values from existing installations
 UPDATE apps SET
-  request_url = COALESCE((SELECT i.request_url FROM app_installations i WHERE i.app_id = apps.id AND i.request_url != '' LIMIT 1), ''),
-  signing_secret = COALESCE((SELECT i.signing_secret FROM app_installations i WHERE i.app_id = apps.id AND i.signing_secret != '' LIMIT 1), ''),
+  request_url = COALESCE((SELECT i.request_url FROM app_installations i WHERE i.app_id = apps.id AND i.request_url != '' ORDER BY i.updated_at DESC LIMIT 1), ''),
+  signing_secret = COALESCE((SELECT i.signing_secret FROM app_installations i WHERE i.app_id = apps.id AND i.signing_secret != '' ORDER BY i.updated_at DESC LIMIT 1), ''),
   url_verified = COALESCE((SELECT bool_or(i.url_verified) FROM app_installations i WHERE i.app_id = apps.id), FALSE);
 
 -- 3. Generate signing_secret for apps that still have none
