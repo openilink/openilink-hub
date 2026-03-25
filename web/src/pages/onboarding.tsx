@@ -51,9 +51,11 @@ export function OnboardingPage() {
     setSaving(true);
     try {
       await api.setDefaultChannelAI(botId!, enableAI);
-    } catch {}
+      setStep(2);
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "保存失败", description: e.message || "请稍后重试" });
+    }
     setSaving(false);
-    setStep(2);
   }
 
   async function handleInstall(app: any) {

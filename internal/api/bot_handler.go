@@ -522,7 +522,7 @@ func (s *Server) handleSetDefaultChannelAI(w http.ResponseWriter, r *http.Reques
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -536,18 +536,29 @@ func (s *Server) handleSetDefaultChannelAI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	channels, err := s.DB.ListChannelsByBot(botID)
+	channels, err := s.Store.ListChannelsByBot(botID)
 	if err != nil || len(channels) == 0 {
 		jsonError(w, "no channels found", http.StatusNotFound)
 		return
 	}
 
-	ch := channels[0]
-	ai := &database.AIConfig{Enabled: req.Enabled}
+	// Find the default channel (named "默认"), fall back to first.
+	var ch *store.Channel
+	for i := range channels {
+		if channels[i].Name == "默认" {
+			ch = &channels[i]
+			break
+		}
+	}
+	if ch == nil {
+		ch = &channels[0]
+	}
+
+	ai := &store.AIConfig{Enabled: req.Enabled}
 	if req.Enabled {
 		ai.Source = "builtin"
 	}
-	if err := s.DB.UpdateChannel(ch.ID, ch.Name, ch.Handle, nil, ai, nil, ch.Enabled); err != nil {
+	if err := s.Store.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, ai, &ch.WebhookConfig, ch.Enabled); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
