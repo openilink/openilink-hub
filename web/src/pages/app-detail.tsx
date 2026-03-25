@@ -11,25 +11,7 @@ import { Badge } from "../components/ui/badge";
 import { api } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
-
-const EVENT_TYPES = [
-  { key: "message.text", label: "文本消息" },
-  { key: "message.image", label: "图片消息" },
-  { key: "message.video", label: "视频消息" },
-  { key: "message.voice", label: "语音消息" },
-  { key: "message.file", label: "文件消息" },
-  { key: "message.location", label: "位置消息" },
-  { key: "contact.added", label: "新增联系人" },
-  { key: "group.join", label: "入群" },
-  { key: "group.leave", label: "退群" },
-];
-
-const SCOPES = [
-  { key: "messages.send", label: "发送消息" },
-  { key: "messages.read", label: "读取消息" },
-  { key: "contacts.read", label: "读取联系人" },
-  { key: "bot.read", label: "读取 Bot 信息" },
-];
+import { EVENT_TYPES, SCOPES } from "../lib/constants";
 
 type TabKey = "settings" | "credentials" | "features" | "installations";
 
