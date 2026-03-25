@@ -25,7 +25,6 @@ import {
   Activity,
   ArrowUpRight,
   ShieldCheck,
-  Zap,
 } from "lucide-react";
 import { api } from "../lib/api";
 import {
@@ -57,7 +56,7 @@ export function BotsPage() {
   const [binding, setBinding] = useState(false);
   const [qrUrl, setQrUrl] = useState("");
   const [bindStatus, setBindStatus] = useState("");
-  const [enableAI, setEnableAI] = useState(true);
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   async function load() {
@@ -80,17 +79,16 @@ export function BotsPage() {
       setQrUrl(qr_url);
       setBindStatus("请使用手机微信扫描上方二维码");
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//${window.location.host}/api/bots/bind/status/${session_id}${enableAI ? "?enable_ai=true" : ""}`);
+      const ws = new WebSocket(`${protocol}//${window.location.host}/api/bots/bind/status/${session_id}`);
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data);
         if (data.event === "status") {
           if (data.status === "scanned") setBindStatus("已扫码，请在手机上点击确认...");
           if (data.status === "refreshed") { setQrUrl(data.qr_url); setBindStatus("二维码已刷新"); }
           if (data.status === "connected") {
-            toast({ title: "绑定成功", description: "微信账号已添加。" });
             ws.close();
             setBinding(false);
-            load();
+            navigate(data.bot_id ? `/dashboard/onboarding?bot_id=${data.bot_id}` : "/dashboard/accounts");
           }
         }
       };
@@ -141,15 +139,6 @@ export function BotsPage() {
                   <p className="text-xs text-muted-foreground max-w-[240px] mx-auto leading-relaxed">
                     登录成功后即可使用。
                   </p>
-                </div>
-                <div className="w-full space-y-4 pt-4 border-t">
-                   <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/20">
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-yellow-500" />
-                        <span className="text-sm font-medium">启用 AI 自动回复</span>
-                      </div>
-                      <input type="checkbox" checked={enableAI} onChange={e => setEnableAI(e.target.checked)} className="h-4 w-4 accent-primary" />
-                   </div>
                 </div>
               </div>
             </DialogContent>
