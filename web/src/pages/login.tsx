@@ -86,6 +86,10 @@ export function LoginPage() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${protocol}//${window.location.host}/api/auth/scan/status/${data.session_id}`);
       wsRef.current = ws;
+      ws.onopen = () => {
+        // Send initial AI preference so server always has the latest value
+        ws.send(JSON.stringify({ enable_ai: enableAIRef.current }));
+      };
       ws.onmessage = (e) => {
         const d = JSON.parse(e.data);
         if (d.event === "status") {
