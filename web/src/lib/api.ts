@@ -66,6 +66,11 @@ export const api = {
   getTrace: (botId: string, traceId: string) => request<any[]>(`/api/bots/${botId}/traces/${traceId}`),
   updateBot: (id: string, data: { name?: string; reminder_hours?: number }) =>
     request(`/api/bots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  setDefaultChannelAI: (botId: string, enabled: boolean) =>
+    request(`/api/bots/${botId}/default-channel-ai`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
   botContacts: (id: string) => request<any[]>(`/api/bots/${id}/contacts`),
 
   // Channels (under bots)

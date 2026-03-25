@@ -20,6 +20,7 @@ import { ConsolePage } from "./pages/console/console-page";
 import { ThemeProvider } from "./lib/theme";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Toaster } from "./components/ui/toaster";
+import { OnboardingPage } from "./pages/onboarding";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -37,6 +38,7 @@ createRoot(document.getElementById("root")!).render(
 
               {/* Domain 1: Workspace */}
               <Route path="overview" element={<DashboardOverviewPage />} />
+              <Route path="onboarding" element={<OnboardingPage />} />
               <Route path="accounts" element={<BotsPage />} />
               <Route path="accounts/:id" element={<BotDetailPage />}>
                 <Route index element={<Navigate to="channels" replace />} />
