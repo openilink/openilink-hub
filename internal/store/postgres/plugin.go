@@ -123,6 +123,7 @@ func (db *DB) CreatePluginVersion(v *store.PluginVersion) (*store.PluginVersion,
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending')`,
 		v.ID, v.PluginID, v.Version, v.Changelog, v.Script, v.ConfigSchema,
 		v.GithubURL, v.CommitHash, v.MatchTypes, v.ConnectDomains, v.GrantPerms, v.TimeoutSec)
+	v.Status = "pending"
 	return v, err
 }
 
