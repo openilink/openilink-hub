@@ -196,7 +196,7 @@ export function Layout() {
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                     <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild size="sm" isActive={location.pathname === "/dashboard/apps/my" || location.pathname === "/dashboard/apps"}>
+                      <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/apps/my") || location.pathname === "/dashboard/apps"}>
                         <Link to="/dashboard/apps/my">我的应用</Link>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
