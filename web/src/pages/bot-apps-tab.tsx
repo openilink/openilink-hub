@@ -235,8 +235,8 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
 
                 <div className="space-y-3 pt-2 border-t">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium">Handle</label>
-                    <Input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="如 notify-prod" className="h-9 font-mono" />
+                    <label htmlFor="bot-install-handle" className="text-xs font-medium">Handle</label>
+                    <Input id="bot-install-handle" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="如 notify-prod" className="h-9 font-mono" />
                     <p className="text-[10px] text-muted-foreground">用户发送 @{handle || "handle"} 触发此应用</p>
                   </div>
                   {error && <p className="text-xs text-destructive">{error}</p>}

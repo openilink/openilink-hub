@@ -283,15 +283,15 @@ function InstallFlowDialog({ app, onClose }: { app: any; onClose: () => void }) 
             ) : (
               <>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium">安装到账号</label>
-                  <select value={botId} onChange={e => setBotId(e.target.value)}
+                  <label htmlFor="mp-install-bot" className="text-xs font-medium">安装到账号</label>
+                  <select id="mp-install-bot" value={botId} onChange={e => setBotId(e.target.value)}
                     className="w-full h-9 px-3 rounded-lg border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20">
                     {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Handle</label>
-                  <Input value={handle} onChange={e => setHandle(e.target.value)} className="h-9 font-mono" placeholder="如 notify-prod" />
+                  <label htmlFor="mp-install-handle" className="text-xs font-medium">Handle</label>
+                  <Input id="mp-install-handle" value={handle} onChange={e => setHandle(e.target.value)} className="h-9 font-mono" placeholder="如 notify-prod" />
                   <p className="text-[10px] text-muted-foreground">用户发送 @{handle || "handle"} 触发此应用</p>
                 </div>
               </>

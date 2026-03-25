@@ -304,15 +304,15 @@ function InstallAppSection({ appId }: { appId: string }) {
         ) : (
         <div className="flex gap-2 items-end">
           <div className="flex-1 space-y-1">
-            <label className="text-xs text-muted-foreground">账号</label>
-            <select value={botId} onChange={e => setBotId(e.target.value)}
+            <label htmlFor="install-bot-select" className="text-xs text-muted-foreground">账号</label>
+            <select id="install-bot-select" value={botId} onChange={e => setBotId(e.target.value)}
               className="w-full h-8 px-2 rounded-md border bg-background text-xs outline-none">
               {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </div>
           <div className="flex-1 space-y-1">
-            <label className="text-xs text-muted-foreground">Handle</label>
-            <Input value={handle} onChange={e => setHandle(e.target.value)} placeholder="如 notify" className="h-8 text-xs font-mono" />
+            <label htmlFor="install-handle-input" className="text-xs text-muted-foreground">Handle</label>
+            <Input id="install-handle-input" value={handle} onChange={e => setHandle(e.target.value)} placeholder="如 notify" className="h-8 text-xs font-mono" />
           </div>
           <Button size="sm" onClick={handleInstall} disabled={installing || !botId || !handle.trim()} className="h-8">
             {installing && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
