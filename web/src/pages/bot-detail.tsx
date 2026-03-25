@@ -32,7 +32,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { BotAppsTab } from "./bot-apps-tab";
-import { ChatPanel } from "./chat-panel";
 
 export function BotDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -42,7 +41,6 @@ export function BotDetailPage() {
   const [bot, setBot] = useState<any>(null);
   const [channels, setChannels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [chatOpen, setChatOpen] = useState(false);
 
   // Tabs synced with URL — only "channels" and "apps" are valid
   const rawTab = location.pathname.split("/").pop() || "channels";
@@ -132,7 +130,7 @@ export function BotDetailPage() {
              自动续期
            </label>
            <Separator orientation="vertical" className="h-5" />
-           <Button variant="outline" size="sm" className="rounded-full px-4 font-bold text-xs gap-1.5" onClick={() => setChatOpen(true)}>
+           <Button variant="outline" size="sm" className="rounded-full px-4 font-bold text-xs gap-1.5" onClick={() => navigate(`/dashboard/accounts/${id}/console`)}>
              <MessageSquare className="h-3.5 w-3.5" />
              消息控制台
            </Button>
@@ -162,7 +160,6 @@ export function BotDetailPage() {
         </div>
       </Tabs>
 
-      <ChatPanel botId={id!} canSend={bot.can_send} sendDisabledReason={bot.send_disabled_reason} open={chatOpen} onOpenChange={setChatOpen} />
     </div>
   );
 }
