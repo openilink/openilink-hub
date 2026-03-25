@@ -14,3 +14,4 @@ web/dist/
 *.swp
 .DS_Store
 node_modules/
+docs/plans/
