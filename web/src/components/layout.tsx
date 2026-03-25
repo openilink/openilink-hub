@@ -185,7 +185,7 @@ export function Layout() {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton isActive={isActive("/dashboard/apps") || isActive("/dashboard/plugins")} tooltip="扩展">
+                  <SidebarMenuButton isActive={isActive("/dashboard/apps")} tooltip="扩展">
                     <Puzzle />
                     <span>扩展</span>
                   </SidebarMenuButton>
@@ -198,16 +198,6 @@ export function Layout() {
                     <SidebarMenuSubItem>
                       <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/apps/my") || location.pathname === "/dashboard/apps"}>
                         <Link to="/dashboard/apps/my">我的应用</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/plugins/marketplace") || location.pathname === "/dashboard/plugins"}>
-                        <Link to="/dashboard/plugins/marketplace">插件市场</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/plugins/my")}>
-                        <Link to="/dashboard/plugins/my">我的插件</Link>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                   </SidebarMenuSub>

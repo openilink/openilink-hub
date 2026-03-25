@@ -8,7 +8,6 @@ import { Layout } from "./components/layout";
 import { BotsPage } from "./pages/bots";
 import { BotDetailPage } from "./pages/bot-detail";
 import { SettingsPage } from "./pages/settings";
-import { PluginsPage } from "./pages/plugins";
 import { ChannelDetailPage } from "./pages/channel-detail";
 import { AdminOverviewPage } from "./pages/admin-overview";
 import { AdminUsersPage } from "./pages/admin-users";
@@ -62,11 +61,6 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="marketplace" element={null} />
               </Route>
               <Route path="apps/:id" element={<AppDetailPage />} />
-              <Route path="plugins" element={<PluginsPage embedded />}>
-                <Route index element={<Navigate to="marketplace" replace />} />
-                <Route path="marketplace" element={null} />
-                <Route path="my" element={null} />
-              </Route>
 
               {/* Domain 4: Management & Ops */}
               <Route path="admin" element={<Navigate to="/dashboard/admin/overview" replace />} />

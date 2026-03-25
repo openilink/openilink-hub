@@ -12,22 +12,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
-import { ReviewCard } from "./plugin-review";
 
 export function AdminReviewsPage() {
   const [apps, setApps] = useState<any[]>([]);
-  const [plugins, setPlugins] = useState<any[]>([]);
 
   function loadApps() {
     api.adminListApps().then(setApps);
   }
-  function loadPlugins() {
-    api.listPlugins("pending").then(setPlugins);
-  }
 
   useEffect(() => {
     loadApps();
-    loadPlugins();
   }, []);
 
   return (
@@ -38,7 +32,7 @@ export function AdminReviewsPage() {
         </div>
         <div>
           <h2 className="text-3xl font-bold tracking-tight">审核中心</h2>
-          <p className="text-muted-foreground">审核应用上架与插件发布请求。</p>
+          <p className="text-muted-foreground">审核应用上架请求。</p>
         </div>
       </div>
 
@@ -74,18 +68,6 @@ export function AdminReviewsPage() {
         </Card>
       </div>
 
-      <div className="space-y-4">
-        <h3 className="text-lg font-bold">插件审核</h3>
-        {plugins.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无待审核插件。</p>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {plugins.map(p => (
-              <ReviewCard key={p.id} plugin={p} onRefresh={loadPlugins} />
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

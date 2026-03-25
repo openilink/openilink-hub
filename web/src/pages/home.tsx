@@ -77,11 +77,6 @@ export function HomePage() {
         >
           <span className="text-base font-semibold tracking-tight">OpeniLink Hub</span>
           <div className="flex items-center gap-3">
-            <Link to="/plugins">
-              <Button variant="ghost" size="sm" className="px-3 text-sm">
-                插件市场
-              </Button>
-            </Link>
             {loggedIn ? (
               <Link to="/dashboard">
                 <Button size="sm" className="px-3 text-sm">
