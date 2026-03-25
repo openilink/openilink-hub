@@ -44,6 +44,7 @@ export function LoginPage() {
   const [scanMessage, setScanMessage] = useState("");
   const [enableAI, setEnableAI] = useState(true);
   const enableAIRef = useRef(true);
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Password login state
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -84,6 +85,7 @@ export function LoginPage() {
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${protocol}//${window.location.host}/api/auth/scan/status/${data.session_id}`);
+      wsRef.current = ws;
       ws.onmessage = (e) => {
         const d = JSON.parse(e.data);
         if (d.event === "status") {
@@ -263,7 +265,15 @@ export function LoginPage() {
               </div>
 
               <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input type="checkbox" checked={enableAI} onChange={e => { setEnableAI(e.target.checked); enableAIRef.current = e.target.checked; }} className="h-4 w-4 accent-primary" />
+                <input type="checkbox" checked={enableAI} onChange={e => {
+                  const v = e.target.checked;
+                  setEnableAI(v);
+                  enableAIRef.current = v;
+                  // Resend preference if already scanned
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({ enable_ai: v }));
+                  }
+                }} className="h-4 w-4 accent-primary" />
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
                 <span className="text-xs text-muted-foreground">开启 AI 自动回复</span>
               </label>

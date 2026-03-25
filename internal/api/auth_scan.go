@@ -53,6 +53,7 @@ func (s *Server) handleScanLoginStatus(w http.ResponseWriter, r *http.Request) {
 	// Read pump: detect client disconnect & receive client preferences
 	done := make(chan struct{})
 	var enableAI atomic.Bool
+	enableAI.Store(true) // default matches frontend checkbox (checked)
 	go func() {
 		defer close(done)
 		for {
