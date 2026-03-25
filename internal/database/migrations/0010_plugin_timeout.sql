@@ -1,1 +1,0 @@
-ALTER TABLE plugin_versions ADD COLUMN IF NOT EXISTS timeout_sec INT NOT NULL DEFAULT 5;
