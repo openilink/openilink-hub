@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { KeyRound, Shield, User, Lock, ArrowRight, Loader2, Github, X, QrCode, ChevronDown } from "lucide-react";
+import { KeyRound, Shield, User, Lock, ArrowRight, Loader2, Github, X, QrCode, ChevronDown, Sparkles } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import QRCode from "qrcode";
 
@@ -42,6 +42,9 @@ export function LoginPage() {
   const [qrUrl, setQrUrl] = useState("");
   const [scanStatus, setScanStatus] = useState<"idle" | "loading" | "wait" | "scanned" | "error">("idle");
   const [scanMessage, setScanMessage] = useState("");
+  const [enableAI, setEnableAI] = useState(true);
+  const enableAIRef = useRef(true);
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Password login state
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -82,6 +85,11 @@ export function LoginPage() {
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${protocol}//${window.location.host}/api/auth/scan/status/${data.session_id}`);
+      wsRef.current = ws;
+      ws.onopen = () => {
+        // Send initial AI preference so server always has the latest value
+        ws.send(JSON.stringify({ enable_ai: enableAIRef.current }));
+      };
       ws.onmessage = (e) => {
         const d = JSON.parse(e.data);
         if (d.event === "status") {
@@ -90,6 +98,10 @@ export function LoginPage() {
           } else if (d.status === "scanned") {
             setScanStatus("scanned");
             setScanMessage("已扫码，请在手机上确认...");
+            // Send AI preference before confirmation completes
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ enable_ai: enableAIRef.current }));
+            }
           } else if (d.status === "refreshed") {
             setQrUrl(d.qr_url);
             setScanStatus("wait");
@@ -257,6 +269,20 @@ export function LoginPage() {
                     : "打开微信，扫描二维码即可登录。首次使用会自动创建账号并绑定 Bot。"}
                 </p>
               </div>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={enableAI} onChange={e => {
+                  const v = e.target.checked;
+                  setEnableAI(v);
+                  enableAIRef.current = v;
+                  // Resend preference if already scanned
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({ enable_ai: v }));
+                  }
+                }} className="h-4 w-4 accent-primary" />
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs text-muted-foreground">开启 AI 自动回复</span>
+              </label>
             </div>
 
             {/* Divider */}

@@ -19,6 +19,9 @@
 # OS
 .DS_Store
 
+# Dependencies
+node_modules/
+
 # Plans and docs (local only)
 docs/plans/
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/store"
@@ -49,13 +50,22 @@ func (s *Server) handleScanLoginStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	// Read pump: detect client disconnect
+	// Read pump: detect client disconnect & receive client preferences
 	done := make(chan struct{})
+	var enableAI atomic.Bool
+	enableAI.Store(true) // default matches frontend checkbox (checked)
 	go func() {
 		defer close(done)
 		for {
-			if _, _, err := ws.ReadMessage(); err != nil {
+			_, msg, err := ws.ReadMessage()
+			if err != nil {
 				return
+			}
+			var prefs struct {
+				EnableAI bool `json:"enable_ai"`
+			}
+			if json.Unmarshal(msg, &prefs) == nil {
+				enableAI.Store(prefs.EnableAI)
 			}
 		}
 	}()
@@ -98,7 +108,7 @@ func (s *Server) handleScanLoginStatus(w http.ResponseWriter, r *http.Request) {
 			j, _ := json.Marshal(map[string]string{"status": "refreshed", "qr_url": result.QRURL})
 			sendEvent("status", string(j))
 		case "confirmed":
-			s.completeScanLogin(result, sendEvent)
+			s.completeScanLogin(result, enableAI.Load(), sendEvent)
 			return
 		}
 	}
@@ -111,7 +121,7 @@ func (s *Server) handleScanLoginStatus(w http.ResponseWriter, r *http.Request) {
 //  1. bot_id match → existing bot's user_id (rebind)
 //  2. ilink_user_id match → another bot from same iLink user → that user_id
 //  3. No match → auto-create a new Hub user
-func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent func(string, string)) {
+func (s *Server) completeScanLogin(result *provider.BindPollResult, enableAI bool, sendEvent func(string, string)) {
 	var creds struct {
 		BotID       string `json:"bot_id"`
 		ILinkUserID string `json:"ilink_user_id"`
@@ -195,7 +205,13 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 			sendEvent("error", `{"message":"save failed"}`)
 			return
 		}
-		s.Store.CreateChannel(bot.ID, "默认", "", nil, nil)
+		var aiCfg *store.AIConfig
+		if enableAI {
+			aiCfg = &store.AIConfig{Enabled: true, Source: "builtin"}
+		}
+		if _, err := s.Store.CreateChannel(bot.ID, "默认", "", nil, aiCfg); err != nil {
+			slog.Error("scan-login create channel failed", "bot", bot.ID, "err", err)
+		}
 	}
 
 	s.BotManager.StartBot(context.Background(), bot)
