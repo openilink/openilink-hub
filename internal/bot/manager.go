@@ -186,7 +186,7 @@ func (m *Manager) checkReminders() {
 
 		hours := bot.ReminderHours
 		remaining := 24 - hours
-		text := fmt.Sprintf("[系统提醒] 您的 Bot 已超过 %d 小时未收到消息，距离会话过期还有约 %d 小时。请发送一条消息以保持会话活跃。", hours, remaining)
+		text := fmt.Sprintf("[系统提醒] 您的 Bot 已超过 %d 小时未收到消息，距离会话过期还有约 %d 小时。请回复 OK 以保持会话活跃。", hours, remaining)
 
 		token := m.db.GetLatestContextToken(bot.ID)
 		_, err := inst.Send(context.Background(), provider.OutboundMessage{
