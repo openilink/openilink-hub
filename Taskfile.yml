@@ -1,0 +1,21 @@
+version: '3'
+
+tasks:
+  test:
+    desc: Run all tests (PG + SQLite + integration)
+    cmds:
+      - task: test-up
+      - defer: { task: test-down }
+      - cmd: >-
+          TEST_DATABASE_URL="postgres://openilink:openilink@localhost:15432/openilink_test?sslmode=disable"
+          go test ./... -v -count=1
+
+  test-up:
+    desc: Start test dependencies
+    cmds:
+      - docker compose -f docker-compose.test.yml up -d --wait
+
+  test-down:
+    desc: Stop and remove test dependencies
+    cmds:
+      - docker compose -f docker-compose.test.yml down -v
