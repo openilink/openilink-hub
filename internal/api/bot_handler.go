@@ -121,7 +121,6 @@ func (s *Server) handleBindStart(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleBindStatus(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("sessionID")
-	enableAI := r.URL.Query().Get("enable_ai") == "true"
 
 	ilinkProvider.PendingBinds.Lock()
 	entry, ok := ilinkProvider.PendingBinds.M[sessionID]
@@ -240,11 +239,7 @@ func (s *Server) handleBindStatus(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				// Auto-create default channel for new bots only
-				var aiCfg *store.AIConfig
-				if enableAI {
-					aiCfg = &store.AIConfig{Enabled: true, Source: "builtin"}
-				}
-				s.Store.CreateChannel(bot.ID, "默认", "", nil, aiCfg)
+				s.Store.CreateChannel(bot.ID, "默认", "", nil, nil)
 			}
 
 			s.BotManager.StartBot(context.Background(), bot)
