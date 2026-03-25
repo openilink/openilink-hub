@@ -34,6 +34,7 @@ export function ConsolePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [canSend, setCanSend] = useState(true);
   const [sendDisabledReason, setSendDisabledReason] = useState<string>();
   const [stagedFile, setStagedFile] = useState<File | null>(null);
@@ -42,18 +43,23 @@ export function ConsolePage() {
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const stickToBottomRef = useRef(true);
+  const dragDepthRef = useRef(0);
 
   const fetchData = useCallback(async () => {
     if (!botId) return;
     try {
       const res = await api.messages(botId, 50);
+      setLoadError("");
       setMessages((res.messages || []).reverse());
       if (res.can_send !== undefined) {
         setCanSend(res.can_send);
         setSendDisabledReason(res.send_disabled_reason);
         if (res.can_send) setSendError("");
       }
-    } catch {}
+    } catch (err: any) {
+      setLoadError(err?.message || "消息加载失败");
+    }
   }, [botId]);
 
   useEffect(() => {
@@ -62,40 +68,67 @@ export function ConsolePage() {
     return () => clearInterval(t);
   }, [fetchData]);
 
+  // Auto-scroll only when user is near bottom
   useEffect(() => {
-    if (scrollRef.current)
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (el && stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages]);
 
-  // Stage file + generate preview
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const threshold = 80;
+    stickToBottomRef.current =
+      el.scrollHeight - (el.scrollTop + el.clientHeight) <= threshold;
+  }, []);
+
+  // Stage file + generate preview (revoke old blob URL)
   const stageFile = useCallback((file: File) => {
     setStagedFile(file);
-    if (file.type.startsWith("image/") || file.type.startsWith("video/")) {
-      const url = URL.createObjectURL(file);
-      setStagedPreview(url);
-    } else {
-      setStagedPreview(null);
-    }
+    setStagedPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file.type.startsWith("image/") || file.type.startsWith("video/")
+        ? URL.createObjectURL(file)
+        : null;
+    });
   }, []);
 
   const clearStaged = useCallback(() => {
-    if (stagedPreview) URL.revokeObjectURL(stagedPreview);
+    setStagedPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setStagedFile(null);
-    setStagedPreview(null);
-  }, [stagedPreview]);
+  }, []);
 
-  // Drag and drop handlers
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (stagedPreview) URL.revokeObjectURL(stagedPreview);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Drag and drop handlers (track depth to avoid flicker on child elements)
+  const onDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragDepthRef.current++;
+    if (dragDepthRef.current === 1) setDragOver(true);
+  }, []);
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    setDragOver(true);
   }, []);
   const onDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    setDragOver(false);
+    dragDepthRef.current--;
+    if (dragDepthRef.current === 0) setDragOver(false);
   }, []);
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      dragDepthRef.current = 0;
       setDragOver(false);
       const file = e.dataTransfer.files?.[0];
       if (file) stageFile(file);
@@ -115,31 +148,35 @@ export function ConsolePage() {
     setSendError("");
     setSending(true);
     const text = input;
-    setInput("");
 
     try {
       if (hasFile && stagedFile) {
         const formData = new FormData();
         formData.append("file", stagedFile);
         if (hasText) formData.append("text", text);
-        await fetch(`/api/bots/${botId}/send`, {
+        const r = await fetch(`/api/bots/${botId}/send`, {
           method: "POST",
           credentials: "same-origin",
           body: formData,
-        }).then(async (r) => {
-          if (!r.ok) {
-            const data = await r.json().catch(() => ({}));
-            throw new Error(data.error || `HTTP ${r.status}`);
-          }
         });
+        if (r.status === 401) {
+          window.location.href = "/login";
+          throw new Error("unauthorized");
+        }
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${r.status}`);
+        }
         clearStaged();
+        setInput("");
       } else {
         await api.sendMessage(botId!, { text });
+        setInput("");
       }
       fetchData();
     } catch (err: any) {
       setSendError(err?.message || "发送失败");
-      if (hasText && !hasFile) setInput(text);
+      setInput(text); // restore draft on error
     } finally {
       setSending(false);
     }
@@ -155,7 +192,8 @@ export function ConsolePage() {
 
   return (
     <div
-      className="flex flex-col h-[calc(100vh-4rem)] -m-6"
+      className="relative flex flex-col h-[calc(100dvh-4rem)] -m-6 lg:-m-8"
+      onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -167,6 +205,7 @@ export function ConsolePage() {
           size="sm"
           className="rounded-full h-8 w-8 p-0"
           onClick={() => navigate(`/dashboard/accounts/${botId}`)}
+          aria-label="返回账号详情"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -197,10 +236,16 @@ export function ConsolePage() {
       {/* Messages */}
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-6 py-4 space-y-4"
       >
         <div className="max-w-3xl mx-auto space-y-4">
-          {messages.length === 0 && (
+          {loadError && (
+            <div className="text-center py-4">
+              <p className="text-sm text-destructive">{loadError}</p>
+            </div>
+          )}
+          {!loadError && messages.length === 0 && (
             <div className="text-center py-20 text-muted-foreground">
               <Terminal className="h-10 w-10 mx-auto mb-3 opacity-20" />
               <p className="text-sm font-medium">暂无消息</p>
@@ -275,8 +320,11 @@ export function ConsolePage() {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={clearStaged}
-                className="p-1 rounded-full hover:bg-muted"
+                disabled={sending}
+                className="p-1 rounded-full hover:bg-muted disabled:opacity-50"
+                aria-label="移除附件"
               >
                 <X className="h-4 w-4 text-muted-foreground" />
               </button>
@@ -299,22 +347,26 @@ export function ConsolePage() {
               variant="ghost"
               size="sm"
               className="h-10 w-10 p-0 rounded-xl shrink-0"
-              disabled={!canSend}
+              disabled={!canSend || sending}
               onClick={() => fileInputRef.current?.click()}
+              aria-label="添加附件"
             >
               <Paperclip className="h-4 w-4" />
             </Button>
+            <label className="sr-only" htmlFor="console-msg-input">消息内容</label>
             <input
+              id="console-msg-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={canSend ? "输入消息..." : "无法发送"}
-              disabled={!canSend}
+              disabled={!canSend || sending}
               className="flex-1 h-10 rounded-xl bg-muted/50 border-none px-4 text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-shadow"
             />
             <Button
               type="submit"
               disabled={!canSend || sending || (!input.trim() && !stagedFile)}
               className="h-10 rounded-xl px-5 gap-2 font-bold shadow-lg shadow-primary/20 shrink-0"
+              aria-label="发送消息"
             >
               发送 <Send className="h-4 w-4" />
             </Button>
@@ -333,7 +385,7 @@ function MessageContent({ m }: { m: Message }) {
     <div className="space-y-2">
       {items.map((item, i) => (
         <MessageItem
-          key={i}
+          key={`${item.type}-${i}`}
           item={item}
           index={i}
           mediaKeys={m.media_keys}
