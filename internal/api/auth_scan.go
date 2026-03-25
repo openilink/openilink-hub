@@ -209,7 +209,9 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, enableAI boo
 		if enableAI {
 			aiCfg = &database.AIConfig{Enabled: true, Source: "builtin"}
 		}
-		s.DB.CreateChannel(bot.ID, "默认", "", nil, aiCfg)
+		if _, err := s.DB.CreateChannel(bot.ID, "默认", "", nil, aiCfg); err != nil {
+			slog.Error("scan-login create channel failed", "bot", bot.ID, "err", err)
+		}
 	}
 
 	s.BotManager.StartBot(context.Background(), bot)

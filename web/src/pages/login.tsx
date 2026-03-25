@@ -99,7 +99,9 @@ export function LoginPage() {
             setScanStatus("scanned");
             setScanMessage("已扫码，请在手机上确认...");
             // Send AI preference before confirmation completes
-            ws.send(JSON.stringify({ enable_ai: enableAIRef.current }));
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ enable_ai: enableAIRef.current }));
+            }
           } else if (d.status === "refreshed") {
             setQrUrl(d.qr_url);
             setScanStatus("wait");
