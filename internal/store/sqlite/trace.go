@@ -23,7 +23,7 @@ func (db *DB) InsertSpan(traceID, spanID, parentSpanID, name, kind, statusCode, 
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		traceID, spanID, parentSpanID, name, kind,
 		statusCode, statusMessage, startTime, endTime,
-		attrsJSON, eventsJSON, botID)
+		string(attrsJSON), string(eventsJSON), botID)
 	return err
 }
 
@@ -77,14 +77,14 @@ func scanSpans(rows interface {
 	var spans []store.TraceSpan
 	for rows.Next() {
 		var s store.TraceSpan
-		var attrsJSON, eventsJSON json.RawMessage
+		var attrsStr, eventsStr string
 		if err := rows.Scan(&s.ID, &s.TraceID, &s.SpanID, &s.ParentSpanID, &s.Name, &s.Kind,
 			&s.StatusCode, &s.StatusMessage, &s.StartTime, &s.EndTime,
-			&attrsJSON, &eventsJSON, &s.BotID, &s.CreatedAt); err != nil {
+			&attrsStr, &eventsStr, &s.BotID, &s.CreatedAt); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal(attrsJSON, &s.Attributes)
-		_ = json.Unmarshal(eventsJSON, &s.Events)
+		_ = json.Unmarshal([]byte(attrsStr), &s.Attributes)
+		_ = json.Unmarshal([]byte(eventsStr), &s.Events)
 		spans = append(spans, s)
 	}
 	return spans, rows.Err()

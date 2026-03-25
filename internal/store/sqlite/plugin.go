@@ -1,11 +1,25 @@
 package sqlite
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/openilink/openilink-hub/internal/store"
 )
+
+func scanPluginWithLatest(scanner interface{ Scan(...any) error }) (store.PluginWithLatest, error) {
+	var pw store.PluginWithLatest
+	var configSchemaStr string
+	err := scanner.Scan(&pw.ID, &pw.Name, &pw.Namespace, &pw.Description, &pw.Author, &pw.Icon, &pw.License, &pw.Homepage,
+		&pw.OwnerID, &pw.LatestVersionID, &pw.InstallCount, &pw.CreatedAt, &pw.UpdatedAt, &pw.OwnerName,
+		&pw.Version, &pw.Changelog, &pw.MatchTypes, &pw.ConnectDomains, &pw.GrantPerms, &configSchemaStr)
+	if err != nil {
+		return pw, err
+	}
+	pw.ConfigSchema = json.RawMessage(configSchemaStr)
+	return pw, nil
+}
 
 func (db *DB) CreatePlugin(p *store.Plugin) (*store.Plugin, error) {
 	p.ID = uuid.New().String()
@@ -58,10 +72,8 @@ func (db *DB) ListPlugins() ([]store.PluginWithLatest, error) {
 	defer rows.Close()
 	var result []store.PluginWithLatest
 	for rows.Next() {
-		var pw store.PluginWithLatest
-		if err := rows.Scan(&pw.ID, &pw.Name, &pw.Namespace, &pw.Description, &pw.Author, &pw.Icon, &pw.License, &pw.Homepage,
-			&pw.OwnerID, &pw.LatestVersionID, &pw.InstallCount, &pw.CreatedAt, &pw.UpdatedAt, &pw.OwnerName,
-			&pw.Version, &pw.Changelog, &pw.MatchTypes, &pw.ConnectDomains, &pw.GrantPerms, &pw.ConfigSchema); err != nil {
+		pw, err := scanPluginWithLatest(rows)
+		if err != nil {
 			return nil, err
 		}
 		result = append(result, pw)
@@ -88,10 +100,8 @@ func (db *DB) ListPluginsByOwner(ownerID string) ([]store.PluginWithLatest, erro
 	defer rows.Close()
 	var result []store.PluginWithLatest
 	for rows.Next() {
-		var pw store.PluginWithLatest
-		if err := rows.Scan(&pw.ID, &pw.Name, &pw.Namespace, &pw.Description, &pw.Author, &pw.Icon, &pw.License, &pw.Homepage,
-			&pw.OwnerID, &pw.LatestVersionID, &pw.InstallCount, &pw.CreatedAt, &pw.UpdatedAt, &pw.OwnerName,
-			&pw.Version, &pw.Changelog, &pw.MatchTypes, &pw.ConnectDomains, &pw.GrantPerms, &pw.ConfigSchema); err != nil {
+		pw, err := scanPluginWithLatest(rows)
+		if err != nil {
 			return nil, err
 		}
 		result = append(result, pw)
@@ -123,6 +133,7 @@ func (db *DB) CreatePluginVersion(v *store.PluginVersion) (*store.PluginVersion,
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'pending')`,
 		v.ID, v.PluginID, v.Version, v.Changelog, v.Script, v.ConfigSchema,
 		v.GithubURL, v.CommitHash, v.MatchTypes, v.ConnectDomains, v.GrantPerms, v.TimeoutSec)
+	v.Status = "pending"
 	return v, err
 }
 

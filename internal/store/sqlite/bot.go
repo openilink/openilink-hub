@@ -16,13 +16,16 @@ const botSelectCols = `id, user_id, name, provider, provider_id, status, credent
 
 func scanBot(scanner interface{ Scan(...any) error }) (*store.Bot, error) {
 	b := &store.Bot{}
+	var credStr, syncStr string
 	err := scanner.Scan(&b.ID, &b.UserID, &b.Name, &b.Provider, &b.ProviderID, &b.Status,
-		&b.Credentials, &b.SyncState, &b.MsgCount, &b.LastMsgAt,
+		&credStr, &syncStr, &b.MsgCount, &b.LastMsgAt,
 		&b.ReminderHours, &b.LastRemindedAt,
 		&b.CreatedAt, &b.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
+	b.Credentials = json.RawMessage(credStr)
+	b.SyncState = json.RawMessage(syncStr)
 	return b, nil
 }
 

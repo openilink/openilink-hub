@@ -67,13 +67,15 @@ func (db *DB) ListWebhookLogs(botID, channelID string, limit int) ([]store.Webho
 	var logs []store.WebhookLog
 	for rows.Next() {
 		var l store.WebhookLog
+		var repliesStr string
 		if err := rows.Scan(&l.ID, &l.BotID, &l.ChannelID, &l.MessageID, &l.PluginID, &l.PluginVersion, &l.Status,
 			&l.RequestURL, &l.RequestMethod, &l.RequestBody,
 			&l.ResponseStatus, &l.ResponseBody,
-			&l.ScriptError, &l.Replies, &l.DurationMs,
+			&l.ScriptError, &repliesStr, &l.DurationMs,
 			&l.CreatedAt, &l.UpdatedAt); err != nil {
 			return nil, err
 		}
+		l.Replies = json.RawMessage(repliesStr)
 		logs = append(logs, l)
 	}
 	return logs, rows.Err()
