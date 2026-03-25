@@ -112,7 +112,7 @@ export function DashboardOverviewPage() {
                {[
                  { step: "01", title: "添加微信账号", desc: "扫码登录你的微信，连接到平台。", link: "/dashboard/accounts", icon: Cpu },
                  { step: "02", title: "创建转发规则", desc: "设置消息转发到你的服务器或 AI。", link: "/dashboard/accounts", icon: Workflow },
-                 { step: "03", title: "安装应用或插件", desc: "从市场安装现成的扩展功能。", link: "/dashboard/apps", icon: Zap },
+                 { step: "03", title: "安装应用", desc: "从市场安装现成的扩展功能。", link: "/dashboard/apps", icon: Zap },
                ].map((item, i) => (
                  <Link key={i} to={item.link} className="flex items-center gap-8 p-10 hover:bg-primary/[0.02] transition-all group">
                     <div className="text-4xl font-black text-primary/10 group-hover:text-primary transition-colors italic tracking-tighter">{item.step}</div>

@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { HexagonBackground } from "../components/ui/hexagon-background";
 import { cn } from "../lib/utils";
-import { Bot, Puzzle, Webhook, Cable, Shield, Zap } from "lucide-react";
+import { Bot, Webhook, Cable, Shield, Zap } from "lucide-react";
 import { api } from "../lib/api";
 
 const features = [
@@ -19,16 +19,11 @@ const features = [
     title: "Webhook 推送",
     desc: "收到消息自动推送到你的服务，支持自定义脚本中间件",
   },
-  {
-    icon: Puzzle,
-    title: "插件市场",
-    desc: "社区驱动的 Webhook 插件市场，一键安装飞书、Slack 等通知集成",
-  },
   { icon: Zap, title: "AI 自动回复", desc: "内置 OpenAI 兼容的 AI 回复，按规则独立开关" },
   {
     icon: Shield,
     title: "安全沙箱",
-    desc: "插件脚本在安全沙箱中执行，5 秒超时、栈深限制、禁止危险 API",
+    desc: "脚本在安全沙箱中执行，5 秒超时、栈深限制、禁止危险 API",
   },
 ];
 
@@ -159,11 +154,6 @@ export function HomePage() {
                 step: "3",
                 title: "接入集成",
                 desc: "通过 WebSocket 实时监听，HTTP API 轮询，或 Webhook 推送接收消息",
-              },
-              {
-                step: "4",
-                title: "安装插件",
-                desc: "从插件市场一键安装飞书、Slack 等通知插件",
               },
             ].map((s) => (
               <div key={s.step} className="flex items-start gap-4 sm:gap-5">

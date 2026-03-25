@@ -54,7 +54,7 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="logs" element={null} />
               </Route>
 
-              {/* Apps & Plugins */}
+              {/* Apps */}
               <Route path="apps" element={<AppsPage />}>
                 <Route index element={<Navigate to="my" replace />} />
                 <Route path="my" element={null} />

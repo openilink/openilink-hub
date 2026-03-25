@@ -6,7 +6,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (res.status === 401) {
     const path = window.location.pathname;
-    const isPublic = path === "/" || path.startsWith("/webhook-plugins");
+    const isPublic = path === "/";
     if (!isPublic) {
       window.location.href = "/login";
     }
@@ -34,9 +34,6 @@ export const api = {
   me: () =>
     request<{ id: string; username: string; display_name: string; role: string }>("/api/me"),
   info: () => request<{ ai: boolean }>("/api/info"),
-
-  // My plugins
-  myPlugins: () => request<any[]>("/api/me/plugins"),
 
   // Passkeys
   listPasskeys: () => request<any[]>("/api/me/passkeys"),
@@ -120,39 +117,6 @@ export const api = {
     max_history?: string;
   }) => request("/api/admin/config/ai", { method: "PUT", body: JSON.stringify(data) }),
   deleteAIConfig: () => request("/api/admin/config/ai", { method: "DELETE" }),
-
-  // Plugins
-  listPlugins: (status?: string) =>
-    request<any[]>(`/api/webhook-plugins${status ? `?status=${status}` : ""}`),
-  getPlugin: (id: string) => request<any>(`/api/webhook-plugins/${id}`),
-  submitPlugin: (data: { github_url?: string; script?: string }) =>
-    request<any>("/api/webhook-plugins/submit", { method: "POST", body: JSON.stringify(data) }),
-  installPlugin: (id: string) =>
-    request<any>(`/api/webhook-plugins/${id}/install`, { method: "POST" }),
-  pluginVersions: (id: string) => request<any[]>(`/api/webhook-plugins/${id}/versions`),
-  cancelVersion: (pluginId: string, versionId: string) =>
-    request(`/api/webhook-plugins/${pluginId}/versions/${versionId}/cancel`, { method: "POST" }),
-  debugRequest: (data: { script: string; webhook_url?: string; mock_message?: any }) =>
-    request<any>("/api/webhook-plugins/debug/request", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  debugResponse: (data: { script: string; mock_message?: any; response: any }) =>
-    request<any>("/api/webhook-plugins/debug/response", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  installPluginToChannel: (id: string, botId: string, channelId: string) =>
-    request<any>(`/api/webhook-plugins/${id}/install-to-channel`, {
-      method: "POST",
-      body: JSON.stringify({ bot_id: botId, channel_id: channelId }),
-    }),
-  reviewPlugin: (id: string, status: string, reason?: string) =>
-    request(`/api/admin/webhook-plugins/${id}/review`, {
-      method: "PUT",
-      body: JSON.stringify({ status, reason: reason || "" }),
-    }),
-  deletePlugin: (id: string) => request(`/api/admin/webhook-plugins/${id}`, { method: "DELETE" }),
 
   // Apps
   createApp: (data: any) =>

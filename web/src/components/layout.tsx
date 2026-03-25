@@ -103,9 +103,9 @@ export function Layout() {
     const path = `/${pathSegments.slice(0, index + 1).join("/")}`;
     const labels: Record<string, string> = {
       dashboard: "控制台", accounts: "账号管理",
-      apps: "应用", plugins: "插件", overview: "概览",
+      apps: "应用", overview: "概览",
       marketplace: "市场", my: "我的",
-      "webhook-plugins": "Webhook 插件", settings: "设置",
+      settings: "设置",
       profile: "个人资料", security: "安全",
       admin: "系统管理", users: "用户管理", reviews: "审核中心",
       channels: "转发规则", traces: "消息追踪",

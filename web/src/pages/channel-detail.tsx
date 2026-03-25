@@ -276,10 +276,7 @@ function WebhookTab({ channel, botId, onRefresh }: { channel: any; botId: string
     authToken: cfg.auth?.token || "",
     authName: cfg.auth?.name || "",
     authValue: cfg.auth?.value || cfg.auth?.secret || "",
-    scriptMode: cfg.plugin_id ? "plugin" : "manual" as "plugin" | "manual",
     script: cfg.script || "",
-    pluginId: cfg.plugin_id || "",
-    versionId: cfg.version_id || "",
   });
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -296,9 +293,7 @@ function WebhookTab({ channel, botId, onRefresh }: { channel: any; botId: string
         webhook_config: {
           url: form.url,
           auth,
-          plugin_id: form.scriptMode === "plugin" ? form.pluginId : undefined,
-          version_id: form.scriptMode === "plugin" ? form.versionId : undefined,
-          script: form.scriptMode === "manual" ? form.script || undefined : undefined,
+          script: form.script || undefined,
         },
       });
       toast({ title: "Webhook 配置已更新" });
