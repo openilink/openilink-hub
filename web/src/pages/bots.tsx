@@ -164,7 +164,7 @@ export function BotsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {bots.map((bot) => (
-            <BotInstanceCard key={bot.id} bot={bot} onRefresh={load} />
+            <BotInstanceCard key={bot.id} bot={bot} onRefresh={load} onRebind={() => { setBinding(true); startBind(); }} />
           ))}
           
           {bots.length === 0 && (
@@ -195,7 +195,7 @@ function QrCanvas({ url }: { url: string }) {
   return <canvas ref={ref} className="block rounded-lg" />;
 }
 
-function BotInstanceCard({ bot, onRefresh }: { bot: any; onRefresh: () => void }) {
+function BotInstanceCard({ bot, onRefresh, onRebind }: { bot: any; onRefresh: () => void; onRebind: () => void }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const status = statusConfig[bot.status] || statusConfig.disconnected;
@@ -273,9 +273,12 @@ function BotInstanceCard({ bot, onRefresh }: { bot: any; onRefresh: () => void }
         {bot.status === "session_expired" && (
           <div className="mt-4 flex items-center gap-2 rounded-xl bg-destructive/5 p-3 border border-destructive/10">
             <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-            <p className="text-[11px] font-medium text-destructive leading-snug">
+            <p className="text-[11px] font-medium text-destructive leading-snug flex-1">
               登录已过期，请重新扫码。
             </p>
+            <Button variant="destructive" size="sm" className="h-6 px-2 text-[10px] font-bold shrink-0" onClick={onRebind}>
+              重新扫码
+            </Button>
           </div>
         )}
       </CardContent>
