@@ -164,7 +164,7 @@ export function BotsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {bots.map((bot) => (
-            <BotInstanceCard key={bot.id} bot={bot} onRefresh={load} onRebind={() => { setBinding(true); startBind(); }} />
+            <BotInstanceCard key={bot.id} bot={bot} onRefresh={load} onRebind={() => setBinding(true)} />
           ))}
           
           {bots.length === 0 && (
