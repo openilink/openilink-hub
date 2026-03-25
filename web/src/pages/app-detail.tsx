@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Blocks, Plus, Trash2, ShieldCheck, Eye, EyeOff,
+  ArrowLeft, Plus, Trash2, ShieldCheck, Eye, EyeOff,
   Copy, Check, ExternalLink, Loader2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -10,6 +10,7 @@ import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { api } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { AppIcon } from "../components/app-icon";
 
 const EVENT_TYPES = [
   { key: "message.text", label: "文本消息" },
@@ -64,15 +65,7 @@ export function AppDetailPage() {
         <Link to="/dashboard/apps/my" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4" />
         </Link>
-        {app.icon_url ? (
-          <img src={app.icon_url} alt="" className="w-8 h-8 rounded-lg object-cover" />
-        ) : app.icon ? (
-          <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-lg">{app.icon}</div>
-        ) : (
-          <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
-            <Blocks className="w-4 h-4 text-muted-foreground" />
-          </div>
-        )}
+        <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-8 w-8" />
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-semibold">{app.name}</h1>
           <p className="text-xs text-muted-foreground font-mono">{app.slug}</p>

@@ -39,12 +39,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-
-function AppIcon({ icon, iconUrl, size = "h-12 w-12" }: { icon?: string; iconUrl?: string; size?: string }) {
-  if (iconUrl) return <img src={iconUrl} alt="" className={`${size} rounded-2xl object-cover border-2 border-background shadow-sm`} />;
-  if (icon) return <div className={`${size} rounded-2xl bg-primary/5 border border-primary/10 flex items-center justify-center text-2xl shadow-inner`}>{icon}</div>;
-  return <div className={`${size} rounded-2xl bg-muted flex items-center justify-center border shadow-inner`}><Blocks className="h-6 w-6 text-muted-foreground/30" /></div>;
-}
+import { AppIcon } from "../components/app-icon";
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-").replace(/^-|-$/g, "").slice(0, 32);

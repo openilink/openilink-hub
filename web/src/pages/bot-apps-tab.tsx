@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Blocks, Plus, CheckCircle, Trash2, Loader2,
 } from "lucide-react";
+import { AppIcon } from "../components/app-icon";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -66,11 +67,7 @@ export function BotAppsTab({ botId }: { botId: string }) {
             <CardContent className="py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
-                  {inst.app_icon_url ? (
-                    <img src={inst.app_icon_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
-                  ) : inst.app_icon ? (
-                    <span className="text-lg">{inst.app_icon}</span>
-                  ) : null}
+                  <AppIcon icon={inst.app_icon} iconUrl={inst.app_icon_url} size="h-8 w-8" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{inst.app_name}</span>
