@@ -286,6 +286,7 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-9 h-9 text-xs"
+                aria-label="搜索应用"
               />
             </div>
             <div className="space-y-1.5 max-h-72 overflow-y-auto">

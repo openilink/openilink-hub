@@ -86,6 +86,7 @@ export function AppDetailPage() {
           value={section}
           onChange={e => setSection(e.target.value as SectionKey)}
           className="w-full h-9 px-3 rounded-lg border bg-background text-sm"
+          aria-label="选择设置页面"
         >
           {NAV_SECTIONS.flatMap(g => g.items).map(item => (
             <option key={item.key} value={item.key}>{item.label}</option>
@@ -298,6 +299,9 @@ function InstallAppSection({ appId }: { appId: string }) {
       {/* Install to Bot */}
       <Card className="space-y-3">
         <h3 className="text-sm font-medium">安装到账号</h3>
+        {bots.length === 0 ? (
+          <p className="text-sm text-muted-foreground">请先创建一个账号，然后再安装应用。</p>
+        ) : (
         <div className="flex gap-2 items-end">
           <div className="flex-1 space-y-1">
             <label className="text-xs text-muted-foreground">账号</label>
@@ -315,6 +319,7 @@ function InstallAppSection({ appId }: { appId: string }) {
             安装
           </Button>
         </div>
+        )}
       </Card>
 
       {/* Existing installations */}
