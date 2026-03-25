@@ -6,11 +6,12 @@ import { Badge } from "../components/ui/badge";
 import { api } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Blocks, Plus, CheckCircle, Trash2, Loader2,
+  Blocks, Plus, Trash2, Loader2, Eye, Zap,
 } from "lucide-react";
 import { AppIcon } from "../components/app-icon";
+import { SCOPE_DESCRIPTIONS } from "../lib/constants";
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 
 export function BotAppsTab({ botId }: { botId: string }) {
@@ -140,71 +141,99 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
     const tools = (confirmApp.tools || []) as any[];
     const events = (confirmApp.events || []) as string[];
     const scopes = (confirmApp.scopes || []) as string[];
+    const readScopes = scopes.filter(s => s.includes("read"));
+    const writeScopes = scopes.filter(s => !s.includes("read"));
 
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              {confirmApp.icon && <span className="text-lg">{confirmApp.icon}</span>}
-              <div>
-                <DialogTitle>{confirmApp.name}</DialogTitle>
-                <DialogDescription>{confirmApp.description}</DialogDescription>
+        <DialogContent className="sm:max-w-2xl">
+          <div className="py-2">
+            <div className="flex flex-col sm:flex-row gap-6">
+              {/* Left: App identity */}
+              <div className="sm:w-2/5 space-y-4 sm:border-r sm:pr-6">
+                <div className="flex items-center gap-3">
+                  <AppIcon icon={confirmApp.icon} iconUrl={confirmApp.icon_url} size="h-14 w-14" />
+                  <div>
+                    <h3 className="text-lg font-bold">{confirmApp.name}</h3>
+                    <p className="text-xs text-muted-foreground font-mono">{confirmApp.slug}</p>
+                  </div>
+                </div>
+                {confirmApp.description && (
+                  <p className="text-sm text-muted-foreground leading-relaxed">{confirmApp.description}</p>
+                )}
               </div>
-            </div>
-          </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            {tools.length > 0 && (
-              <div>
-                <p className="text-xs font-medium mb-1">命令</p>
-                <div className="flex flex-wrap gap-1">
-                  {tools.map((t: any, i: number) => (
-                    <Badge key={i} variant="outline" className="text-[10px] font-mono">
-                      {t.command ? `/${t.command}` : t.name}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-            {events.length > 0 && (
-              <div>
-                <p className="text-xs font-medium mb-1">事件订阅</p>
-                <div className="flex flex-wrap gap-1">
-                  {events.map((e) => <Badge key={e} variant="secondary" className="text-[10px] font-mono">{e}</Badge>)}
-                </div>
-              </div>
-            )}
-            {scopes.length > 0 && (
-              <div>
-                <p className="text-xs font-medium mb-1">权限</p>
-                <div className="space-y-0.5">
-                  {scopes.map((s) => (
-                    <div key={s} className="flex items-center gap-2 text-xs">
-                      <CheckCircle className="w-3 h-3 text-primary shrink-0" />
-                      <span className="font-mono">{s}</span>
+              {/* Right: Permissions + config */}
+              <div className="sm:w-3/5 space-y-5">
+                <div className="space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">此应用将能够：</h4>
+
+                  {readScopes.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">查看</p>
+                      {readScopes.map(s => (
+                        <div key={s} className="flex items-start gap-2 text-sm">
+                          <Eye className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                          <span>{SCOPE_DESCRIPTIONS[s] || s}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {writeScopes.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">操作</p>
+                      {writeScopes.map(s => (
+                        <div key={s} className="flex items-start gap-2 text-sm">
+                          <Zap className="h-3.5 w-3.5 mt-0.5 text-primary shrink-0" />
+                          <span>{SCOPE_DESCRIPTIONS[s] || s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {tools.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">命令</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {tools.map((t: any) => (
+                          <Badge key={t.name} variant="secondary" className="font-mono text-xs">/{t.command || t.name}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {events.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">事件订阅</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {events.map(e => (
+                          <Badge key={e} variant="outline" className="font-mono text-[10px]">{e}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Handle</label>
+                    <Input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="如 notify-prod" className="h-9 font-mono" />
+                    <p className="text-[10px] text-muted-foreground">用户发送 @{handle || "handle"} 触发此应用</p>
+                  </div>
+                  {error && <p className="text-xs text-destructive">{error}</p>}
                 </div>
               </div>
-            )}
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Handle（必填）</label>
-              <Input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="如 notify-prod" className="h-8 text-xs font-mono" />
-              <p className="text-[10px] text-muted-foreground">用户发送 @{handle || "handle"} 触发此 App</p>
             </div>
 
-            {error && <p className="text-xs text-destructive">{error}</p>}
+            <div className="flex justify-end gap-2 pt-4 mt-4 border-t">
+              <Button variant="ghost" onClick={() => setConfirmApp(null)}>返回</Button>
+              <Button onClick={doInstall} disabled={installing || !handle.trim()} className="px-6">
+                {installing && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+                允许并安装
+              </Button>
+            </div>
           </div>
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setConfirmApp(null)}>返回</Button>
-            <Button onClick={doInstall} disabled={installing || !handle.trim()}>
-              {installing && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-              授权并安装
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     );
