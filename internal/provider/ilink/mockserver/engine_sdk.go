@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	ilink "github.com/openilink/openilink-sdk-go"
 )
@@ -319,7 +320,11 @@ func (e *Engine) FetchQRCode() (*QRResult, error) {
 	e.qr = session
 
 	// Start expiry timer.
-	timer := e.clock.NewTimer(30 * 1e9) // 30 seconds
+	qrTTL := 30 * time.Second
+	if e.opts.sessionTTL > 0 {
+		qrTTL = e.opts.sessionTTL
+	}
+	timer := e.clock.NewTimer(qrTTL)
 	session.timer = timer
 	go func() {
 		<-timer.C

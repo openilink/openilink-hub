@@ -134,7 +134,7 @@ func (s *HTTPServer) handleCDNUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 100<<20)) // 100MB max
 	if err != nil {
 		http.Error(w, "read body failed", http.StatusBadRequest)
 		return

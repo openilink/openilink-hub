@@ -3,10 +3,13 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/store"
 )
+
+var errSessionExpired = errors.New("session expired")
 
 const sessionTTL = 7 * 24 * time.Hour
 
@@ -33,7 +36,7 @@ func ValidateSession(s store.SessionStore, token string) (string, error) {
 	}
 	if time.Now().After(expiresAt) {
 		s.DeleteSession(token)
-		return "", err
+		return "", errSessionExpired
 	}
 	return userID, nil
 }
