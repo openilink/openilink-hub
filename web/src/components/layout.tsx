@@ -9,7 +9,6 @@ import {
   Sun,
   Moon,
   ChevronsUpDown,
-  ChevronRight,
   Cpu,
   Home,
   Zap,
@@ -42,11 +41,6 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -155,83 +149,69 @@ export function Layout() {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {/* 账号管理 — collapsible with bot list */}
+          {/* 账号管理 */}
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                <Collapsible defaultOpen={isActive("/dashboard/accounts")} className="group/collapsible">
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton isActive={isActive("/dashboard/accounts")} tooltip="账号管理">
-                        <Bot />
-                        <span>账号管理</span>
-                        <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton asChild size="sm" isActive={location.pathname === "/dashboard/accounts"}>
-                            <Link to="/dashboard/accounts">全部账号</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        {bots.map((b) => (
-                          <SidebarMenuSubItem key={b.id}>
-                            <SidebarMenuSubButton asChild size="sm" isActive={isActive(`/dashboard/accounts/${b.id}`)}>
-                              <Link to={`/dashboard/accounts/${b.id}`}>
-                                <Circle className={`size-2 ${statusColors[b.status] || "text-muted-foreground"}`} />
-                                <span className="truncate">{b.name}</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
+                <SidebarMenuItem>
+                  <SidebarMenuButton isActive={isActive("/dashboard/accounts")} tooltip="账号管理">
+                    <Bot />
+                    <span>账号管理</span>
+                  </SidebarMenuButton>
+                  <SidebarMenuSub>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton asChild size="sm" isActive={location.pathname === "/dashboard/accounts"}>
+                        <Link to="/dashboard/accounts">全部账号</Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    {bots.map((b) => (
+                      <SidebarMenuSubItem key={b.id}>
+                        <SidebarMenuSubButton asChild size="sm" isActive={isActive(`/dashboard/accounts/${b.id}`)}>
+                          <Link to={`/dashboard/accounts/${b.id}`}>
+                            <Circle className={`size-2 ${statusColors[b.status] || "text-muted-foreground"}`} />
+                            <span className="truncate">{b.name}</span>
+                          </Link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    ))}
+                  </SidebarMenuSub>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {/* 扩展 — collapsible with apps & plugins */}
+          {/* 扩展 */}
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                <Collapsible defaultOpen={isActive("/dashboard/apps") || isActive("/dashboard/plugins")} className="group/collapsible">
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton isActive={isActive("/dashboard/apps") || isActive("/dashboard/plugins")} tooltip="扩展">
-                        <Puzzle />
-                        <span>扩展</span>
-                        <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/apps/marketplace")}>
-                            <Link to="/dashboard/apps/marketplace">应用市场</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton asChild size="sm" isActive={location.pathname === "/dashboard/apps/my" || location.pathname === "/dashboard/apps"}>
-                            <Link to="/dashboard/apps/my">我的应用</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/plugins/marketplace") || location.pathname === "/dashboard/plugins"}>
-                            <Link to="/dashboard/plugins/marketplace">插件市场</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                        <SidebarMenuSubItem>
-                          <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/plugins/my")}>
-                            <Link to="/dashboard/plugins/my">我的插件</Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
+                <SidebarMenuItem>
+                  <SidebarMenuButton isActive={isActive("/dashboard/apps") || isActive("/dashboard/plugins")} tooltip="扩展">
+                    <Puzzle />
+                    <span>扩展</span>
+                  </SidebarMenuButton>
+                  <SidebarMenuSub>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/apps/marketplace")}>
+                        <Link to="/dashboard/apps/marketplace">应用市场</Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/apps/my") || location.pathname === "/dashboard/apps"}>
+                        <Link to="/dashboard/apps/my">我的应用</Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/plugins/marketplace") || location.pathname === "/dashboard/plugins"}>
+                        <Link to="/dashboard/plugins/marketplace">插件市场</Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/plugins/my")}>
+                        <Link to="/dashboard/plugins/my">我的插件</Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  </SidebarMenuSub>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -241,36 +221,29 @@ export function Layout() {
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  <Collapsible defaultOpen={isActive("/dashboard/admin")} className="group/collapsible">
-                    <SidebarMenuItem>
-                      <CollapsibleTrigger asChild>
-                        <SidebarMenuButton isActive={isActive("/dashboard/admin")} tooltip="管理">
-                          <ShieldCheck />
-                          <span>管理</span>
-                          <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                        </SidebarMenuButton>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <SidebarMenuSub>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild size="sm" isActive={location.pathname === "/dashboard/admin/overview"}>
-                              <Link to="/dashboard/admin/overview">系统概览</Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/admin/users")}>
-                              <Link to="/dashboard/admin/users">用户管理</Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/admin/reviews")}>
-                              <Link to="/dashboard/admin/reviews">审核中心</Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        </SidebarMenuSub>
-                      </CollapsibleContent>
-                    </SidebarMenuItem>
-                  </Collapsible>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton isActive={isActive("/dashboard/admin")} tooltip="管理">
+                      <ShieldCheck />
+                      <span>管理</span>
+                    </SidebarMenuButton>
+                    <SidebarMenuSub>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild size="sm" isActive={location.pathname === "/dashboard/admin/overview"}>
+                          <Link to="/dashboard/admin/overview">系统概览</Link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/admin/users")}>
+                          <Link to="/dashboard/admin/users">用户管理</Link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton asChild size="sm" isActive={isActive("/dashboard/admin/reviews")}>
+                          <Link to="/dashboard/admin/reviews">审核中心</Link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
