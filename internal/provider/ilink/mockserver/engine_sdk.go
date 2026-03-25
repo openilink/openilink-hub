@@ -261,6 +261,17 @@ func (e *Engine) UploadToCDN(uploadParam, filekey string, ciphertext []byte) (st
 	return eqp, nil
 }
 
+// DownloadRaw returns raw ciphertext for a given EQP (used by CDN download handler).
+func (e *Engine) DownloadRaw(eqp string) ([]byte, error) {
+	e.mu.Lock()
+	entry, ok := e.media[eqp]
+	e.mu.Unlock()
+	if !ok {
+		return nil, errors.New("media not found")
+	}
+	return entry.ciphertext, nil
+}
+
 // DownloadFile retrieves and decrypts a media file by EQP.
 func (e *Engine) DownloadFile(eqp, aesKeyBase64 string) ([]byte, error) {
 	e.mu.Lock()

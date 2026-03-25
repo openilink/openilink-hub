@@ -198,6 +198,9 @@ func (e *Engine) ExpireSession() {
 	e.status = "session_expired"
 	close(e.inbound)
 	e.inbound = make(chan *ilink.WeixinMessage, 100)
+	if e.qr != nil && e.qr.timer != nil {
+		e.qr.timer.Stop()
+	}
 }
 
 // ScanQR simulates scanning the QR code.
@@ -248,6 +251,9 @@ func (e *Engine) ListMedia() []MediaInfo {
 func (e *Engine) Reset() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.qr != nil && e.qr.timer != nil {
+		e.qr.timer.Stop()
+	}
 	e.token = ""
 	e.status = "disconnected"
 	e.inbound = make(chan *ilink.WeixinMessage, 100)

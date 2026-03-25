@@ -158,18 +158,15 @@ func (s *HTTPServer) handleCDNDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return raw ciphertext; the SDK decrypts client-side.
-	s.engine.mu.Lock()
-	entry, ok := s.engine.media[eqp]
-	s.engine.mu.Unlock()
-
-	if !ok {
+	ciphertext, err := s.engine.DownloadRaw(eqp)
+	if err != nil {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.WriteHeader(http.StatusOK)
-	w.Write(entry.ciphertext)
+	w.Write(ciphertext)
 }
 
 func (s *HTTPServer) handleFetchQR(w http.ResponseWriter, r *http.Request) {
