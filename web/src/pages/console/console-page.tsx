@@ -45,6 +45,7 @@ export function ConsolePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stickToBottomRef = useRef(true);
   const dragDepthRef = useRef(0);
+  const stagedPreviewRef = useRef<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!botId) return;
@@ -89,26 +90,28 @@ export function ConsolePage() {
     setStagedFile(file);
     setStagedPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      return file.type.startsWith("image/") || file.type.startsWith("video/")
+      const next = file.type.startsWith("image/") || file.type.startsWith("video/")
         ? URL.createObjectURL(file)
         : null;
+      stagedPreviewRef.current = next;
+      return next;
     });
   }, []);
 
   const clearStaged = useCallback(() => {
     setStagedPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev);
+      stagedPreviewRef.current = null;
       return null;
     });
     setStagedFile(null);
   }, []);
 
-  // Cleanup blob URL on unmount
+  // Cleanup blob URL on unmount via ref (avoids stale closure)
   useEffect(() => {
     return () => {
-      if (stagedPreview) URL.revokeObjectURL(stagedPreview);
+      if (stagedPreviewRef.current) URL.revokeObjectURL(stagedPreviewRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Drag and drop handlers (track depth to avoid flicker on child elements)

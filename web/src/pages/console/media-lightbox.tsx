@@ -18,7 +18,7 @@ export function MediaLightbox({ type, src, alt, onClose }: MediaLightboxProps) {
       // Simple focus trap: keep focus inside the dialog
       if (e.key === "Tab") {
         const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          'button, [href], input, select, textarea, video[controls], audio[controls], [tabindex]:not([tabindex="-1"])',
         );
         if (!focusable?.length) return;
         const first = focusable[0];

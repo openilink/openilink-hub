@@ -48,6 +48,12 @@ export function TextItem({ item }: { item: MessageItemData }) {
   );
 }
 
+// Helper: render item.text as caption if present
+function Caption({ text }: { text?: string }) {
+  if (!text) return null;
+  return <p className="leading-relaxed whitespace-pre-wrap break-words text-xs opacity-70 mb-1">{text}</p>;
+}
+
 // --- Image ---
 export function ImageItem({ item, index, mediaKeys, mediaStatus }: MessageItemProps) {
   const [lightbox, setLightbox] = useState(false);
@@ -56,27 +62,31 @@ export function ImageItem({ item, index, mediaKeys, mediaStatus }: MessageItemPr
 
   if (mediaStatus === "downloading") {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span>图片下载中...</span>
-      </div>
+      <>
+        <Caption text={item.text} />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>图片下载中...</span>
+        </div>
+      </>
     );
   }
 
   if (!src) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-        <AlertCircle className="h-4 w-4" />
-        <span>[图片]{item.file_name ? ` ${item.file_name}` : ""}</span>
-      </div>
+      <>
+        <Caption text={item.text} />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+          <AlertCircle className="h-4 w-4" />
+          <span>[图片]{item.file_name ? ` ${item.file_name}` : ""}</span>
+        </div>
+      </>
     );
   }
 
   return (
     <>
-      {item.text && (
-        <p className="leading-relaxed whitespace-pre-wrap break-words text-xs opacity-70 mb-1">{item.text}</p>
-      )}
+      <Caption text={item.text} />
       <button
         type="button"
         onClick={() => setLightbox(true)}
@@ -110,27 +120,31 @@ export function VideoItem({ item, index, mediaKeys, mediaStatus }: MessageItemPr
 
   if (mediaStatus === "downloading") {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span>视频下载中...</span>
-      </div>
+      <>
+        <Caption text={item.text} />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>视频下载中...</span>
+        </div>
+      </>
     );
   }
 
   if (!src) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-        <AlertCircle className="h-4 w-4" />
-        <span>[视频]{item.file_name ? ` ${item.file_name}` : ""}</span>
-      </div>
+      <>
+        <Caption text={item.text} />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+          <AlertCircle className="h-4 w-4" />
+          <span>[视频]{item.file_name ? ` ${item.file_name}` : ""}</span>
+        </div>
+      </>
     );
   }
 
   return (
     <>
-      {item.text && (
-        <p className="leading-relaxed whitespace-pre-wrap break-words text-xs opacity-70 mb-1">{item.text}</p>
-      )}
+      <Caption text={item.text} />
       <button
         type="button"
         onClick={() => setLightbox(true)}
@@ -154,6 +168,7 @@ export function VideoItem({ item, index, mediaKeys, mediaStatus }: MessageItemPr
         <MediaLightbox
           type="video"
           src={src}
+          alt={item.file_name}
           onClose={() => setLightbox(false)}
         />
       )}
@@ -167,29 +182,38 @@ export function VoiceItem({ item, index, mediaKeys, mediaStatus }: MessageItemPr
 
   if (mediaStatus === "downloading") {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span>语音下载中...</span>
-      </div>
+      <>
+        <Caption text={item.text} />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>语音下载中...</span>
+        </div>
+      </>
     );
   }
 
   if (!src) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
-        <Volume2 className="h-4 w-4" />
-        <span>[语音消息]</span>
-      </div>
+      <>
+        <Caption text={item.text} />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+          <Volume2 className="h-4 w-4" />
+          <span>[语音消息]</span>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 min-w-[180px]">
-      <Volume2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <audio controls preload="none" className="h-8 max-w-[240px] w-full" aria-label="语音消息">
-        <source src={src} />
-      </audio>
-    </div>
+    <>
+      <Caption text={item.text} />
+      <div className="flex items-center gap-2 min-w-[180px]">
+        <Volume2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <audio controls preload="none" className="h-8 max-w-[240px] w-full" aria-label="语音消息">
+          <source src={src} />
+        </audio>
+      </div>
+    </>
   );
 }
 
@@ -199,18 +223,19 @@ export function FileItem({ item, index, mediaKeys, mediaStatus, direction }: Mes
 
   if (mediaStatus === "downloading") {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span>文件下载中...</span>
-      </div>
+      <>
+        <Caption text={item.text} />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>文件下载中...</span>
+        </div>
+      </>
     );
   }
 
   return (
     <>
-      {item.text && (
-        <p className="leading-relaxed whitespace-pre-wrap break-words text-xs opacity-70 mb-1">{item.text}</p>
-      )}
+      <Caption text={item.text} />
       <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${direction === "inbound" ? "bg-muted/50 border-border/50" : "bg-white/10 border-white/20"}`}>
         <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${direction === "inbound" ? "bg-primary/10 text-primary" : "bg-white/20 text-white"}`}>
           <FileText className="h-4 w-4" />
@@ -221,7 +246,7 @@ export function FileItem({ item, index, mediaKeys, mediaStatus, direction }: Mes
         {src && (
           <a
             href={src}
-            download={item.file_name || true}
+            download={item.file_name || ""}
             onClick={(e) => e.stopPropagation()}
             className={`shrink-0 ${direction === "inbound" ? "text-muted-foreground hover:text-foreground" : "text-white/70 hover:text-white"}`}
             aria-label={`下载 ${item.file_name || "文件"}`}
