@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,25 +16,34 @@ import (
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
-	"github.com/openilink/openilink-hub/internal/database"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
+	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/store/postgres"
+	"github.com/openilink/openilink-hub/internal/store/sqlite"
 	"github.com/openilink/openilink-hub/internal/storage"
 
 	// Register providers
 	_ "github.com/openilink/openilink-hub/internal/provider/ilink"
 )
 
+func openStore(dsn string) (store.Store, error) {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		return postgres.Open(dsn)
+	}
+	return sqlite.Open(dsn)
+}
+
 func main() {
 	cfg := config.Parse()
 
 	// Database
-	db, err := database.Open(cfg.DBPath)
+	s, err := openStore(cfg.DBPath)
 	if err != nil {
 		slog.Error("database open failed", "err", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer s.Close()
 
 	// WebAuthn
 	wa, err := webauthn.New(&webauthn.Config{
@@ -48,7 +58,7 @@ func main() {
 
 	// Server components
 	srv := &api.Server{
-		DB:           db,
+		Store:        s,
 		WebAuthn:     wa,
 		SessionStore: auth.NewSessionStore(),
 		Config:       cfg,
@@ -56,14 +66,14 @@ func main() {
 	}
 
 	// Storage (optional)
-	var store *storage.Storage
+	var objStore *storage.Storage
 	if cfg.StorageEndpoint != "" {
 		var err error
 		publicURL := cfg.StoragePublicURL
 		if publicURL == "" {
 			publicURL = cfg.RPOrigin + "/api/v1/media"
 		}
-		store, err = storage.New(storage.Config{
+		objStore, err = storage.New(storage.Config{
 			Endpoint:  cfg.StorageEndpoint,
 			AccessKey: cfg.StorageAccessKey,
 			SecretKey: cfg.StorageSecretKey,
@@ -76,16 +86,16 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Info("storage connected", "endpoint", cfg.StorageEndpoint, "bucket", cfg.StorageBucket)
-		srv.Store = store
+		srv.ObjectStore = objStore
 	}
 
 	hub := relay.NewHub(srv.SetupUpstreamHandler())
 	sinks := []sink.Sink{
 		&sink.WS{Hub: hub},
-		&sink.AI{DB: db},
-		&sink.Webhook{DB: db},
+		&sink.AI{Store: s},
+		&sink.Webhook{Store: s},
 	}
-	mgr := bot.NewManager(db, hub, sinks, store, cfg.RPOrigin)
+	mgr := bot.NewManager(s, hub, sinks, objStore, cfg.RPOrigin)
 	srv.BotManager = mgr
 	srv.Hub = hub
 
@@ -103,7 +113,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				auth.CleanExpiredSessions(db)
+				auth.CleanExpiredSessions(s)
 			}
 		}
 	}()

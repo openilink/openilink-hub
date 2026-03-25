@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/ai"
-	"github.com/openilink/openilink-hub/internal/database"
 	"github.com/openilink/openilink-hub/internal/provider"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 const typingTimeout = 30 * time.Second
@@ -17,7 +17,7 @@ const typingTimeout = 30 * time.Second
 // AI calls an OpenAI-compatible chat completion API and sends the reply
 // back through the bot. It also manages typing indicators.
 type AI struct {
-	DB *database.DB
+	Store store.Store
 }
 
 func (s *AI) Name() string { return "ai" }
@@ -52,7 +52,7 @@ func (s *AI) reply(d Delivery) {
 		}
 	}
 
-	reply, err := ai.Complete(ctx, cfg, s.DB, d.Channel.ID, sender, d.Content)
+	reply, err := ai.Complete(ctx, cfg, s.Store, d.Channel.ID, sender, d.Content)
 
 	if typingTicket != "" {
 		d.Provider.SendTyping(ctx, sender, typingTicket, false)
@@ -76,7 +76,7 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": reply}})
-	s.DB.SaveMessage(&database.Message{
+	s.Store.SaveMessage(&store.Message{
 		BotID:       d.BotDBID,
 		Direction:   "outbound",
 		ToUserID:    sender,
@@ -85,11 +85,11 @@ func (s *AI) reply(d Delivery) {
 	})
 }
 
-func (s *AI) resolveConfig(cfg database.AIConfig) database.AIConfig {
+func (s *AI) resolveConfig(cfg store.AIConfig) store.AIConfig {
 	if cfg.Source != "builtin" {
 		return cfg
 	}
-	global, _ := s.DB.ListConfigByPrefix("ai.")
+	global, _ := s.Store.ListConfigByPrefix("ai.")
 	if global["ai.api_key"] == "" {
 		return cfg
 	}

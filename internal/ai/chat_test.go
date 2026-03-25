@@ -5,7 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/store/postgres"
 )
 
 func TestCompleteWithRealAPI(t *testing.T) {
@@ -21,13 +22,13 @@ func TestCompleteWithRealAPI(t *testing.T) {
 	if dsn == "" {
 		dsn = "postgres://openilink:openilink@localhost:15432/openilink_test?sslmode=disable"
 	}
-	db, err := database.Open(dsn)
+	db, err := postgres.Open(dsn)
 	if err != nil {
 		t.Skipf("skip: database unavailable: %v", err)
 	}
 	defer db.Close()
 
-	cfg := database.AIConfig{
+	cfg := store.AIConfig{
 		Enabled:      true,
 		BaseURL:      baseURL,
 		APIKey:       apiKey,

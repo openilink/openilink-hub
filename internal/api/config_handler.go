@@ -13,7 +13,7 @@ var knownOAuthProviders = map[string]bool{
 
 // GET /api/admin/config/oauth — get OAuth config (secrets masked)
 func (s *Server) handleGetOAuthConfig(w http.ResponseWriter, r *http.Request) {
-	dbConf, err := s.DB.ListConfigByPrefix("oauth.")
+	dbConf, err := s.Store.ListConfigByPrefix("oauth.")
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -84,12 +84,12 @@ func (s *Server) handleSetOAuthConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.DB.SetConfig("oauth."+name+".client_id", req.ClientID); err != nil {
+	if err := s.Store.SetConfig("oauth."+name+".client_id", req.ClientID); err != nil {
 		jsonError(w, "save failed", http.StatusInternalServerError)
 		return
 	}
 	if req.ClientSecret != "" {
-		if err := s.DB.SetConfig("oauth."+name+".client_secret", req.ClientSecret); err != nil {
+		if err := s.Store.SetConfig("oauth."+name+".client_secret", req.ClientSecret); err != nil {
 			jsonError(w, "save failed", http.StatusInternalServerError)
 			return
 		}
@@ -105,14 +105,14 @@ func (s *Server) handleDeleteOAuthConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s.DB.DeleteConfig("oauth." + name + ".client_id")
-	s.DB.DeleteConfig("oauth." + name + ".client_secret")
+	s.Store.DeleteConfig("oauth." + name + ".client_id")
+	s.Store.DeleteConfig("oauth." + name + ".client_secret")
 	jsonOK(w)
 }
 
 // GET /api/admin/config/ai — get global AI config
 func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
-	dbConf, err := s.DB.ListConfigByPrefix("ai.")
+	dbConf, err := s.Store.ListConfigByPrefix("ai.")
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -146,33 +146,33 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.BaseURL != "" {
-		s.DB.SetConfig("ai.base_url", req.BaseURL)
+		s.Store.SetConfig("ai.base_url", req.BaseURL)
 	}
 	if req.APIKey != "" {
-		s.DB.SetConfig("ai.api_key", req.APIKey)
+		s.Store.SetConfig("ai.api_key", req.APIKey)
 	}
 	if req.Model != "" {
-		s.DB.SetConfig("ai.model", req.Model)
+		s.Store.SetConfig("ai.model", req.Model)
 	}
 	// These can be set to empty to clear
-	s.DB.SetConfig("ai.system_prompt", req.SystemPrompt)
+	s.Store.SetConfig("ai.system_prompt", req.SystemPrompt)
 	if req.MaxHistory != "" {
-		s.DB.SetConfig("ai.max_history", req.MaxHistory)
+		s.Store.SetConfig("ai.max_history", req.MaxHistory)
 	}
 	jsonOK(w)
 }
 
 // DELETE /api/admin/config/ai — remove global AI config
 func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
-	s.DB.DeleteConfig("ai.base_url")
-	s.DB.DeleteConfig("ai.api_key")
-	s.DB.DeleteConfig("ai.model")
+	s.Store.DeleteConfig("ai.base_url")
+	s.Store.DeleteConfig("ai.api_key")
+	s.Store.DeleteConfig("ai.model")
 	jsonOK(w)
 }
 
 // GET /api/info — public endpoint to check which features are available
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
-	globalAI, _ := s.DB.ListConfigByPrefix("ai.")
+	globalAI, _ := s.Store.ListConfigByPrefix("ai.")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{
 		"ai":      globalAI["ai.api_key"] != "",

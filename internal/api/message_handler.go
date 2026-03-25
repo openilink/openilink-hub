@@ -7,14 +7,14 @@ import (
 	"strconv"
 
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 func (s *Server) handleRetryMedia(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -27,7 +27,7 @@ func (s *Server) handleRetryMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := s.DB.GetMessage(msgID)
+	msg, err := s.Store.GetMessage(msgID)
 	if err != nil || msg.BotID != botID {
 		jsonError(w, "message not found", http.StatusNotFound)
 		return
@@ -44,7 +44,7 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	botID := r.PathValue("id")
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -67,7 +67,7 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	msgs, err := s.DB.ListMessages(botID, limit+1, beforeID) // fetch one extra to check has_more
+	msgs, err := s.Store.ListMessages(botID, limit+1, beforeID) // fetch one extra to check has_more
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -116,7 +116,7 @@ func (s *Server) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	botID := r.PathValue("id")
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -130,7 +130,7 @@ func (s *Server) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.DB.ListWebhookLogs(botID, channelID, limit)
+	logs, err := s.Store.ListWebhookLogs(botID, channelID, limit)
 	if err != nil {
 		slog.Error("list webhook logs failed", "bot", botID, "channel", channelID, "err", err)
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -139,7 +139,7 @@ func (s *Server) handleWebhookLogs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if logs == nil {
-		logs = []database.WebhookLog{}
+		logs = []store.WebhookLog{}
 	}
 	json.NewEncoder(w).Encode(logs)
 }
@@ -148,7 +148,7 @@ func (s *Server) handleListTraces(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	botID := r.PathValue("id")
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -161,7 +161,7 @@ func (s *Server) handleListTraces(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	spans, err := s.DB.ListRootSpans(botID, limit)
+	spans, err := s.Store.ListRootSpans(botID, limit)
 	if err != nil {
 		slog.Error("list traces failed", "bot", botID, "err", err)
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -170,7 +170,7 @@ func (s *Server) handleListTraces(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if spans == nil {
-		spans = []database.TraceSpan{}
+		spans = []store.TraceSpan{}
 	}
 	json.NewEncoder(w).Encode(spans)
 }
@@ -179,7 +179,7 @@ func (s *Server) handleGetTrace(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	botID := r.PathValue("id")
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -191,7 +191,7 @@ func (s *Server) handleGetTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	spans, err := s.DB.ListSpansByTrace(traceID)
+	spans, err := s.Store.ListSpansByTrace(traceID)
 	if err != nil {
 		slog.Error("get trace failed", "traceId", traceID, "err", err)
 		jsonError(w, "query failed", http.StatusInternalServerError)
@@ -200,7 +200,7 @@ func (s *Server) handleGetTrace(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if spans == nil {
-		spans = []database.TraceSpan{}
+		spans = []store.TraceSpan{}
 	}
 	json.NewEncoder(w).Encode(spans)
 }

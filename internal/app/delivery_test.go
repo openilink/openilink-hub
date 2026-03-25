@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 var errFake = errors.New("fake error")
@@ -29,7 +29,7 @@ type mockLogDB struct {
 	createLogErr    error
 }
 
-func (m *mockLogDB) CreateEventLog(_ *database.AppEventLog) (int64, error) {
+func (m *mockLogDB) CreateEventLog(_ *store.AppEventLog) (int64, error) {
 	m.createLogCalled.Add(1)
 	if m.createLogErr != nil {
 		return 0, m.createLogErr
@@ -127,7 +127,7 @@ func TestDeliverEvent_Success(t *testing.T) {
 	mock := &mockLogDB{}
 	d := newTestDispatcher(mock, srv.Client())
 
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "test-secret", AppRequestURL: srv.URL,
 	}
@@ -201,7 +201,7 @@ func TestDeliverEvent_CommandEnvelopeType(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -228,7 +228,7 @@ func TestDeliverEvent_SyncReply(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -252,7 +252,7 @@ func TestDeliverEvent_SyncReplyDefaultType(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -274,7 +274,7 @@ func TestDeliverEvent_Failure500(t *testing.T) {
 
 	mock := &mockLogDB{}
 	d := newTestDispatcher(mock, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -304,7 +304,7 @@ func TestDeliverEvent_Timeout(t *testing.T) {
 	mock := &mockLogDB{}
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 	d := newTestDispatcher(mock, client)
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -320,7 +320,7 @@ func TestDeliverEvent_Timeout(t *testing.T) {
 
 func TestDeliverEvent_NoRequestURL(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, http.DefaultClient)
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppRequestURL: "",
 	}
@@ -341,7 +341,7 @@ func TestDeliverEvent_EmptyResponseBody(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -369,7 +369,7 @@ func TestDeliverEvent_SignatureVerification(t *testing.T) {
 
 	secret := "verify-me"
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: secret, AppRequestURL: srv.URL,
 	}
@@ -392,7 +392,7 @@ func TestDeliverEvent_CreateLogError(t *testing.T) {
 
 	mock := &mockLogDB{createLogErr: errFake}
 	d := newTestDispatcher(mock, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -415,7 +415,7 @@ func TestDeliverEvent_TraceIDHeader(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}

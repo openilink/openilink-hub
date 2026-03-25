@@ -57,7 +57,7 @@ func (s *Server) handleChannelMedia(w http.ResponseWriter, r *http.Request) {
 //   - Session cookie: user must own the bot
 //   - Channel API key (?key=xxx): channel must belong to the bot
 func (s *Server) handleMediaProxy(w http.ResponseWriter, r *http.Request) {
-	if s.Store == nil {
+	if s.ObjectStore == nil {
 		http.Error(w, "storage not configured", http.StatusNotFound)
 		return
 	}
@@ -79,8 +79,8 @@ func (s *Server) handleMediaProxy(w http.ResponseWriter, r *http.Request) {
 	// Auth: session cookie → check bot ownership
 	authed := false
 	if cookie, err := r.Cookie("session"); err == nil {
-		if uid, err := auth.ValidateSession(s.DB, cookie.Value); err == nil && uid != "" {
-			if bot, err := s.DB.GetBot(botID); err == nil && bot.UserID == uid {
+		if uid, err := auth.ValidateSession(s.Store, cookie.Value); err == nil && uid != "" {
+			if bot, err := s.Store.GetBot(botID); err == nil && bot.UserID == uid {
 				authed = true
 			}
 		}
@@ -96,7 +96,7 @@ func (s *Server) handleMediaProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := s.Store.Get(r.Context(), key)
+	data, err := s.ObjectStore.Get(r.Context(), key)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return

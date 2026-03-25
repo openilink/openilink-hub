@@ -7,7 +7,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // --- WebAuthn registration ---
@@ -27,7 +27,7 @@ func (s *Server) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if username already taken
-	if _, err := s.DB.GetUserByUsername(req.Username); err == nil {
+	if _, err := s.Store.GetUserByUsername(req.Username); err == nil {
 		jsonError(w, "username already taken", http.StatusConflict)
 		return
 	}
@@ -38,19 +38,19 @@ func (s *Server) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// First user becomes admin
-	role := database.RoleMember
-	count, _ := s.DB.UserCount()
+	role := store.RoleMember
+	count, _ := s.Store.UserCount()
 	if count == 0 {
-		role = database.RoleSuperAdmin
+		role = store.RoleSuperAdmin
 	}
 
-	user, err := s.DB.CreateUserFull(req.Username, "", displayName, "", role)
+	user, err := s.Store.CreateUserFull(req.Username, "", displayName, "", role)
 	if err != nil {
 		jsonError(w, "create user failed", http.StatusInternalServerError)
 		return
 	}
 
-	waUser, _ := auth.LoadWebAuthnUser(s.DB, user)
+	waUser, _ := auth.LoadWebAuthnUser(s.Store, user)
 	options, session, err := s.WebAuthn.BeginRegistration(waUser)
 	if err != nil {
 		jsonError(w, "webauthn begin failed", http.StatusInternalServerError)
@@ -65,7 +65,7 @@ func (s *Server) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	username := r.URL.Query().Get("username")
 
-	user, err := s.DB.GetUserByUsername(username)
+	user, err := s.Store.GetUserByUsername(username)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusBadRequest)
 		return
@@ -77,7 +77,7 @@ func (s *Server) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	waUser, _ := auth.LoadWebAuthnUser(s.DB, user)
+	waUser, _ := auth.LoadWebAuthnUser(s.Store, user)
 	cred, err := s.WebAuthn.FinishRegistration(waUser, *session, r)
 	if err != nil {
 		jsonError(w, "registration failed: "+err.Error(), http.StatusBadRequest)
@@ -85,7 +85,7 @@ func (s *Server) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	transportsJSON, _ := json.Marshal(cred.Transport)
-	if err := s.DB.SaveCredential(&database.Credential{
+	if err := s.Store.SaveCredential(&store.Credential{
 		ID:              string(cred.ID),
 		UserID:          user.ID,
 		PublicKey:       cred.PublicKey,
@@ -97,7 +97,7 @@ func (s *Server) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _ := auth.CreateSession(s.DB, user.ID)
+	token, _ := auth.CreateSession(s.Store, user.ID)
 	setSessionCookie(w, token)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -122,17 +122,17 @@ func (s *Server) handleLoginBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.DB.GetUserByUsername(req.Username)
+	user, err := s.Store.GetUserByUsername(req.Username)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusBadRequest)
 		return
 	}
-	if user.Status != database.StatusActive {
+	if user.Status != store.StatusActive {
 		jsonError(w, "account disabled", http.StatusForbidden)
 		return
 	}
 
-	waUser, _ := auth.LoadWebAuthnUser(s.DB, user)
+	waUser, _ := auth.LoadWebAuthnUser(s.Store, user)
 	options, session, err := s.WebAuthn.BeginLogin(waUser)
 	if err != nil {
 		jsonError(w, "webauthn begin failed", http.StatusInternalServerError)
@@ -161,11 +161,11 @@ func (s *Server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		}
 		_, err = s.WebAuthn.ValidateDiscoverableLogin(
 			func(rawID, userHandle []byte) (webauthn.User, error) {
-				user, err := s.DB.GetUserByID(string(userHandle))
+				user, err := s.Store.GetUserByID(string(userHandle))
 				if err != nil {
 					return nil, err
 				}
-				return auth.LoadWebAuthnUser(s.DB, user)
+				return auth.LoadWebAuthnUser(s.Store, user)
 			},
 			*session, parsedResponse,
 		)
@@ -175,7 +175,7 @@ func (s *Server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		}
 		userID = string(parsedResponse.Response.UserHandle)
 	} else {
-		user, err := s.DB.GetUserByUsername(username)
+		user, err := s.Store.GetUserByUsername(username)
 		if err != nil {
 			jsonError(w, "user not found", http.StatusBadRequest)
 			return
@@ -185,7 +185,7 @@ func (s *Server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "no login session", http.StatusBadRequest)
 			return
 		}
-		waUser, _ := auth.LoadWebAuthnUser(s.DB, user)
+		waUser, _ := auth.LoadWebAuthnUser(s.Store, user)
 		_, err = s.WebAuthn.FinishLogin(waUser, *session, r)
 		if err != nil {
 			jsonError(w, "login failed: "+err.Error(), http.StatusUnauthorized)
@@ -194,7 +194,7 @@ func (s *Server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 		userID = user.ID
 	}
 
-	token, _ := auth.CreateSession(s.DB, userID)
+	token, _ := auth.CreateSession(s.Store, userID)
 	setSessionCookie(w, token)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -205,7 +205,7 @@ func (s *Server) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListPasskeys(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
-	creds, err := s.DB.GetCredentialsByUserID(userID)
+	creds, err := s.Store.GetCredentialsByUserID(userID)
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
@@ -224,13 +224,13 @@ func (s *Server) handleListPasskeys(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePasskeyBindBegin(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
-	user, err := s.DB.GetUserByID(userID)
+	user, err := s.Store.GetUserByID(userID)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
 	}
 
-	waUser, _ := auth.LoadWebAuthnUser(s.DB, user)
+	waUser, _ := auth.LoadWebAuthnUser(s.Store, user)
 	options, session, err := s.WebAuthn.BeginRegistration(waUser)
 	if err != nil {
 		jsonError(w, "webauthn begin failed", http.StatusInternalServerError)
@@ -244,7 +244,7 @@ func (s *Server) handlePasskeyBindBegin(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handlePasskeyBindFinish(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
-	user, err := s.DB.GetUserByID(userID)
+	user, err := s.Store.GetUserByID(userID)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
@@ -256,7 +256,7 @@ func (s *Server) handlePasskeyBindFinish(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	waUser, _ := auth.LoadWebAuthnUser(s.DB, user)
+	waUser, _ := auth.LoadWebAuthnUser(s.Store, user)
 	cred, err := s.WebAuthn.FinishRegistration(waUser, *session, r)
 	if err != nil {
 		jsonError(w, "registration failed: "+err.Error(), http.StatusBadRequest)
@@ -264,7 +264,7 @@ func (s *Server) handlePasskeyBindFinish(w http.ResponseWriter, r *http.Request)
 	}
 
 	transportsJSON, _ := json.Marshal(cred.Transport)
-	if err := s.DB.SaveCredential(&database.Credential{
+	if err := s.Store.SaveCredential(&store.Credential{
 		ID:              string(cred.ID),
 		UserID:          user.ID,
 		PublicKey:       cred.PublicKey,
@@ -282,7 +282,7 @@ func (s *Server) handlePasskeyBindFinish(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleDeletePasskey(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	credID := r.PathValue("id")
-	if err := s.DB.DeleteCredential(credID, userID); err != nil {
+	if err := s.Store.DeleteCredential(credID, userID); err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
 		return
 	}

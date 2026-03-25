@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // --- Password auth ---
@@ -35,7 +35,7 @@ func (s *Server) handlePasswordRegister(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Check if username taken
-	if _, err := s.DB.GetUserByUsername(req.Username); err == nil {
+	if _, err := s.Store.GetUserByUsername(req.Username); err == nil {
 		jsonError(w, "username already taken", http.StatusConflict)
 		return
 	}
@@ -46,20 +46,20 @@ func (s *Server) handlePasswordRegister(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// First user becomes admin
-	role := database.RoleMember
-	count, _ := s.DB.UserCount()
+	role := store.RoleMember
+	count, _ := s.Store.UserCount()
 	if count == 0 {
-		role = database.RoleSuperAdmin
+		role = store.RoleSuperAdmin
 	}
 
 	hash := auth.HashPassword(req.Password)
-	user, err := s.DB.CreateUserFull(req.Username, req.Email, displayName, hash, role)
+	user, err := s.Store.CreateUserFull(req.Username, req.Email, displayName, hash, role)
 	if err != nil {
 		jsonError(w, "create user failed", http.StatusInternalServerError)
 		return
 	}
 
-	token, _ := auth.CreateSession(s.DB, user.ID)
+	token, _ := auth.CreateSession(s.Store, user.ID)
 	setSessionCookie(w, token)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -76,12 +76,12 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.DB.GetUserByUsername(req.Username)
+	user, err := s.Store.GetUserByUsername(req.Username)
 	if err != nil {
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
-	if user.Status != database.StatusActive {
+	if user.Status != store.StatusActive {
 		jsonError(w, "account disabled", http.StatusForbidden)
 		return
 	}
@@ -90,7 +90,7 @@ func (s *Server) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _ := auth.CreateSession(s.DB, user.ID)
+	token, _ := auth.CreateSession(s.Store, user.ID)
 	setSessionCookie(w, token)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -112,7 +112,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.DB.GetUserByID(userID)
+	user, err := s.Store.GetUserByID(userID)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
@@ -126,7 +126,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := auth.HashPassword(req.NewPassword)
-	if err := s.DB.UpdateUserPassword(userID, hash); err != nil {
+	if err := s.Store.UpdateUserPassword(userID, hash); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}

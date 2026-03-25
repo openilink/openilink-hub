@@ -1,17 +1,30 @@
-openilink-hub
-AGENTS.md
-internal/web/dist/*
-!internal/web/dist/.gitkeep
-web/dist/
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+/openilink-hub
+/mockserver
+
+# Test/dev databases
 *.db
-*.db-wal
 *.db-shm
-.env
-.env.*
-*.log
+*.db-wal
+
+# IDE
 .idea/
 .vscode/
 *.swp
+
+# OS
 .DS_Store
+
+# Dependencies
 node_modules/
+
+# Plans and docs (local only)
 docs/plans/
+
+# Environment
+.env
+.env.*

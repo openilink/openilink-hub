@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 func TestDeliverWithRetry_FirstAttemptSucceeds(t *testing.T) {
@@ -21,7 +21,7 @@ func TestDeliverWithRetry_FirstAttemptSucceeds(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -68,7 +68,7 @@ func TestDeliverWithRetry_FirstAttemptFails(t *testing.T) {
 	defer func() { retryDelays = origDelays }()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -104,7 +104,7 @@ func TestDeliverWithRetry_AllRetriesFail(t *testing.T) {
 	defer func() { retryDelays = origDelays }()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -143,7 +143,7 @@ func TestDeliverWithRetry_TimeoutThenRecover(t *testing.T) {
 
 	client := &http.Client{Timeout: 50 * time.Millisecond}
 	d := newTestDispatcher(&mockLogDB{}, client)
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
@@ -170,7 +170,7 @@ func TestDeliverRetryAttempt(t *testing.T) {
 	defer srv.Close()
 
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
 		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}

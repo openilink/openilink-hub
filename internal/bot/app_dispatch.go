@@ -12,12 +12,12 @@ import (
 	"time"
 
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
-	"github.com/openilink/openilink-hub/internal/database"
 	"github.com/openilink/openilink-hub/internal/provider"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // deliverToApps dispatches a message to matching App installations.
-func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p parsedMessage, tracer *database.Tracer, rootSpan *database.SpanBuilder) {
+func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p parsedMessage, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("deliverToApps panic", "bot", inst.DBID, "err", r)
@@ -60,7 +60,7 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
-		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppRequestURL, database.SpanKindClient, map[string]any{
+		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppRequestURL, store.SpanKindClient, map[string]any{
 			"app.name":    installations[i].AppName,
 			"app.slug":    installations[i].AppSlug,
 			"http.url":    installations[i].AppRequestURL,
@@ -83,7 +83,7 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 }
 
 // tryDeliverMention checks if the message starts with @handle and routes to that installation.
-func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string, tracer *database.Tracer, rootSpan *database.SpanBuilder) bool {
+func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string, tracer *store.Tracer, rootSpan *store.SpanBuilder) bool {
 	trimmed := strings.TrimSpace(content)
 	if !strings.HasPrefix(trimmed, "@") {
 		return false
@@ -99,7 +99,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		text = strings.TrimSpace(parts[1])
 	}
 
-	installation, err := m.appDisp.DB.GetInstallationByHandle(inst.DBID, handle)
+	installation, err := m.appDisp.Store.GetInstallationByHandle(inst.DBID, handle)
 	if err != nil || installation == nil || !installation.Enabled || installation.AppRequestURL == "" {
 		rootSpan.AddEvent("match_handle_miss", map[string]any{"handle": handle})
 		return false
@@ -120,7 +120,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 			"group": groupInfo(msg), "handle": handle,
 		})
 		event.TraceID = tracer.TraceID()
-		span := tracer.StartChild(rootSpan, "POST "+installation.AppRequestURL, database.SpanKindClient, map[string]any{
+		span := tracer.StartChild(rootSpan, "POST "+installation.AppRequestURL, store.SpanKindClient, map[string]any{
 			"app.name":    installation.AppName,
 			"app.slug":    installation.AppSlug,
 			"http.url":    installation.AppRequestURL,
@@ -143,7 +143,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		"group": groupInfo(msg), "content": text, "handle": handle,
 	})
 	event.TraceID = tracer.TraceID()
-	span := tracer.StartChild(rootSpan, "POST "+installation.AppRequestURL, database.SpanKindClient, map[string]any{
+	span := tracer.StartChild(rootSpan, "POST "+installation.AppRequestURL, store.SpanKindClient, map[string]any{
 		"app.name":    installation.AppName,
 		"app.slug":    installation.AppSlug,
 		"http.url":    installation.AppRequestURL,
@@ -162,7 +162,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 }
 
 // tryDeliverCommand checks if the message is a /command and delivers it.
-func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string, tracer *database.Tracer, rootSpan *database.SpanBuilder) bool {
+func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string, tracer *store.Tracer, rootSpan *store.SpanBuilder) bool {
 	installations, command, args, err := m.appDisp.MatchCommand(inst.DBID, content)
 	if err != nil {
 		rootSpan.AddEvent("match_command_error", map[string]any{"error": err.Error()})
@@ -186,7 +186,7 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
-		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppRequestURL, database.SpanKindClient, map[string]any{
+		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppRequestURL, store.SpanKindClient, map[string]any{
 			"app.name":    installations[i].AppName,
 			"app.slug":    installations[i].AppSlug,
 			"http.url":    installations[i].AppRequestURL,
@@ -206,18 +206,18 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 }
 
 // sendAppResult sends a reply from an App via the bot and stores it as outbound.
-func (m *Manager) sendAppResult(inst *Instance, to string, result *appdelivery.DeliveryResult, tracer *database.Tracer, rootSpan *database.SpanBuilder) {
+func (m *Manager) sendAppResult(inst *Instance, to string, result *appdelivery.DeliveryResult, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
 	if result == nil {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	contextToken := m.db.GetLatestContextToken(inst.DBID)
+	contextToken := m.store.GetLatestContextToken(inst.DBID)
 
 	switch result.ReplyType {
 	case "image", "video", "file":
-		span := tracer.StartChild(rootSpan, "send_reply", database.SpanKindClient, map[string]any{
+		span := tracer.StartChild(rootSpan, "send_reply", store.SpanKindClient, map[string]any{
 			"reply.type": result.ReplyType,
 			"reply.to":   to,
 		})
@@ -228,7 +228,7 @@ func (m *Manager) sendAppResult(inst *Instance, to string, result *appdelivery.D
 		if result.Reply == "" {
 			return
 		}
-		span := tracer.StartChild(rootSpan, "send_reply", database.SpanKindClient, map[string]any{
+		span := tracer.StartChild(rootSpan, "send_reply", store.SpanKindClient, map[string]any{
 			"reply.type":    "text",
 			"reply.to":      to,
 			"reply.content": result.Reply,
@@ -249,7 +249,7 @@ func (m *Manager) sendAppText(ctx context.Context, inst *Instance, to, contextTo
 	slog.Info("app reply sent", "bot", inst.DBID, "to", to, "client_id", clientID)
 
 	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": text}})
-	m.db.SaveMessage(&database.Message{
+	m.store.SaveMessage(&store.Message{
 		BotID: inst.DBID, Direction: "outbound", ToUserID: to, MessageType: 2, ItemList: itemList,
 	})
 }
@@ -342,7 +342,7 @@ func (m *Manager) sendAppMedia(ctx context.Context, inst *Instance, to, contextT
 
 	itemType := result.ReplyType
 	itemList, _ := json.Marshal([]map[string]any{{"type": itemType, "file_name": fileName}})
-	m.db.SaveMessage(&database.Message{
+	m.store.SaveMessage(&store.Message{
 		BotID: inst.DBID, Direction: "outbound", ToUserID: to, MessageType: 2, ItemList: itemList,
 	})
 }

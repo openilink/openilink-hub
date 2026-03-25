@@ -3,10 +3,13 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
+
+var errSessionExpired = errors.New("session expired")
 
 const sessionTTL = 7 * 24 * time.Hour
 
@@ -16,34 +19,32 @@ func generateToken() string {
 	return hex.EncodeToString(b)
 }
 
-func CreateSession(db *database.DB, userID string) (string, error) {
+func CreateSession(s store.SessionStore, userID string) (string, error) {
 	token := generateToken()
 	expiresAt := time.Now().Add(sessionTTL)
-	_, err := db.Exec("INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)", token, userID, expiresAt)
+	err := s.CreateSession(token, userID, expiresAt)
 	if err != nil {
 		return "", err
 	}
 	return token, nil
 }
 
-func ValidateSession(db *database.DB, token string) (string, error) {
-	var userID string
-	var expiresAt time.Time
-	err := db.QueryRow("SELECT user_id, expires_at FROM sessions WHERE token = $1", token).Scan(&userID, &expiresAt)
+func ValidateSession(s store.SessionStore, token string) (string, error) {
+	userID, expiresAt, err := s.GetSession(token)
 	if err != nil {
 		return "", err
 	}
 	if time.Now().After(expiresAt) {
-		db.Exec("DELETE FROM sessions WHERE token = $1", token)
-		return "", err
+		s.DeleteSession(token)
+		return "", errSessionExpired
 	}
 	return userID, nil
 }
 
-func DeleteSession(db *database.DB, token string) {
-	db.Exec("DELETE FROM sessions WHERE token = $1", token)
+func DeleteSession(s store.SessionStore, token string) {
+	s.DeleteSession(token)
 }
 
-func CleanExpiredSessions(db *database.DB) {
-	db.Exec("DELETE FROM sessions WHERE expires_at < NOW()")
+func CleanExpiredSessions(s store.SessionStore) {
+	s.DeleteExpiredSessions()
 }

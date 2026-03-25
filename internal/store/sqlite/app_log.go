@@ -1,0 +1,111 @@
+package sqlite
+
+import (
+	"fmt"
+
+	"github.com/openilink/openilink-hub/internal/store"
+)
+
+func truncateStr(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max]
+}
+
+func (db *DB) CreateEventLog(log *store.AppEventLog) (int64, error) {
+	result, err := db.Exec(`INSERT INTO app_event_logs (installation_id, trace_id, event_type, event_id, request_body, status)
+		VALUES (?,?,?,?,?,'pending')`,
+		log.InstallationID, log.TraceID, log.EventType, log.EventID, log.RequestBody,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
+func (db *DB) UpdateEventLogDelivered(id int64, respStatus int, respBody string, durationMs int) error {
+	_, err := db.Exec(`UPDATE app_event_logs SET status='delivered', response_status=?, response_body=?, duration_ms=? WHERE id=?`,
+		respStatus, truncateStr(respBody, 4096), durationMs, id)
+	return err
+}
+
+func (db *DB) UpdateEventLogFailed(id int64, errMsg string, retryCount int, durationMs int) error {
+	status := "failed"
+	if retryCount < 3 {
+		status = "retrying"
+	}
+	_, err := db.Exec(`UPDATE app_event_logs SET status=?, error=?, retry_count=?, duration_ms=? WHERE id=?`,
+		status, errMsg, retryCount, durationMs, id)
+	return err
+}
+
+func (db *DB) ListEventLogs(installationID string, limit int) ([]store.AppEventLog, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := db.Query(fmt.Sprintf(`SELECT id, installation_id, trace_id, event_type, event_id,
+		request_body, response_status, response_body,
+		status, retry_count, error, duration_ms,
+		created_at
+		FROM app_event_logs WHERE installation_id = ?
+		ORDER BY id DESC LIMIT %d`, limit), installationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var logs []store.AppEventLog
+	for rows.Next() {
+		var l store.AppEventLog
+		if err := rows.Scan(&l.ID, &l.InstallationID, &l.TraceID, &l.EventType, &l.EventID,
+			&l.RequestBody, &l.ResponseStatus, &l.ResponseBody,
+			&l.Status, &l.RetryCount, &l.Error, &l.DurationMs,
+			&l.CreatedAt); err != nil {
+			return nil, err
+		}
+		logs = append(logs, l)
+	}
+	return logs, rows.Err()
+}
+
+func (db *DB) CreateAPILog(log *store.AppAPILog) error {
+	_, err := db.Exec(`INSERT INTO app_api_logs (installation_id, trace_id, method, path, request_body, status_code, response_body, duration_ms)
+		VALUES (?,?,?,?,?,?,?,?)`,
+		log.InstallationID, log.TraceID, log.Method, log.Path,
+		truncateStr(log.RequestBody, 4096), log.StatusCode,
+		truncateStr(log.ResponseBody, 4096), log.DurationMs)
+	return err
+}
+
+func (db *DB) ListAPILogs(installationID string, limit int) ([]store.AppAPILog, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := db.Query(fmt.Sprintf(`SELECT id, installation_id, trace_id, method, path,
+		request_body, status_code, response_body, duration_ms,
+		created_at
+		FROM app_api_logs WHERE installation_id = ?
+		ORDER BY id DESC LIMIT %d`, limit), installationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var logs []store.AppAPILog
+	for rows.Next() {
+		var l store.AppAPILog
+		if err := rows.Scan(&l.ID, &l.InstallationID, &l.TraceID, &l.Method, &l.Path,
+			&l.RequestBody, &l.StatusCode, &l.ResponseBody, &l.DurationMs,
+			&l.CreatedAt); err != nil {
+			return nil, err
+		}
+		logs = append(logs, l)
+	}
+	return logs, rows.Err()
+}
+
+func (db *DB) CleanOldAppLogs(days int) error {
+	interval := fmt.Sprintf("%d", days)
+	_, _ = db.Exec("DELETE FROM app_event_logs WHERE created_at < unixepoch() - 86400 * " + interval)
+	_, _ = db.Exec("DELETE FROM app_api_logs WHERE created_at < unixepoch() - 86400 * " + interval)
+	return nil
+}

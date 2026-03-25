@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 const (
@@ -77,33 +77,33 @@ type syncReply struct {
 // eventLogger is the interface used for event logging operations.
 // This allows tests to mock the database layer.
 type eventLogger interface {
-	CreateEventLog(log *database.AppEventLog) (int64, error)
+	CreateEventLog(log *store.AppEventLog) (int64, error)
 	UpdateEventLogDelivered(id int64, respStatus int, respBody string, durationMs int) error
 	UpdateEventLogFailed(id int64, errMsg string, retryCount int, durationMs int) error
 }
 
 // appStore is the interface used for app lookup operations.
 type appStore interface {
-	ListInstallationsByBot(botID string) ([]database.AppInstallation, error)
-	GetApp(id string) (*database.App, error)
-	GetInstallationByHandle(botID, handle string) (*database.AppInstallation, error)
+	ListInstallationsByBot(botID string) ([]store.AppInstallation, error)
+	GetApp(id string) (*store.App, error)
+	GetInstallationByHandle(botID, handle string) (*store.AppInstallation, error)
 }
 
 // Dispatcher delivers events to app installations.
 type Dispatcher struct {
-	DB     *database.DB
+	Store  store.Store
 	Client *http.Client
 
 	// dbLog and appDB are optional interface overrides for testing.
-	// When nil, the real DB is used.
+	// When nil, the real Store is used.
 	dbLog eventLogger
 	appDB appStore
 }
 
 // NewDispatcher creates a new Dispatcher with a default HTTP client.
-func NewDispatcher(db *database.DB) *Dispatcher {
+func NewDispatcher(s store.Store) *Dispatcher {
 	return &Dispatcher{
-		DB: db,
+		Store: s,
 		Client: &http.Client{
 			Timeout: deliveryTimeout,
 		},
@@ -114,19 +114,19 @@ func (d *Dispatcher) logDB() eventLogger {
 	if d.dbLog != nil {
 		return d.dbLog
 	}
-	return d.DB
+	return d.Store
 }
 
 func (d *Dispatcher) store() appStore {
 	if d.appDB != nil {
 		return d.appDB
 	}
-	return d.DB
+	return d.Store
 }
 
 // DeliverEvent posts a signed event payload to the installation's request_url
 // and logs the delivery attempt. Returns the delivery result or an error.
-func (d *Dispatcher) DeliverEvent(inst *database.AppInstallation, event *Event) (*DeliveryResult, error) {
+func (d *Dispatcher) DeliverEvent(inst *store.AppInstallation, event *Event) (*DeliveryResult, error) {
 	if inst.AppRequestURL == "" {
 		return nil, fmt.Errorf("installation %s has no request_url configured", inst.ID)
 	}
@@ -151,7 +151,7 @@ func (d *Dispatcher) DeliverEvent(inst *database.AppInstallation, event *Event) 
 	}
 
 	// Create event log (pending).
-	logEntry := &database.AppEventLog{
+	logEntry := &store.AppEventLog{
 		InstallationID: inst.ID,
 		TraceID:        traceID,
 		EventType:      event.Type,

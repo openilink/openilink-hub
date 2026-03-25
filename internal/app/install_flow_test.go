@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // --- Mock install DB that tracks UpdateAppRequestURL and SetAppURLVerified calls ---
@@ -144,7 +144,7 @@ func simulateNotifyAppInstalled(
 	redirectURL string,
 	appID string,
 	signingSecret string,
-	inst *database.AppInstallation,
+	inst *store.AppInstallation,
 	db *mockInstallDB,
 ) (requestURL string, err error) {
 	payload, _ := json.Marshal(map[string]string{
@@ -218,7 +218,7 @@ func TestInstallFlow_FullNotifyAndVerify(t *testing.T) {
 	db := &mockInstallDB{}
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID:            "inst-001",
 		AppID:         "app-001",
 		BotID:         "bot-001",
@@ -288,7 +288,7 @@ func TestInstallFlow_NotifyAppReturns500(t *testing.T) {
 	db := &mockInstallDB{}
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID:            "inst-002",
 		AppID:         "app-002",
 		BotID:         "bot-002",
@@ -320,7 +320,7 @@ func TestInstallFlow_NotifyAppReturnsNoRequestURL(t *testing.T) {
 	db := &mockInstallDB{}
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID:            "inst-003",
 		AppID:         "app-003",
 		BotID:         "bot-003",
@@ -411,7 +411,7 @@ func TestInstallFlow_EndToEnd_DynamicURL(t *testing.T) {
 	db := &mockInstallDB{}
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID:            "inst-e2e",
 		AppID:         "app-e2e",
 		BotID:         "bot-e2e",

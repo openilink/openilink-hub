@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/provider"
 )
 
@@ -84,7 +84,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 	botInst, ok := s.BotManager.GetInstance(inst.BotID)
 	if !ok {
 		// Check if bot exists and status
-		bot, err := s.DB.GetBot(inst.BotID)
+		bot, err := s.Store.GetBot(inst.BotID)
 		if err != nil {
 			botAPIError(w, "bot not found", http.StatusNotFound)
 			return
@@ -104,7 +104,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-fill context_token from latest message if not available
-	contextToken := s.DB.GetLatestContextToken(inst.BotID)
+	contextToken := s.Store.GetLatestContextToken(inst.BotID)
 
 	// Build outbound message
 	outMsg := provider.OutboundMessage{
@@ -170,7 +170,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		item["file_name"] = outMsg.FileName
 	}
 	itemList, _ := json.Marshal([]any{item})
-	s.DB.SaveMessage(&database.Message{
+	s.Store.SaveMessage(&store.Message{
 		BotID:       inst.BotID,
 		Direction:   "outbound",
 		ToUserID:    req.To,
@@ -184,7 +184,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		if req.Type != "text" {
 			replyContent = "[" + req.Type + "] " + outMsg.FileName
 		}
-		_ = s.DB.AppendSpan(traceID, inst.BotID, "Bot API send_reply", database.SpanKindServer, database.StatusOK, "", map[string]any{
+		_ = s.Store.AppendSpan(traceID, inst.BotID, "Bot API send_reply", store.SpanKindServer, store.StatusOK, "", map[string]any{
 			"app.name":      inst.AppName,
 			"reply.type":    req.Type,
 			"reply.to":      req.To,
@@ -215,7 +215,7 @@ func (s *Server) handleBotAPIContacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contacts, err := s.DB.ListRecentContacts(inst.BotID, 100)
+	contacts, err := s.Store.ListRecentContacts(inst.BotID, 100)
 	if err != nil {
 		slog.Error("bot api: list contacts failed", "bot_id", inst.BotID, "err", err)
 		botAPIError(w, "failed to list contacts", http.StatusInternalServerError)
@@ -243,7 +243,7 @@ func (s *Server) handleBotAPIBotInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bot, err := s.DB.GetBot(inst.BotID)
+	bot, err := s.Store.GetBot(inst.BotID)
 	if err != nil {
 		slog.Error("bot api: get bot failed", "bot_id", inst.BotID, "err", err)
 		botAPIError(w, "bot not found", http.StatusNotFound)

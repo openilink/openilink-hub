@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // receivedEvent tracks what a mock app server receives.
@@ -140,7 +140,7 @@ func TestMockApp_EventDeliveryWithSignature(t *testing.T) {
 	mock := &mockLogDB{}
 	d := newTestDispatcher(mock, m.server.Client())
 
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-int-1", AppID: "app-int-1", BotID: "bot-int-1",
 		AppSigningSecret: secret, AppRequestURL: m.server.URL,
 	}
@@ -199,7 +199,7 @@ func TestMockApp_CommandDelivery(t *testing.T) {
 	defer m.close()
 
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-cmd-1", AppID: "app-cmd-1", BotID: "bot-cmd-1",
 		AppSigningSecret: secret, AppRequestURL: m.server.URL,
 	}
@@ -238,7 +238,7 @@ func TestMockApp_SyncReplyInResult(t *testing.T) {
 	defer m.close()
 
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-r-1", AppID: "app-r-1", BotID: "bot-r-1",
 		AppSigningSecret: "secret", AppRequestURL: m.server.URL,
 	}
@@ -262,7 +262,7 @@ func TestMockApp_InvalidSignatureRejected(t *testing.T) {
 
 	// Use a DIFFERENT secret for the installation, causing signature mismatch.
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-bad-1", AppID: "app-bad-1", BotID: "bot-bad-1",
 		AppSigningSecret: "wrong-secret", AppRequestURL: m.server.URL,
 	}
@@ -282,7 +282,7 @@ func TestMockApp_MultipleEventsTracked(t *testing.T) {
 	defer m.close()
 
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID: "inst-m-1", AppID: "app-m-1", BotID: "bot-m-1",
 		AppSigningSecret: "secret", AppRequestURL: m.server.URL,
 	}
@@ -310,18 +310,18 @@ func TestMockApp_FullFlowWithMatchAndDeliver(t *testing.T) {
 	})
 	defer m.close()
 
-	cmds, _ := json.Marshal([]database.AppTool{{Name: "run_deploy", Command: "deploy"}})
+	cmds, _ := json.Marshal([]store.AppTool{{Name: "run_deploy", Command: "deploy"}})
 	events, _ := json.Marshal([]string{"message"})
 
 	store := &mockAppStore{
-		installations: []database.AppInstallation{
+		installations: []store.AppInstallation{
 			{
 				ID: "inst-ff-1", AppID: "app-ff-1", BotID: "bot-ff-1",
 				Enabled: true, AppRequestURL: m.server.URL,
 				AppSigningSecret: secret,
 			},
 		},
-		apps: map[string]*database.App{
+		apps: map[string]*store.App{
 			"app-ff-1": {ID: "app-ff-1", Tools: cmds, Events: events},
 		},
 	}

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 type contextKey string
@@ -18,8 +18,8 @@ type contextKey string
 const installationKey contextKey = "installation"
 
 // installationFromContext returns the AppInstallation stored in the request context.
-func installationFromContext(ctx context.Context) *database.AppInstallation {
-	if v, ok := ctx.Value(installationKey).(*database.AppInstallation); ok {
+func installationFromContext(ctx context.Context) *store.AppInstallation {
+	if v, ok := ctx.Value(installationKey).(*store.AppInstallation); ok {
 		return v
 	}
 	return nil
@@ -55,7 +55,7 @@ func (s *Server) appTokenAuth(next http.Handler) http.Handler {
 		}
 
 		// Look up installation
-		inst, err := s.DB.GetInstallationByToken(token)
+		inst, err := s.Store.GetInstallationByToken(token)
 		if err != nil {
 			slog.Warn("bot api auth: token lookup failed", "err", err)
 			botAPIError(w, "invalid token", http.StatusUnauthorized)
@@ -93,7 +93,7 @@ func (s *Server) appTokenAuth(next http.Handler) http.Handler {
 		// Log the API call
 		traceID := r.Header.Get("X-Trace-Id")
 		duration := time.Since(start)
-		apiLog := &database.AppAPILog{
+		apiLog := &store.AppAPILog{
 			InstallationID: inst.ID,
 			TraceID:        traceID,
 			Method:         r.Method,
@@ -103,7 +103,7 @@ func (s *Server) appTokenAuth(next http.Handler) http.Handler {
 			ResponseBody:   lw.body.String(),
 			DurationMs:     int(duration.Milliseconds()),
 		}
-		if err := s.DB.CreateAPILog(apiLog); err != nil {
+		if err := s.Store.CreateAPILog(apiLog); err != nil {
 			slog.Error("bot api: failed to log api call", "err", err)
 		}
 	})
@@ -142,8 +142,8 @@ func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
 }
 
 // requireScope checks that the app's scopes include the required scope.
-func (s *Server) requireScope(inst *database.AppInstallation, scope string) bool {
-	app, err := s.DB.GetApp(inst.AppID)
+func (s *Server) requireScope(inst *store.AppInstallation, scope string) bool {
+	app, err := s.Store.GetApp(inst.AppID)
 	if err != nil {
 		return false
 	}

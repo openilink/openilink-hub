@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // retryDelays defines the delays between delivery attempts.
@@ -22,7 +22,7 @@ const maxRetries = 3
 // DeliverWithRetry attempts to deliver an event, retrying up to maxRetries times.
 // The first attempt is synchronous and returns immediately. If it fails, retries
 // are scheduled in a background goroutine so the caller is not blocked.
-func (d *Dispatcher) DeliverWithRetry(inst *database.AppInstallation, event *Event) *DeliveryResult {
+func (d *Dispatcher) DeliverWithRetry(inst *store.AppInstallation, event *Event) *DeliveryResult {
 	// First attempt (synchronous).
 	result, err := d.DeliverEvent(inst, event)
 	if err == nil {
@@ -43,7 +43,7 @@ func (d *Dispatcher) DeliverWithRetry(inst *database.AppInstallation, event *Eve
 }
 
 // retryInBackground runs retry attempts 1 and 2 with their respective delays.
-func (d *Dispatcher) retryInBackground(inst *database.AppInstallation, event *Event) {
+func (d *Dispatcher) retryInBackground(inst *store.AppInstallation, event *Event) {
 	for attempt := 1; attempt < maxRetries; attempt++ {
 		delay := retryDelays[attempt]
 		slog.Info("retry scheduled",
@@ -70,7 +70,7 @@ func (d *Dispatcher) retryInBackground(inst *database.AppInstallation, event *Ev
 }
 
 // deliverRetryAttempt performs a single retry delivery attempt and logs appropriately.
-func (d *Dispatcher) deliverRetryAttempt(inst *database.AppInstallation, event *Event, attempt int) (*DeliveryResult, error) {
+func (d *Dispatcher) deliverRetryAttempt(inst *store.AppInstallation, event *Event, attempt int) (*DeliveryResult, error) {
 	result, err := d.DeliverEvent(inst, event)
 	if err != nil {
 		// The DeliverEvent call already logged with retryCount=0; update that

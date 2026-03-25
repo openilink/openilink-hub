@@ -1,0 +1,16 @@
+services:
+  postgres-test:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: openilink
+      POSTGRES_PASSWORD: openilink
+      POSTGRES_DB: openilink_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openilink"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "15432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data

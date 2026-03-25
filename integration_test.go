@@ -20,17 +20,17 @@ import (
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
-	"github.com/openilink/openilink-hub/internal/database"
-	"github.com/openilink/openilink-hub/internal/provider"
-	mockProvider "github.com/openilink/openilink-hub/internal/provider/mock"
+	"github.com/openilink/openilink-hub/internal/provider/ilink/mockserver"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
+	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/store/postgres"
 	"github.com/openilink/openilink-hub/internal/storage"
 )
 
 // ==================== Test infrastructure ====================
 
-func testDB(t *testing.T) *database.DB {
+func testDB(t *testing.T) *postgres.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -45,7 +45,7 @@ func testDB(t *testing.T) *database.DB {
 	preDB.Exec("DROP TABLE IF EXISTS schema_version, plugin_installs, plugin_versions, plugins CASCADE")
 	preDB.Close()
 
-	db, err := database.Open(dsn)
+	db, err := postgres.Open(dsn)
 	if err != nil {
 		t.Skipf("skip: database unavailable: %v", err)
 	}
@@ -57,7 +57,7 @@ func testDB(t *testing.T) *database.DB {
 
 type testEnv struct {
 	t      *testing.T
-	db     *database.DB
+	db     store.Store
 	srv    *httptest.Server
 	client *http.Client
 	mgr    *bot.Manager
@@ -77,7 +77,7 @@ func setup(t *testing.T) *testEnv {
 	}
 
 	server := &api.Server{
-		DB:           db,
+		Store:        db,
 		SessionStore: auth.NewSessionStore(),
 		Config:       cfg,
 		OAuthStates:  api.SetupOAuth(cfg),
@@ -86,8 +86,8 @@ func setup(t *testing.T) *testEnv {
 	hub := relay.NewHub(server.SetupUpstreamHandler())
 	sinks := []sink.Sink{
 		&sink.WS{Hub: hub},
-		&sink.AI{DB: db},
-		&sink.Webhook{DB: db},
+		&sink.AI{Store: db},
+		&sink.Webhook{Store: db},
 	}
 	mgr := bot.NewManager(db, hub, sinks, nil, "http://localhost")
 	server.BotManager = mgr
@@ -217,10 +217,10 @@ func (e *testEnv) userID() string {
 }
 
 // createBotForUser creates a mock bot owned by the current user.
-func (e *testEnv) createBotForUser(name string) *database.Bot {
+func (e *testEnv) createBotForUser(name string) *store.Bot {
 	e.t.Helper()
 	uid := e.userID()
-	b, err := e.db.CreateBot(uid, name, "mock", "", mockProvider.Credentials())
+	b, err := e.db.CreateBot(uid, name, "mock", "", mockserver.MockCredentials())
 	if err != nil {
 		e.t.Fatalf("createBot: %v", err)
 	}
@@ -671,7 +671,7 @@ func TestMessages(t *testing.T) {
 	// Save some messages
 	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": "hello"}})
 	for i := 0; i < 3; i++ {
-		env.db.SaveMessage(&database.Message{
+		env.db.SaveMessage(&store.Message{
 			BotID: botObj.ID, Direction: "inbound", FromUserID: "user@wechat",
 			MessageType: 1, ItemList: itemList,
 		})
@@ -734,7 +734,7 @@ func TestBotContacts(t *testing.T) {
 	// Save inbound messages from different senders
 	contactItems, _ := json.Marshal([]map[string]any{{"type": "text", "text": "hi"}})
 	for _, sender := range []string{"alice@wechat", "bob@wechat", "alice@wechat"} {
-		env.db.SaveMessage(&database.Message{
+		env.db.SaveMessage(&store.Message{
 			BotID: botObj.ID, Direction: "inbound", FromUserID: sender,
 			MessageType: 1, ItemList: contactItems,
 		})
@@ -784,7 +784,7 @@ func TestBotSend(t *testing.T) {
 
 	// Verify mock provider received it
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	sent := inst.Provider.(*mockProvider.Provider).SentMessages()
+	sent := inst.Provider.(*mockserver.Provider).Engine().SentMessages()
 	if len(sent) != 1 || sent[0].Text != "hello from api" {
 		t.Errorf("sent = %+v", sent)
 	}
@@ -830,8 +830,8 @@ func TestBotSendMedia(t *testing.T) {
 
 	// Verify mock provider received media
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	sent := inst.Provider.(*mockProvider.Provider).SentMessages()
-	var mediaSent *provider.OutboundMessage
+	sent := inst.Provider.(*mockserver.Provider).Engine().SentMessages()
+	var mediaSent *mockserver.SentMessage
 	for i := range sent {
 		if sent[i].FileName != "" {
 			mediaSent = &sent[i]
@@ -844,8 +844,8 @@ func TestBotSendMedia(t *testing.T) {
 	if mediaSent.FileName != "test.jpg" {
 		t.Errorf("filename = %q, want test.jpg", mediaSent.FileName)
 	}
-	if string(mediaSent.Data) != "fake-jpeg-data" {
-		t.Errorf("data = %q", string(mediaSent.Data))
+	if string(mediaSent.MediaData) != "fake-jpeg-data" {
+		t.Errorf("data = %q", string(mediaSent.MediaData))
 	}
 	if mediaSent.Text != "看看这张图" {
 		t.Errorf("text = %q, want caption", mediaSent.Text)
@@ -885,8 +885,8 @@ func TestChannelSendMedia(t *testing.T) {
 	assertCode(t, "channel send media", resp.StatusCode, 200)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	sent := inst.Provider.(*mockProvider.Provider).SentMessages()
-	var fileSent *provider.OutboundMessage
+	sent := inst.Provider.(*mockserver.Provider).Engine().SentMessages()
+	var fileSent *mockserver.SentMessage
 	for i := range sent {
 		if sent[i].FileName != "" {
 			fileSent = &sent[i]
@@ -1131,7 +1131,7 @@ func TestWebSocketSendText(t *testing.T) {
 
 	// Verify mock provider received
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	sent := inst.Provider.(*mockProvider.Provider).SentMessages()
+	sent := inst.Provider.(*mockserver.Provider).Engine().SentMessages()
 	if len(sent) != 1 || sent[0].Text != "hello via ws" {
 		t.Errorf("sent = %+v", sent)
 	}
@@ -1162,12 +1162,12 @@ func TestMentionRouting(t *testing.T) {
 	readWS(t, wsAll)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
 	// @support → ch1 (handle match) + chAll (no handle, receives all)
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "1", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "@support help"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "@support help",
 	})
 	if readWSTimeout(t, ws1, 2*time.Second) == nil {
 		t.Error("ch1 should receive @support")
@@ -1185,9 +1185,9 @@ func TestMentionRouting(t *testing.T) {
 	defer wsAll.Close()
 	readWS(t, wsAll)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "2", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "普通消息"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "普通消息",
 	})
 	if readWSTimeout(t, ws1, 300*time.Millisecond) != nil {
 		t.Error("ch1 (has handle) should NOT receive non-mention")
@@ -1213,9 +1213,9 @@ func TestMentionRouting(t *testing.T) {
 	drainWS(t, ws2)
 	drainWS(t, wsAll)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "3", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "@nobody test"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "@nobody test",
 	})
 	if readWSTimeout(t, ws1, 300*time.Millisecond) != nil {
 		t.Error("ch1 should NOT receive @nobody")
@@ -1254,11 +1254,11 @@ func TestInboundStoredGlobally(t *testing.T) {
 	readWS(t, ws) // init
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "100", Sender: "alice@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "hello"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "alice@wx",
+		Text:   "hello",
 	})
 	readWSTimeout(t, ws, 2*time.Second)
 
@@ -1290,16 +1290,16 @@ func TestInboundNoMatchStoredWithoutChannelID(t *testing.T) {
 	env.mgr.StartBot(context.Background(), botObj)
 
 	// Channel with user filter that won't match
-	filter := &database.FilterRule{UserIDs: []string{"specific@wx"}}
+	filter := &store.FilterRule{UserIDs: []string{"specific@wx"}}
 	env.db.CreateChannel(botObj.ID, "Filtered", "", filter, nil)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
 	// Send from non-matching user
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "200", Sender: "other@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "hello"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "other@wx",
+		Text:   "hello",
 	})
 
 	time.Sleep(100 * time.Millisecond)
@@ -1334,11 +1334,11 @@ func TestRawMessageStored(t *testing.T) {
 	readWS(t, ws)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "raw-1", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "hello raw"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "hello raw",
 	})
 	readWSTimeout(t, ws, 2*time.Second)
 
@@ -1355,10 +1355,7 @@ func TestRawMessageStored(t *testing.T) {
 	var raw map[string]any
 	json.Unmarshal(*msg.Raw, &raw)
 
-	// Mock sets _mock: true
-	if raw["_mock"] != true {
-		t.Errorf("raw._mock = %v, want true", raw["_mock"])
-	}
+	// Mockserver serializes the WeixinMessage as raw
 	if raw["from_user_id"] != "u@wx" {
 		t.Errorf("raw.from_user_id = %v", raw["from_user_id"])
 	}
@@ -1382,14 +1379,12 @@ func TestRawMessageWithCustomData(t *testing.T) {
 	env.mgr.StartBot(context.Background(), botObj)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	// Send with explicit raw (simulating real iLink response)
-	customRaw := json.RawMessage(`{"message_id":12345,"item_list":[{"type":3,"voice_item":{"encode_type":6,"sample_rate":24000}}],"_server":"ilink"}`)
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "raw-2", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "voice", Text: "你好"}},
-		Raw:   customRaw,
+	// Send a voice message via mockserver
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Items:  []mockserver.ItemRequest{{Type: "voice"}},
 	})
 
 	time.Sleep(200 * time.Millisecond)
@@ -1405,19 +1400,24 @@ func TestRawMessageWithCustomData(t *testing.T) {
 	var raw map[string]any
 	json.Unmarshal(*msgs[0].Raw, &raw)
 
-	// Should preserve the custom raw, not auto-generate
-	if raw["_server"] != "ilink" {
-		t.Errorf("raw._server = %v, want ilink", raw["_server"])
+	// Raw is auto-generated from the WeixinMessage
+	if raw["from_user_id"] != "u@wx" {
+		t.Errorf("raw.from_user_id = %v, want u@wx", raw["from_user_id"])
 	}
-	if raw["message_id"] != float64(12345) {
-		t.Errorf("raw.message_id = %v", raw["message_id"])
+	// message_id should be a positive number (auto-assigned by engine)
+	if raw["message_id"] == nil || raw["message_id"] == float64(0) {
+		t.Errorf("raw.message_id = %v, want >0", raw["message_id"])
 	}
 
-	// Verify voice encode_type is preserved in raw
+	// Verify item_list contains the voice item
 	items := raw["item_list"].([]any)
-	voice := items[0].(map[string]any)["voice_item"].(map[string]any)
-	if voice["encode_type"] != float64(6) {
-		t.Errorf("encode_type = %v, want 6", voice["encode_type"])
+	if len(items) == 0 {
+		t.Fatal("raw.item_list is empty")
+	}
+	firstItem := items[0].(map[string]any)
+	// ilink.ItemVoice = 3
+	if firstItem["type"] != float64(3) {
+		t.Errorf("raw item type = %v, want 3 (voice)", firstItem["type"])
 	}
 }
 
@@ -1441,11 +1441,11 @@ func TestMentionRoutesFirstOnly(t *testing.T) {
 	readWS(t, ws2)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "300", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "@support help"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "@support help",
 	})
 
 	// Only first channel receives
@@ -1482,30 +1482,30 @@ func TestChannelContextFullIsolation(t *testing.T) {
 	readWS(t, ws2)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
 	// @support → ch1
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "400", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "@support help me"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "@support help me",
 	})
 	readWSTimeout(t, ws1, 2*time.Second)
 
 	// @sales → ch2
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "401", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "@sales price?"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "@sales price?",
 	})
 	readWSTimeout(t, ws2, 2*time.Second)
 
 	// Add outbound (stored globally, no channel_id)
 	r1Items, _ := json.Marshal([]map[string]any{{"type": "text", "text": "support reply"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "outbound",
 		ToUserID: "u@wx", MessageType: 2, ItemList: r1Items,
 	})
 	r2Items, _ := json.Marshal([]map[string]any{{"type": "text", "text": "sales reply"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "outbound",
 		ToUserID: "u@wx", MessageType: 2, ItemList: r2Items,
 	})
@@ -1579,7 +1579,7 @@ func TestChannelHTTPMessages(t *testing.T) {
 
 	paginationItems, _ := json.Marshal([]map[string]any{{"type": "text", "text": "hello"}})
 	for i := 0; i < 5; i++ {
-		env.db.SaveMessage(&database.Message{
+		env.db.SaveMessage(&store.Message{
 			BotID: botObj.ID, Direction: "inbound", FromUserID: "u@wx",
 			MessageType: 1, ItemList: paginationItems,
 		})
@@ -1642,7 +1642,7 @@ func TestChannelHTTPSend(t *testing.T) {
 
 	// Verify mock provider received
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	sent := inst.Provider.(*mockProvider.Provider).SentMessages()
+	sent := inst.Provider.(*mockserver.Provider).Engine().SentMessages()
 	if len(sent) != 1 || sent[0].Text != "hello via http" {
 		t.Errorf("sent = %+v", sent)
 	}
@@ -1718,14 +1718,14 @@ func TestWebhookDelivery(t *testing.T) {
 	// Create channel with webhook
 	ch, _ := env.db.CreateChannel(botObj.ID, "HookChan", "", nil, nil)
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Auth: &database.WebhookAuth{Type: "bearer", Token: "test-token"}}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Auth: &store.WebhookAuth{Type: "bearer", Token: "test-token"}}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "500", Sender: "hook@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "webhook test"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "hook@wx",
+		Text:   "webhook test",
 	})
 
 	// Wait for async webhook delivery
@@ -1773,14 +1773,14 @@ func TestWebhookHMACSignature(t *testing.T) {
 
 	ch, _ := env.db.CreateChannel(botObj.ID, "HmacChan", "", nil, nil)
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Auth: &database.WebhookAuth{Type: "hmac", Secret: "my-secret"}}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Auth: &store.WebhookAuth{Type: "hmac", Secret: "my-secret"}}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "600", Sender: "hmac@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "signed"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "hmac@wx",
+		Text:   "signed",
 	})
 
 	time.Sleep(500 * time.Millisecond)
@@ -1822,14 +1822,14 @@ function onRequest(ctx) {
 }
 `
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "800", Sender: "alice@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "script test"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "alice@wx",
+		Text:   "script test",
 	})
 
 	time.Sleep(500 * time.Millisecond)
@@ -1872,15 +1872,15 @@ function onRequest(ctx) {
 }
 `
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
 	// Text message → should deliver
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "900", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "hello"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "hello",
 	})
 	time.Sleep(300 * time.Millisecond)
 	if !received {
@@ -1889,9 +1889,9 @@ function onRequest(ctx) {
 
 	// Image message → script returns null, should skip
 	received = false
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "901", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "image"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Items:  []mockserver.ItemRequest{{Type: "image"}},
 	})
 	time.Sleep(300 * time.Millisecond)
 	if received {
@@ -1922,20 +1922,20 @@ function onResponse(ctx) {
 }
 `
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "850", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "question"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "question",
 	})
 
 	time.Sleep(500 * time.Millisecond)
 
 	// Verify bot sent reply "42" back to user
-	sent := mock.SentMessages()
+	sent := mock.Engine().SentMessages()
 	found := false
 	for _, m := range sent {
 		if m.Text == "42" {
@@ -1977,19 +1977,19 @@ func TestWebhookAutoReplyWithoutScript(t *testing.T) {
 	ch, _ := env.db.CreateChannel(botObj.ID, "AutoChan", "", nil, nil)
 	// No script — auto-reply from {"reply": "..."} in response
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL}, true)
+		&store.WebhookConfig{URL: hookSrv.URL}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "860", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "hi"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "hi",
 	})
 
 	time.Sleep(500 * time.Millisecond)
 
-	sent := mock.SentMessages()
+	sent := mock.Engine().SentMessages()
 	found := false
 	for _, m := range sent {
 		if m.Text == "auto-reply" {
@@ -2016,11 +2016,11 @@ func TestWebhookNotTriggeredWithoutURL(t *testing.T) {
 	readWS(t, ws)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
+	mock := inst.Provider.(*mockserver.Provider)
 
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "700", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "no hook"}},
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "no hook",
 	})
 
 	// WS should still receive
@@ -2044,24 +2044,24 @@ func TestAIContextIsolation(t *testing.T) {
 
 	// Inbound stored globally (no channel_id)
 	items1, _ := json.Marshal([]map[string]any{{"type": "text", "text": "help me"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "inbound",
 		FromUserID: sender, MessageType: 1, ItemList: items1,
 	})
 	items2, _ := json.Marshal([]map[string]any{{"type": "text", "text": "price?"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "inbound",
 		FromUserID: sender, MessageType: 1, ItemList: items2,
 	})
 
 	// Outbound replies (stored globally, no channel_id)
 	reply1, _ := json.Marshal([]map[string]any{{"type": "text", "text": "support reply"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "outbound",
 		ToUserID: sender, MessageType: 2, ItemList: reply1,
 	})
 	reply2, _ := json.Marshal([]map[string]any{{"type": "text", "text": "sales reply"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "outbound",
 		ToUserID: sender, MessageType: 2, ItemList: reply2,
 	})
@@ -2093,7 +2093,7 @@ func TestAIContextIsolation(t *testing.T) {
 
 func TestMediaStorageAndProxy(t *testing.T) {
 	// Requires MinIO running on localhost:19000
-	store, err := storage.New(storage.Config{
+	objStore, err := storage.New(storage.Config{
 		Endpoint:  "localhost:19000",
 		AccessKey: "openilink",
 		SecretKey: "openilink",
@@ -2108,12 +2108,12 @@ func TestMediaStorageAndProxy(t *testing.T) {
 	db := testDB(t)
 	cfg := &config.Config{RPOrigin: "http://localhost", RPID: "localhost", RPName: "Test", Secret: "test"}
 	server := &api.Server{
-		DB: db, SessionStore: auth.NewSessionStore(), Config: cfg,
-		OAuthStates: api.SetupOAuth(cfg), Store: store,
+		Store: db, SessionStore: auth.NewSessionStore(), Config: cfg,
+		OAuthStates: api.SetupOAuth(cfg), ObjectStore: objStore,
 	}
 	hub := relay.NewHub(server.SetupUpstreamHandler())
-	sinks := []sink.Sink{&sink.WS{Hub: hub}, &sink.AI{DB: db}, &sink.Webhook{DB: db}}
-	mgr := bot.NewManager(db, hub, sinks, store, "http://localhost")
+	sinks := []sink.Sink{&sink.WS{Hub: hub}, &sink.AI{Store: db}, &sink.Webhook{Store: db}}
+	mgr := bot.NewManager(db, hub, sinks, objStore, "http://localhost")
 	server.BotManager = mgr
 	server.Hub = hub
 	ts := httptest.NewServer(server.Handler())
@@ -2139,24 +2139,18 @@ func TestMediaStorageAndProxy(t *testing.T) {
 	userID := me["id"].(string)
 
 	// Create bot
-	botObj, _ := db.CreateBot(userID, "MediaBot", "mock", "", mockProvider.Credentials())
+	botObj, _ := db.CreateBot(userID, "MediaBot", "mock", "", mockserver.MockCredentials())
 	mgr.StartBot(context.Background(), botObj)
 	ch, _ := db.CreateChannel(botObj.ID, "MediaChan", "", nil, nil)
 
 	// Simulate inbound with image media
 	inst, _ := mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "img-1",
-		Sender:     "u@wx",
-		Timestamp:  time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{
+	mock := inst.Provider.(*mockserver.Provider)
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Items: []mockserver.ItemRequest{{
 			Type: "image",
-			Media: &provider.Media{
-				EncryptQueryParam: "test-eqp",
-				AESKey:            "test-aes",
-				MediaType:         "image",
-			},
+			Data: []byte("mock-media-data"),
 		}},
 	})
 
@@ -2246,7 +2240,7 @@ func TestWebhookPluginFullLifecycle(t *testing.T) {
 	defer env.close()
 
 	env.register("plugadmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'plugadmin'")
+	u, _ := env.db.GetUserByUsername("plugadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginScript := `// @name 测试通知
 // @author testauthor
@@ -2323,20 +2317,20 @@ function onResponse(ctx) {
 	env.mgr.StartBot(context.Background(), botObj)
 	ch, _ := env.db.CreateChannel(botObj.ID, "PlugChan", "", nil, nil)
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, VersionID: versionID}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, VersionID: versionID}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "plug-1", Sender: "alice@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "hello"}},
+	mock := inst.Provider.(*mockserver.Provider)
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "alice@wx",
+		Text:   "hello",
 	})
 	time.Sleep(500 * time.Millisecond)
 
 	if len(received) != 1 {
 		t.Fatalf("webhook: want 1, got %d", len(received))
 	}
-	sent := mock.SentMessages()
+	sent := mock.Engine().SentMessages()
 	replyFound := false
 	for _, m := range sent {
 		if m.Text == "auto-reply" { replyFound = true }
@@ -2351,7 +2345,7 @@ func TestWebhookPluginRejectWithReason(t *testing.T) {
 	defer env.close()
 
 	env.register("rejectadmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'rejectadmin'")
+	u, _ := env.db.GetUserByUsername("rejectadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginID, versionID := env.submitPlugin("// @name BadPlugin\nfunction onRequest(ctx) {}")
 
@@ -2424,7 +2418,7 @@ func TestWebhookPluginDeleteByAdmin(t *testing.T) {
 	defer env.close()
 
 	env.register("deladmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'deladmin'")
+	u, _ := env.db.GetUserByUsername("deladmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginID, _ := env.submitPlugin("// @name DeleteMe\nfunction onRequest(ctx) {}")
 
@@ -2442,7 +2436,7 @@ func TestWebhookPluginVersionHistory(t *testing.T) {
 	defer env.close()
 
 	env.register("veradmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'veradmin'")
+	u, _ := env.db.GetUserByUsername("veradmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	// Submit v1
 	pluginID, v1ID := env.submitPlugin("// @name VersionedPlugin\n// @version 1.0.0\nfunction onRequest(ctx) {}")
@@ -2485,7 +2479,7 @@ func TestWebhookPluginResubmitSupersedesPending(t *testing.T) {
 	}
 
 	// v1 should be superseded, v2 should be pending
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'resubuser'")
+	u, _ := env.db.GetUserByUsername("resubuser"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 	code, versions := env.getList("/api/webhook-plugins/" + pluginID + "/versions")
 	assertCode(t, "versions", code, 200)
 	if len(versions) != 2 {
@@ -2527,7 +2521,7 @@ func TestWebhookPluginInstallToChannel(t *testing.T) {
 	defer env.close()
 
 	env.register("chtadmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'chtadmin'")
+	u, _ := env.db.GetUserByUsername("chtadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginID, versionID := env.submitPlugin(`// @name ChanPlugin
 // @version 1.0.0
@@ -2551,7 +2545,7 @@ function onRequest(ctx) {
 	defer hookSrv.Close()
 
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL}, true)
+		&store.WebhookConfig{URL: hookSrv.URL}, true)
 
 	code, _ := env.postCode("/api/webhook-plugins/"+pluginID+"/install-to-channel", map[string]string{
 		"bot_id": botObj.ID, "channel_id": ch.ID,
@@ -2565,10 +2559,10 @@ function onRequest(ctx) {
 	}
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
-	mock := inst.Provider.(*mockProvider.Provider)
-	mock.SimulateInbound(provider.InboundMessage{
-		ExternalID: "ch-1", Sender: "u@wx", Timestamp: time.Now().UnixMilli(),
-		Items: []provider.MessageItem{{Type: "text", Text: "test"}},
+	mock := inst.Provider.(*mockserver.Provider)
+	mock.Engine().InjectInbound(mockserver.InboundRequest{
+		Sender: "u@wx",
+		Text:   "test",
 	})
 	time.Sleep(500 * time.Millisecond)
 
@@ -2585,7 +2579,7 @@ func TestWebhookPluginInstallCountTracksUsers(t *testing.T) {
 	defer env.close()
 
 	env.register("countadmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'countadmin'")
+	u, _ := env.db.GetUserByUsername("countadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginID, versionID := env.submitPlugin("// @name CountPlugin\nfunction onRequest(ctx) {}")
 	env.approveVersion(versionID)

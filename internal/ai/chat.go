@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 const defaultBaseURL = "https://api.openai.com/v1"
@@ -39,7 +39,7 @@ type chatResponse struct {
 
 // Complete calls the OpenAI-compatible chat completion API.
 // It builds context from recent message history for the given sender.
-func Complete(ctx context.Context, cfg database.AIConfig, db *database.DB, channelID, sender, text string) (string, error) {
+func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, channelID, sender, text string) (string, error) {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
@@ -61,7 +61,7 @@ func Complete(ctx context.Context, cfg database.AIConfig, db *database.DB, chann
 	}
 
 	// Load recent history scoped to this channel
-	history, _ := db.ListChannelMessages(channelID, sender, maxHistory)
+	history, _ := s.ListChannelMessages(channelID, sender, maxHistory)
 	// history is DESC order, reverse it
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]

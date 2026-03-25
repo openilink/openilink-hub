@@ -12,11 +12,11 @@ import (
 	"sync"
 
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
-	"github.com/openilink/openilink-hub/internal/database"
 	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
 	"github.com/openilink/openilink-hub/internal/storage"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 var mentionRe = regexp.MustCompile(`@(\S+)`)
@@ -39,30 +39,30 @@ const maxConcurrentDownloads = 5
 type Manager struct {
 	mu        sync.RWMutex
 	instances map[string]*Instance
-	db        *database.DB
+	store     store.Store
 	hub       *relay.Hub
 	sinks     []sink.Sink
-	store     *storage.Storage    // optional, for media files
+	storage   *storage.Storage    // optional, for media files
 	baseURL   string              // Hub origin for proxy URLs
 	dlSem     chan struct{}        // semaphore for concurrent media downloads
 	appDisp   *appdelivery.Dispatcher // app event delivery
 }
 
-func NewManager(db *database.DB, hub *relay.Hub, sinks []sink.Sink, store *storage.Storage, baseURL string) *Manager {
+func NewManager(s store.Store, hub *relay.Hub, sinks []sink.Sink, st *storage.Storage, baseURL string) *Manager {
 	return &Manager{
 		instances: make(map[string]*Instance),
-		db:        db,
+		store:     s,
 		hub:       hub,
 		sinks:     sinks,
-		store:     store,
+		storage:   st,
 		baseURL:   baseURL,
 		dlSem:     make(chan struct{}, maxConcurrentDownloads),
-		appDisp:   appdelivery.NewDispatcher(db),
+		appDisp:   appdelivery.NewDispatcher(s),
 	}
 }
 
 func (m *Manager) StartAll(ctx context.Context) {
-	bots, err := m.db.GetAllBots()
+	bots, err := m.store.GetAllBots()
 	if err != nil {
 		slog.Error("failed to load bots", "err", err)
 		return
@@ -86,7 +86,7 @@ func (m *Manager) StartAll(ctx context.Context) {
 	go m.reminderLoop(ctx)
 }
 
-func (m *Manager) StartBot(ctx context.Context, bot *database.Bot) error {
+func (m *Manager) StartBot(ctx context.Context, bot *store.Bot) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if old, ok := m.instances[bot.ID]; ok {
@@ -109,13 +109,13 @@ func (m *Manager) StartBot(ctx context.Context, bot *database.Bot) error {
 			m.onInbound(inst, msg)
 		},
 		OnStatus: func(status string) {
-			if err := m.db.UpdateBotStatus(bot.ID, status); err != nil {
+			if err := m.store.UpdateBotStatus(bot.ID, status); err != nil {
 				slog.Error("update bot status failed", "bot", bot.ID, "status", status, "err", err)
 			}
 			m.onStatusChange(inst, status)
 		},
 		OnSyncUpdate: func(state json.RawMessage) {
-			if err := m.db.UpdateBotSyncState(bot.ID, state); err != nil {
+			if err := m.store.UpdateBotSyncState(bot.ID, state); err != nil {
 				slog.Error("update sync state failed", "bot", bot.ID, "err", err)
 			}
 		},
@@ -173,7 +173,7 @@ func (m *Manager) reminderLoop(ctx context.Context) {
 }
 
 func (m *Manager) checkReminders() {
-	bots, err := m.db.GetBotsNeedingReminder()
+	bots, err := m.store.GetBotsNeedingReminder()
 	if err != nil {
 		slog.Error("reminder check failed", "err", err)
 		return
@@ -188,7 +188,7 @@ func (m *Manager) checkReminders() {
 		remaining := 24 - hours
 		text := fmt.Sprintf("[系统提醒] 您的 Bot 已超过 %d 小时未收到消息，距离会话过期还有约 %d 小时。请回复 OK 以保持会话活跃。", hours, remaining)
 
-		token := m.db.GetLatestContextToken(bot.ID)
+		token := m.store.GetLatestContextToken(bot.ID)
 		_, err := inst.Send(context.Background(), provider.OutboundMessage{
 			Text:         text,
 			ContextToken: token,
@@ -198,7 +198,7 @@ func (m *Manager) checkReminders() {
 			continue
 		}
 
-		if err := m.db.MarkBotReminded(bot.ID); err != nil {
+		if err := m.store.MarkBotReminded(bot.ID); err != nil {
 			slog.Error("mark reminded failed", "bot", bot.ID, "err", err)
 		}
 		slog.Info("reminder sent", "bot", bot.ID, "hours", hours)
@@ -207,7 +207,7 @@ func (m *Manager) checkReminders() {
 
 // RetryMediaDownload retries downloading media for a failed message.
 func (m *Manager) RetryMediaDownload(msgID int64) error {
-	msg, err := m.db.GetMessage(msgID)
+	msg, err := m.store.GetMessage(msgID)
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func (m *Manager) RetryMediaDownload(msgID int64) error {
 	}
 
 	// Mark as downloading
-	m.db.Exec("UPDATE messages SET media_status = 'downloading' WHERE id = $1", msgID)
+	m.store.UpdateMediaStatusByID(msgID, "downloading", nil)
 
 	slog.Info("media retry start", "msgID", msgID)
 
@@ -242,7 +242,7 @@ func (m *Manager) RetryMediaDownload(msgID int64) error {
 		defer func() {
 			if r := recover(); r != nil {
 				slog.Error("media retry panic", "msgID", msgID, "err", r)
-				m.db.Exec("UPDATE messages SET media_status = 'failed' WHERE id = $1", msgID)
+				m.store.UpdateMediaStatusByID(msgID, "failed", nil)
 			}
 		}()
 
@@ -263,8 +263,7 @@ func (m *Manager) RetryMediaDownload(msgID int64) error {
 			status = "ready"
 		}
 		keysJSON, _ := json.Marshal(keys)
-		m.db.Exec("UPDATE messages SET media_status = $1, media_keys = $2 WHERE id = $3",
-			status, keysJSON, msgID)
+		m.store.UpdateMediaStatusByID(msgID, status, keysJSON)
 		slog.Info("media retry done", "msgID", msgID, "status", status)
 	}()
 	return nil
@@ -306,15 +305,15 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 	msgID := result.ID
 
 	// Create OTel-style tracer for this message
-	tracer := database.NewTracer(m.db, inst.DBID)
-	rootSpan := tracer.Start("process_message", database.SpanKindInternal, map[string]any{
+	tracer := store.NewTracer(m.store, inst.DBID)
+	rootSpan := tracer.Start("process_message", store.SpanKindInternal, map[string]any{
 		"message.sender":  msg.Sender,
 		"message.content": parsed.content,
 		"message.type":    parsed.msgType,
 		"message.id":      msg.ExternalID,
 	})
 
-	storeSpan := tracer.StartChild(rootSpan, "store", database.SpanKindInternal, map[string]any{
+	storeSpan := tracer.StartChild(rootSpan, "store", store.SpanKindInternal, map[string]any{
 		"message.db_id": msgID,
 	})
 	storeSpan.End()
@@ -332,7 +331,7 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 		for i, ch := range matched {
 			names[i] = ch.Name
 		}
-		matchSpan := tracer.StartChild(rootSpan, "match_channel", database.SpanKindInternal, map[string]any{
+		matchSpan := tracer.StartChild(rootSpan, "match_channel", store.SpanKindInternal, map[string]any{
 			"match.count":    len(matched),
 			"match.channels": strings.Join(names, ", "),
 		})
@@ -352,7 +351,7 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 	typingDone()
 
 	// Phase 5: Mark as fully processed
-	if err := m.db.MarkProcessed(msgID); err != nil {
+	if err := m.store.MarkProcessed(msgID); err != nil {
 		slog.Error("mark processed failed", "bot", inst.DBID, "msg", msgID, "err", err)
 	}
 
@@ -404,8 +403,8 @@ func (m *Manager) parseMessage(msg provider.InboundMessage) parsedMessage {
 	}
 }
 
-// buildDBMessage creates a database.Message from provider message, mirroring WeChat structure.
-func (m *Manager) buildDBMessage(botDBID string, channelID *string, msg provider.InboundMessage, p parsedMessage) *database.Message {
+// buildDBMessage creates a store.Message from provider message, mirroring WeChat structure.
+func (m *Manager) buildDBMessage(botDBID string, channelID *string, msg provider.InboundMessage, p parsedMessage) *store.Message {
 	var raw *json.RawMessage
 	if msg.Raw != nil {
 		r := json.RawMessage(msg.Raw)
@@ -426,7 +425,7 @@ func (m *Manager) buildDBMessage(botDBID string, channelID *string, msg provider
 		mediaStatus = "downloading"
 	}
 
-	return &database.Message{
+	return &store.Message{
 		BotID:        botDBID,
 		ChannelID:    channelID,
 		Direction:    "inbound",
@@ -446,11 +445,11 @@ func (m *Manager) buildDBMessage(botDBID string, channelID *string, msg provider
 
 // storeMessage saves/upserts the message to DB without any channel association.
 // Returns the SaveResult indicating whether it was a new insert or a duplicate update.
-func (m *Manager) storeMessage(inst *Instance, msg provider.InboundMessage, p parsedMessage) database.SaveResult {
+func (m *Manager) storeMessage(inst *Instance, msg provider.InboundMessage, p parsedMessage) store.SaveResult {
 	dbMsg := m.buildDBMessage(inst.DBID, nil, msg, p)
-	result, _ := m.db.SaveMessage(dbMsg)
+	result, _ := m.store.SaveMessage(dbMsg)
 	if result.Inserted {
-		if err := m.db.IncrBotMsgCount(inst.DBID); err != nil {
+		if err := m.store.IncrBotMsgCount(inst.DBID); err != nil {
 			slog.Error("incr msg count failed", "bot", inst.DBID, "err", err)
 		}
 	}
@@ -507,7 +506,7 @@ func (m *Manager) recoverUnprocessed(inst *Instance) {
 		}
 	}()
 
-	msgs, err := m.db.GetUnprocessedMessages(inst.DBID, 100)
+	msgs, err := m.store.GetUnprocessedMessages(inst.DBID, 100)
 	if err != nil {
 		slog.Error("load unprocessed messages failed", "bot", inst.DBID, "err", err)
 		return
@@ -530,8 +529,8 @@ func (m *Manager) recoverUnprocessed(inst *Instance) {
 		matched := m.matchChannels(inst.DBID, msg.Sender, parsed)
 		m.deliverToChannels(inst, msg, parsed, matched, msgs[i].ID)
 
-		tracer := database.NewTracer(m.db, inst.DBID)
-		rootSpan := tracer.Start("recover_message", database.SpanKindInternal, map[string]any{
+		tracer := store.NewTracer(m.store, inst.DBID)
+		rootSpan := tracer.Start("recover_message", store.SpanKindInternal, map[string]any{
 			"message.db_id": msgs[i].ID,
 			"message.id":    msg.ExternalID,
 		})
@@ -539,15 +538,15 @@ func (m *Manager) recoverUnprocessed(inst *Instance) {
 		rootSpan.End()
 		tracer.Flush()
 
-		if err := m.db.MarkProcessed(msgs[i].ID); err != nil {
+		if err := m.store.MarkProcessed(msgs[i].ID); err != nil {
 			slog.Error("mark recovered msg processed failed", "id", msgs[i].ID, "err", err)
 		}
 	}
 	slog.Info("recovery complete", "bot", inst.DBID, "count", len(msgs))
 }
 
-// rebuildInbound reconstructs a provider.InboundMessage from a stored database.Message.
-func rebuildInbound(dbm *database.Message) provider.InboundMessage {
+// rebuildInbound reconstructs a provider.InboundMessage from a stored store.Message.
+func rebuildInbound(dbm *store.Message) provider.InboundMessage {
 	externalID := ""
 	if dbm.MessageID != nil {
 		externalID = fmt.Sprintf("%d", *dbm.MessageID)
@@ -586,7 +585,7 @@ func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msg
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("media download panic", "err", r, "bot", inst.DBID)
-			m.db.UpdateMediaStatus(inst.DBID, "failed", nil)
+			m.store.UpdateMediaStatus(inst.DBID, "failed", nil)
 		}
 	}()
 
@@ -617,21 +616,21 @@ func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msg
 	}
 
 	keysJSON, _ := json.Marshal(keys)
-	if err := m.db.UpdateMediaStatus(inst.DBID, status, keysJSON); err != nil {
+	if err := m.store.UpdateMediaStatus(inst.DBID, status, keysJSON); err != nil {
 		slog.Error("media status update failed", "bot", inst.DBID, "err", err)
 	}
 	slog.Info("media download done", "bot", inst.DBID, "msg", msg.ExternalID, "status", status)
 }
 
 // matchChannels finds channels that should receive this message.
-func (m *Manager) matchChannels(botDBID, sender string, p parsedMessage) []database.Channel {
-	channels, err := m.db.ListChannelsByBot(botDBID)
+func (m *Manager) matchChannels(botDBID, sender string, p parsedMessage) []store.Channel {
+	channels, err := m.store.ListChannelsByBot(botDBID)
 	if err != nil {
 		slog.Error("load channels failed", "bot", botDBID, "err", err)
 		return nil
 	}
 
-	var matched []database.Channel
+	var matched []store.Channel
 	mentioned := parseMentions(p.content)
 	mentionMatched := make(map[string]bool)
 
@@ -655,14 +654,14 @@ func (m *Manager) matchChannels(botDBID, sender string, p parsedMessage) []datab
 
 // deliverToChannels fans out to matched channels' sinks concurrently.
 // Uses the global msgID as seqID — no per-channel message copies.
-func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage, p parsedMessage, matched []database.Channel, msgID int64) {
+func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage, p parsedMessage, matched []store.Channel, msgID int64) {
 	if len(matched) == 0 {
 		return
 	}
 
 	var wg sync.WaitGroup
 	for _, ch := range matched {
-		if err := m.db.UpdateChannelLastSeq(ch.ID, msgID); err != nil {
+		if err := m.store.UpdateChannelLastSeq(ch.ID, msgID); err != nil {
 			slog.Error("update channel last_seq failed", "channel", ch.ID, "err", err)
 		}
 
@@ -716,7 +715,7 @@ func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map
 			continue
 		}
 
-		if m.store != nil {
+		if m.storage != nil {
 			var data []byte
 			var err error
 
@@ -728,7 +727,7 @@ func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map
 					silkKey := fmt.Sprintf("%s/%d/%02d/%02d/%s_%d_raw.silk",
 						inst.DBID, now.Year(), now.Month(), now.Day(),
 						msg.ExternalID, i)
-					if _, err := m.store.Put(ctx, silkKey, "audio/silk", rawSilk); err == nil {
+					if _, err := m.storage.Put(ctx, silkKey, "audio/silk", rawSilk); err == nil {
 						silkKeys[i] = silkKey
 					}
 				}
@@ -746,7 +745,7 @@ func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map
 			key := fmt.Sprintf("%s/%d/%02d/%02d/%s_%d%s",
 				inst.DBID, now.Year(), now.Month(), now.Day(),
 				msg.ExternalID, i, ext)
-			url, err := m.store.Put(ctx, key, ct, data)
+			url, err := m.storage.Put(ctx, key, ct, data)
 			if err != nil {
 				slog.Error("media store failed", "bot", inst.DBID, "key", key, "err", err)
 				continue
@@ -762,7 +761,7 @@ func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map
 					thumbKey := fmt.Sprintf("%s/%d/%02d/%02d/%s_%d_thumb.jpg",
 						inst.DBID, now.Year(), now.Month(), now.Day(),
 						msg.ExternalID, i)
-					if thumbURL, err := m.store.Put(ctx, thumbKey, "image/jpeg", thumbData); err == nil {
+					if thumbURL, err := m.storage.Put(ctx, thumbKey, "image/jpeg", thumbData); err == nil {
 						item.Media.ThumbURL = thumbURL
 					}
 				}
@@ -837,7 +836,7 @@ func mediaContentType(itemType string) string {
 	}
 }
 
-func matchFilter(rule database.FilterRule, sender, text, msgType string) bool {
+func matchFilter(rule store.FilterRule, sender, text, msgType string) bool {
 	if len(rule.UserIDs) > 0 {
 		found := false
 		for _, uid := range rule.UserIDs {

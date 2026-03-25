@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 func encodeCursor(id int64) string {
@@ -27,7 +27,7 @@ func decodeCursor(cursor string) (int64, error) {
 }
 
 // authenticateChannel extracts and validates the channel API key from the request.
-func (s *Server) authenticateChannel(r *http.Request) (*database.Channel, error) {
+func (s *Server) authenticateChannel(r *http.Request) (*store.Channel, error) {
 	key := r.URL.Query().Get("key")
 	if key == "" {
 		key = r.Header.Get("X-API-Key")
@@ -35,7 +35,7 @@ func (s *Server) authenticateChannel(r *http.Request) (*database.Channel, error)
 	if key == "" {
 		return nil, nil
 	}
-	ch, err := s.DB.GetChannelByAPIKey(key)
+	ch, err := s.Store.GetChannelByAPIKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (s *Server) handleChannelMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	msgs, err := s.DB.GetMessagesSince(ch.BotID, afterSeq, limit)
+	msgs, err := s.Store.GetMessagesSince(ch.BotID, afterSeq, limit)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -81,7 +81,7 @@ func (s *Server) handleChannelMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Update last_seq
 	if len(msgs) > 0 {
-		s.DB.UpdateChannelLastSeq(ch.ID, msgs[len(msgs)-1].ID)
+		s.Store.UpdateChannelLastSeq(ch.ID, msgs[len(msgs)-1].ID)
 	}
 
 	// Build response with next_cursor
@@ -112,7 +112,7 @@ func (s *Server) handleChannelSend(w http.ResponseWriter, r *http.Request) {
 
 	inst, ok := s.BotManager.GetInstance(ch.BotID)
 	if !ok {
-		bot, _ := s.DB.GetBot(ch.BotID)
+		bot, _ := s.Store.GetBot(ch.BotID)
 		if bot != nil && bot.Status == "session_expired" {
 			jsonError(w, "session expired", http.StatusConflict)
 		} else {
@@ -135,7 +135,7 @@ func (s *Server) handleChannelSend(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-fill context_token from latest message if not provided
 	if msg.ContextToken == "" {
-		msg.ContextToken = s.DB.GetLatestContextToken(ch.BotID)
+		msg.ContextToken = s.Store.GetLatestContextToken(ch.BotID)
 	}
 
 	clientID, err := inst.Send(context.Background(), msg)
@@ -151,18 +151,18 @@ func (s *Server) handleChannelSend(w http.ResponseWriter, r *http.Request) {
 	itemList, _ := json.Marshal([]map[string]any{{"type": msgType, "text": content}})
 	mediaStatus := ""
 	mediaKeys := json.RawMessage(`{}`)
-	if len(msg.Data) > 0 && s.Store != nil {
+	if len(msg.Data) > 0 && s.ObjectStore != nil {
 		ct := detectContentType(msgType)
 		ext := detectExt(msg.FileName, msgType)
 		key := fmt.Sprintf("%s/%s/out_%d%s", ch.BotID,
 			time.Now().Format("2006/01/02"), time.Now().UnixMilli(), ext)
-		if _, err := s.Store.Put(r.Context(), key, ct, msg.Data); err == nil {
+		if _, err := s.ObjectStore.Put(r.Context(), key, ct, msg.Data); err == nil {
 			mediaStatus = "ready"
 			mediaKeys, _ = json.Marshal(map[string]string{"0": key})
 		}
 	}
 
-	s.DB.SaveMessage(&database.Message{
+	s.Store.SaveMessage(&store.Message{
 		BotID:       ch.BotID,
 		Direction:   "outbound",
 		ToUserID:    msg.Recipient,

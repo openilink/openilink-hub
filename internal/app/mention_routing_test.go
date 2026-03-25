@@ -8,14 +8,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // ==================== Test 5: @handle message routing ====================
 
 func TestMentionRouting_ParseAndMatchHandle(t *testing.T) {
 	store := &mockAppStore{
-		installations: []database.AppInstallation{
+		installations: []store.AppInstallation{
 			{
 				ID: "i1", AppID: "a1", BotID: "b1",
 				Handle: "echo-work", Enabled: true,
@@ -27,7 +27,7 @@ func TestMentionRouting_ParseAndMatchHandle(t *testing.T) {
 				AppRequestURL: "http://family.example.com",
 			},
 		},
-		apps: map[string]*database.App{
+		apps: map[string]*store.App{
 			"a1": {ID: "a1"},
 		},
 	}
@@ -116,7 +116,7 @@ func TestMentionRouting_HandleWithCommand(t *testing.T) {
 
 	// Create dispatcher with mock store and deliver event
 	secret := "echo-secret"
-	inst := &database.AppInstallation{
+	inst := &store.AppInstallation{
 		ID:            "inst-echo-1",
 		AppID:         "app-echo-1",
 		BotID:         "bot-echo-1",
@@ -201,7 +201,7 @@ func TestMentionRouting_HandleWithoutText(t *testing.T) {
 
 func TestMentionRouting_MultipleInstallsSameAppDifferentHandles(t *testing.T) {
 	store := &mockAppStore{
-		installations: []database.AppInstallation{
+		installations: []store.AppInstallation{
 			{
 				ID: "i1", AppID: "a1", BotID: "b1",
 				Handle: "github-work", Enabled: true,
@@ -213,7 +213,7 @@ func TestMentionRouting_MultipleInstallsSameAppDifferentHandles(t *testing.T) {
 				AppRequestURL: "http://personal.example.com",
 			},
 		},
-		apps: map[string]*database.App{
+		apps: map[string]*store.App{
 			"a1": {ID: "a1"},
 		},
 	}
@@ -330,7 +330,7 @@ func TestMentionRouting_FullMentionToEventDelivery(t *testing.T) {
 	defer m.close()
 
 	store := &mockAppStore{
-		installations: []database.AppInstallation{
+		installations: []store.AppInstallation{
 			{
 				ID: "inst-m-1", AppID: "app-m-1", BotID: "bot-m-1",
 				Handle: "echo-work", Enabled: true,
@@ -338,7 +338,7 @@ func TestMentionRouting_FullMentionToEventDelivery(t *testing.T) {
 				AppSigningSecret: secret,
 			},
 		},
-		apps: map[string]*database.App{
+		apps: map[string]*store.App{
 			"app-m-1": {ID: "app-m-1"},
 		},
 	}

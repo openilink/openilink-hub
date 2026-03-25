@@ -4,16 +4,17 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/store/postgres"
 )
 
-func testDB(t *testing.T) *database.DB {
+func testDB(t *testing.T) store.Store {
 	t.Helper()
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		t.Skip("DATABASE_URL not set, skipping integration test")
 	}
-	db, err := database.Open(dsn)
+	db, err := postgres.Open(dsn)
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
@@ -28,7 +29,7 @@ func TestSessionCreateValidateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	t.Cleanup(func() { db.Exec("DELETE FROM users WHERE id = $1", user.ID) })
+	t.Cleanup(func() { db.DeleteUser(user.ID) })
 
 	token, err := CreateSession(db, user.ID)
 	if err != nil {

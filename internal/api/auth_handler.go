@@ -12,7 +12,7 @@ import (
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("session"); err == nil {
-		auth.DeleteSession(s.DB, cookie.Value)
+		auth.DeleteSession(s.Store, cookie.Value)
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: "session", Value: "", Path: "/",
@@ -25,7 +25,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
-	user, err := s.DB.GetUserByID(userID)
+	user, err := s.Store.GetUserByID(userID)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
@@ -44,7 +44,7 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	if err := s.DB.UpdateUserProfile(userID, req.DisplayName, req.Email); err != nil {
+	if err := s.Store.UpdateUserProfile(userID, req.DisplayName, req.Email); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}

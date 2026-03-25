@@ -23,7 +23,7 @@ func (s *Server) handleAppOAuthAuthorize(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	app, err := s.DB.GetApp(appID)
+	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "app not found", http.StatusNotFound)
 		return
@@ -34,7 +34,7 @@ func (s *Server) handleAppOAuthAuthorize(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Verify the user owns the bot
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "bot not found", http.StatusNotFound)
 		return
@@ -45,7 +45,7 @@ func (s *Server) handleAppOAuthAuthorize(w http.ResponseWriter, r *http.Request)
 	_, _ = rand.Read(codeBytes)
 	code := hex.EncodeToString(codeBytes)
 
-	if err := s.DB.CreateOAuthCode(code, appID, botID, state); err != nil {
+	if err := s.Store.CreateOAuthCode(code, appID, botID, state); err != nil {
 		slog.Error("create oauth code failed", "app", appID, "err", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
@@ -71,7 +71,7 @@ func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Verify client_secret
-	app, err := s.DB.GetApp(appID)
+	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "app not found", http.StatusNotFound)
 		return
@@ -82,7 +82,7 @@ func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Exchange code
-	codeAppID, botID, err := s.DB.ExchangeOAuthCode(req.Code)
+	codeAppID, botID, err := s.Store.ExchangeOAuthCode(req.Code)
 	if err != nil {
 		jsonError(w, "invalid or expired code", http.StatusBadRequest)
 		return
@@ -93,10 +93,10 @@ func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Create or get existing installation
-	inst, err := s.DB.InstallApp(appID, botID)
+	inst, err := s.Store.InstallApp(appID, botID)
 	if err != nil {
 		// Might already exist — try to find it
-		installations, _ := s.DB.ListInstallationsByApp(appID)
+		installations, _ := s.Store.ListInstallationsByApp(appID)
 		for _, i := range installations {
 			if i.BotID == botID {
 				inst = &i
@@ -131,7 +131,7 @@ func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	app, err := s.DB.GetApp(appID)
+	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "app not found", http.StatusNotFound)
 		return
@@ -142,7 +142,7 @@ func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Verify user owns the bot
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "bot not found", http.StatusNotFound)
 		return
