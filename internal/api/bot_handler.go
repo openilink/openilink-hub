@@ -317,8 +317,8 @@ func (s *Server) handleUpdateBot(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ReminderHours != nil {
 		hours := *req.ReminderHours
-		if hours < 0 || hours > 23 {
-			jsonError(w, "reminder_hours must be 0-23", http.StatusBadRequest)
+		if hours != 0 && hours != 22 && hours != 23 {
+			jsonError(w, "reminder_hours must be 0, 22 or 23", http.StatusBadRequest)
 			return
 		}
 		if err := s.DB.UpdateBotReminder(botID, hours); err != nil {
