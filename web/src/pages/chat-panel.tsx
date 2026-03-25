@@ -48,23 +48,40 @@ interface ChatPanelProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function ChatPanel({ botId, canSend = true, sendDisabledReason, open, onOpenChange }: ChatPanelProps) {
+export function ChatPanel({ botId, canSend: initialCanSend = true, sendDisabledReason: initialReason, open, onOpenChange }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState("");
+  const [canSend, setCanSend] = useState(initialCanSend);
+  const [sendDisabledReason, setSendDisabledReason] = useState(initialReason);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const fetchMessages = async () => {
+  // Sync initial props
+  useEffect(() => {
+    setCanSend(initialCanSend);
+    setSendDisabledReason(initialReason);
+  }, [initialCanSend, initialReason]);
+
+  const fetchData = async () => {
     try {
-      const res = await api.messages(botId, 30);
-      setMessages((res.messages || []).reverse());
+      const [msgRes, bots] = await Promise.all([
+        api.messages(botId, 30),
+        api.listBots(),
+      ]);
+      setMessages((msgRes.messages || []).reverse());
+      // Refresh send status from bot list
+      const bot = (bots || []).find((b: any) => b.id === botId);
+      if (bot) {
+        setCanSend(bot.can_send ?? true);
+        setSendDisabledReason(bot.send_disabled_reason);
+      }
     } catch {}
   };
 
   useEffect(() => {
     if (!open) return;
-    fetchMessages();
-    const t = setInterval(fetchMessages, 5000);
+    fetchData();
+    const t = setInterval(fetchData, 5000);
     return () => clearInterval(t);
   }, [botId, open]);
 
@@ -81,7 +98,7 @@ export function ChatPanel({ botId, canSend = true, sendDisabledReason, open, onO
     setInput("");
     try {
       await api.sendMessage(botId, { text });
-      fetchMessages();
+      fetchData();
     } catch (err: any) {
       setSendError(err?.message || "发送失败");
       setInput(text); // restore input on error

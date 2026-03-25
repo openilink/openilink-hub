@@ -114,11 +114,17 @@ func (db *DB) FindBotByCredential(key, value string) (*Bot, error) {
 }
 
 // UpdateBotCredentials updates credentials, provider_id, and resets status to connected.
+// Also clears old context_tokens since they become invalid after rebind.
 func (db *DB) UpdateBotCredentials(id, providerID string, credentials json.RawMessage) error {
 	_, err := db.Exec(
 		"UPDATE bots SET credentials = $1, provider_id = $2, status = 'connected', sync_state = '{}', updated_at = NOW() WHERE id = $3",
 		credentials, providerID, id)
-	return err
+	if err != nil {
+		return err
+	}
+	// Invalidate old context_tokens — they belong to the previous session
+	db.Exec("UPDATE messages SET context_token = '' WHERE bot_id = $1 AND context_token != ''", id)
+	return nil
 }
 
 func (db *DB) UpdateBotName(id, name string) error {
