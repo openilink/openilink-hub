@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
 
       # --- Frontend ---
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: latest
       - uses: actions/setup-node@v4
@@ -41,7 +41,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: >-

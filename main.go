@@ -140,7 +140,7 @@ func main() {
 		httpSrv.Shutdown(shutCtx)
 	}()
 
-	fmt.Printf("OpeniLink Hub %s (%s) running on http://localhost%s\n", version, commit, cfg.ListenAddr)
+	fmt.Printf("OpeniLink Hub %s (%s, %s) running on http://localhost%s\n", version, commit, date, cfg.ListenAddr)
 	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
 		slog.Error("server error", "err", err)
 		os.Exit(1)
