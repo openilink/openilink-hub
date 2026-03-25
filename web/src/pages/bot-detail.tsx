@@ -63,7 +63,18 @@ export function BotDetailPage() {
     }
   }, [id, toast]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    // Poll bot status every 10s to keep can_send/status fresh
+    const t = setInterval(async () => {
+      try {
+        const bots = await api.listBots();
+        const target = (bots || []).find((b: any) => b.id === id);
+        if (target) setBot(target);
+      } catch {}
+    }, 10000);
+    return () => clearInterval(t);
+  }, [load]);
 
   const handleAutoRenewalChange = async (checked: boolean) => {
     const hours = checked ? 23 : 0;

@@ -122,8 +122,9 @@ func (db *DB) UpdateBotCredentials(id, providerID string, credentials json.RawMe
 	if err != nil {
 		return err
 	}
-	// Invalidate old context_tokens — they belong to the previous session
-	db.Exec("UPDATE messages SET context_token = '' WHERE bot_id = $1 AND context_token != ''", id)
+	// Invalidate recent context_tokens — they belong to the previous session.
+	// Only clear last 24h; older ones are already expired.
+	db.Exec("UPDATE messages SET context_token = '' WHERE bot_id = $1 AND context_token != '' AND created_at > NOW() - INTERVAL '1 day'", id)
 	return nil
 }
 

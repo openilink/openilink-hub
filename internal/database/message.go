@@ -188,7 +188,7 @@ func (db *DB) HasFreshContextToken(botID string, maxAge time.Duration) bool {
 // BatchHasFreshContextToken checks multiple bots at once, returning a set of bot IDs that have fresh tokens.
 func (db *DB) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration) map[string]bool {
 	if len(botIDs) == 0 {
-		return nil
+		return map[string]bool{}
 	}
 	result := make(map[string]bool, len(botIDs))
 	secs := int(maxAge.Seconds())

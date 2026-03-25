@@ -366,19 +366,19 @@ func (s *Server) handleBotSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status := bot.Status
 	inst, ok := s.BotManager.GetInstance(botID)
-	if ok {
-		status = inst.Status()
-	}
-
-	canSend, reason := s.checkSendability(botID, status)
-	if !canSend {
-		jsonError(w, reason, http.StatusConflict)
+	if !ok {
+		if bot.Status == "session_expired" {
+			jsonError(w, "会话已过期，请重新扫码绑定", http.StatusConflict)
+		} else {
+			jsonError(w, "Bot 未连接", http.StatusServiceUnavailable)
+		}
 		return
 	}
-	if !ok {
-		jsonError(w, "bot not connected", http.StatusServiceUnavailable)
+
+	canSend, reason := s.checkSendability(botID, inst.Status())
+	if !canSend {
+		jsonError(w, reason, http.StatusConflict)
 		return
 	}
 
