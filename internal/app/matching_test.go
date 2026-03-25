@@ -204,7 +204,7 @@ func TestMatchCommand_Success(t *testing.T) {
 	cmds, _ := json.Marshal([]database.AppTool{{Name: "list_prs", Command: "github"}})
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, RequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
 		},
 		apps: map[string]*database.App{
 			"a1": {ID: "a1", Tools: cmds},
@@ -231,7 +231,7 @@ func TestMatchCommand_NoMatch(t *testing.T) {
 	cmds, _ := json.Marshal([]database.AppTool{{Name: "list_prs", Command: "github"}})
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, RequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
 		},
 		apps: map[string]*database.App{
 			"a1": {ID: "a1", Tools: cmds},
@@ -252,7 +252,7 @@ func TestMatchCommand_DisabledInstallation(t *testing.T) {
 	cmds, _ := json.Marshal([]database.AppTool{{Name: "run_cmd", Command: "cmd"}})
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, RequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppRequestURL: "http://example.com"},
 		},
 		apps: map[string]*database.App{
 			"a1": {ID: "a1", Tools: cmds},
@@ -270,7 +270,7 @@ func TestMatchCommand_NoRequestURL(t *testing.T) {
 	cmds, _ := json.Marshal([]database.AppTool{{Name: "run_cmd", Command: "cmd"}})
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, RequestURL: ""},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: ""},
 		},
 		apps: map[string]*database.App{
 			"a1": {ID: "a1", Tools: cmds},
@@ -317,7 +317,7 @@ func TestMatchEvent_Success(t *testing.T) {
 	events, _ := json.Marshal([]string{"message"})
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, RequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
 		},
 		apps: map[string]*database.App{
 			"a1": {ID: "a1", Events: events},
@@ -338,7 +338,7 @@ func TestMatchEvent_NoSubscription(t *testing.T) {
 	events, _ := json.Marshal([]string{"reaction.added"})
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, RequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
 		},
 		apps: map[string]*database.App{
 			"a1": {ID: "a1", Events: events},
@@ -359,7 +359,7 @@ func TestMatchEvent_DisabledExcluded(t *testing.T) {
 	events, _ := json.Marshal([]string{"message"})
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, RequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppRequestURL: "http://example.com"},
 		},
 		apps: map[string]*database.App{
 			"a1": {ID: "a1", Events: events},
@@ -385,7 +385,7 @@ func TestMatchEvent_ListError(t *testing.T) {
 func TestMatchEvent_GetAppError(t *testing.T) {
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, RequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
 		},
 		apps:      map[string]*database.App{},
 		getAppErr: errFake,
@@ -438,8 +438,8 @@ func TestParseMention(t *testing.T) {
 func TestMatchHandle_Success(t *testing.T) {
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, RequestURL: "http://a.com"},
-			{ID: "i2", AppID: "a1", BotID: "b1", Handle: "echo-family", Enabled: true, RequestURL: "http://b.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppRequestURL: "http://a.com"},
+			{ID: "i2", AppID: "a1", BotID: "b1", Handle: "echo-family", Enabled: true, AppRequestURL: "http://b.com"},
 		},
 		apps: map[string]*database.App{"a1": {ID: "a1"}},
 	}
@@ -457,7 +457,7 @@ func TestMatchHandle_Success(t *testing.T) {
 func TestMatchHandle_NotFound(t *testing.T) {
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, RequestURL: "http://a.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppRequestURL: "http://a.com"},
 		},
 		apps: map[string]*database.App{"a1": {ID: "a1"}},
 	}
@@ -472,7 +472,7 @@ func TestMatchHandle_NotFound(t *testing.T) {
 func TestMatchHandle_Disabled(t *testing.T) {
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: false, RequestURL: "http://a.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: false, AppRequestURL: "http://a.com"},
 		},
 		apps: map[string]*database.App{"a1": {ID: "a1"}},
 	}
@@ -487,7 +487,7 @@ func TestMatchHandle_Disabled(t *testing.T) {
 func TestMatchHandle_NoRequestURL(t *testing.T) {
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, RequestURL: ""},
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppRequestURL: ""},
 		},
 		apps: map[string]*database.App{"a1": {ID: "a1"}},
 	}
@@ -504,8 +504,8 @@ func TestMatchEvent_MultipleInstallations(t *testing.T) {
 	events2, _ := json.Marshal([]string{"reaction"})
 	store := &mockAppStore{
 		installations: []database.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, RequestURL: "http://a.com"},
-			{ID: "i2", AppID: "a2", BotID: "b1", Enabled: true, RequestURL: "http://b.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://a.com"},
+			{ID: "i2", AppID: "a2", BotID: "b1", Enabled: true, AppRequestURL: "http://b.com"},
 		},
 		apps: map[string]*database.App{
 			"a1": {ID: "a1", Events: events1},

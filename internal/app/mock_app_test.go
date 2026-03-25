@@ -142,7 +142,7 @@ func TestMockApp_EventDeliveryWithSignature(t *testing.T) {
 
 	inst := &database.AppInstallation{
 		ID: "inst-int-1", AppID: "app-int-1", BotID: "bot-int-1",
-		SigningSecret: secret, RequestURL: m.server.URL,
+		AppSigningSecret: secret, AppRequestURL: m.server.URL,
 	}
 	event := NewEvent("message.text", map[string]string{"text": "hello world"})
 
@@ -161,8 +161,8 @@ func TestMockApp_EventDeliveryWithSignature(t *testing.T) {
 	}
 
 	re := events[0]
-	if re.Envelope.Type != "event_callback" {
-		t.Errorf("envelope type = %q, want %q", re.Envelope.Type, "event_callback")
+	if re.Envelope.Type != "event" {
+		t.Errorf("envelope type = %q, want %q", re.Envelope.Type, "event")
 	}
 	if re.Envelope.InstallationID != "inst-int-1" {
 		t.Errorf("installation_id = %q", re.Envelope.InstallationID)
@@ -191,7 +191,7 @@ func TestMockApp_EventDeliveryWithSignature(t *testing.T) {
 func TestMockApp_CommandDelivery(t *testing.T) {
 	secret := "cmd-secret"
 	m := newMockAppServer(secret, func(env eventEnvelope) any {
-		if env.Type == "command" {
+		if env.Event != nil && env.Event.Type == "command" {
 			return map[string]string{"reply": "command received"}
 		}
 		return nil
@@ -201,7 +201,7 @@ func TestMockApp_CommandDelivery(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-cmd-1", AppID: "app-cmd-1", BotID: "bot-cmd-1",
-		SigningSecret: secret, RequestURL: m.server.URL,
+		AppSigningSecret: secret, AppRequestURL: m.server.URL,
 	}
 	event := NewEvent("command", map[string]any{
 		"command": "deploy",
@@ -218,8 +218,8 @@ func TestMockApp_CommandDelivery(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("mock received %d events, want 1", len(events))
 	}
-	if events[0].Envelope.Type != "command" {
-		t.Errorf("envelope type = %q, want %q", events[0].Envelope.Type, "command")
+	if events[0].Envelope.Type != "event" {
+		t.Errorf("envelope type = %q, want %q", events[0].Envelope.Type, "event")
 	}
 
 	// Verify sync reply.
@@ -240,7 +240,7 @@ func TestMockApp_SyncReplyInResult(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-r-1", AppID: "app-r-1", BotID: "bot-r-1",
-		SigningSecret: "secret", RequestURL: m.server.URL,
+		AppSigningSecret: "secret", AppRequestURL: m.server.URL,
 	}
 
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -264,7 +264,7 @@ func TestMockApp_InvalidSignatureRejected(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-bad-1", AppID: "app-bad-1", BotID: "bot-bad-1",
-		SigningSecret: "wrong-secret", RequestURL: m.server.URL,
+		AppSigningSecret: "wrong-secret", AppRequestURL: m.server.URL,
 	}
 
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -284,7 +284,7 @@ func TestMockApp_MultipleEventsTracked(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-m-1", AppID: "app-m-1", BotID: "bot-m-1",
-		SigningSecret: "secret", RequestURL: m.server.URL,
+		AppSigningSecret: "secret", AppRequestURL: m.server.URL,
 	}
 
 	for i := 0; i < 5; i++ {
@@ -303,7 +303,7 @@ func TestMockApp_MultipleEventsTracked(t *testing.T) {
 func TestMockApp_FullFlowWithMatchAndDeliver(t *testing.T) {
 	secret := "full-flow-secret"
 	m := newMockAppServer(secret, func(env eventEnvelope) any {
-		if env.Type == "command" {
+		if env.Event != nil && env.Event.Type == "command" {
 			return map[string]string{"reply": "command handled"}
 		}
 		return map[string]string{"reply": "event ack"}
@@ -317,8 +317,8 @@ func TestMockApp_FullFlowWithMatchAndDeliver(t *testing.T) {
 		installations: []database.AppInstallation{
 			{
 				ID: "inst-ff-1", AppID: "app-ff-1", BotID: "bot-ff-1",
-				Enabled: true, RequestURL: m.server.URL,
-				SigningSecret: secret,
+				Enabled: true, AppRequestURL: m.server.URL,
+				AppSigningSecret: secret,
 			},
 		},
 		apps: map[string]*database.App{
@@ -383,11 +383,11 @@ func TestMockApp_FullFlowWithMatchAndDeliver(t *testing.T) {
 		t.Errorf("mock received %d events, want 2", len(allEvents))
 	}
 
-	// First should be command, second event_callback.
-	if allEvents[0].Envelope.Type != "command" {
+	// Both should have envelope type "event".
+	if allEvents[0].Envelope.Type != "event" {
 		t.Errorf("first event type = %q", allEvents[0].Envelope.Type)
 	}
-	if allEvents[1].Envelope.Type != "event_callback" {
+	if allEvents[1].Envelope.Type != "event" {
 		t.Errorf("second event type = %q", allEvents[1].Envelope.Type)
 	}
 

@@ -122,7 +122,8 @@ func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "not found", http.StatusNotFound)
 			return
 		}
-		app.ClientSecret = "" // hide secret from non-owners
+		app.ClientSecret = ""  // hide secrets from non-owners
+		app.SigningSecret = ""
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -152,6 +153,7 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		Homepage    string          `json:"homepage"`
 		SetupURL    string          `json:"setup_url"`
 		RedirectURL string          `json:"redirect_url"`
+		RequestURL  *string         `json:"request_url"`
 		Tools       json.RawMessage `json:"tools"`
 		Events      json.RawMessage `json:"events"`
 		Scopes      json.RawMessage `json:"scopes"`
@@ -206,6 +208,15 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
+
+	// Update request_url separately (resets url_verified)
+	if req.RequestURL != nil && *req.RequestURL != app.RequestURL {
+		if err := s.DB.UpdateAppRequestURL(appID, *req.RequestURL); err != nil {
+			jsonError(w, "update request_url failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	jsonOK(w)
 }
 

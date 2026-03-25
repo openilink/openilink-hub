@@ -150,7 +150,7 @@ func simulateNotifyAppInstalled(
 	payload, _ := json.Marshal(map[string]string{
 		"installation_id": inst.ID,
 		"app_token":       inst.AppToken,
-		"signing_secret":  inst.SigningSecret,
+		"signing_secret":  inst.AppSigningSecret,
 		"bot_id":          inst.BotID,
 		"handle":          inst.Handle,
 	})
@@ -223,7 +223,7 @@ func TestInstallFlow_FullNotifyAndVerify(t *testing.T) {
 		AppID:         "app-001",
 		BotID:         "bot-001",
 		AppToken:      "tok_abc123",
-		SigningSecret: "sec_xyz789",
+		AppSigningSecret: "sec_xyz789",
 		Handle:        "echo-work",
 	}
 
@@ -293,7 +293,7 @@ func TestInstallFlow_NotifyAppReturns500(t *testing.T) {
 		AppID:         "app-002",
 		BotID:         "bot-002",
 		AppToken:      "tok_fail",
-		SigningSecret: "sec_fail",
+		AppSigningSecret: "sec_fail",
 		Handle:        "failbot",
 	}
 
@@ -325,7 +325,7 @@ func TestInstallFlow_NotifyAppReturnsNoRequestURL(t *testing.T) {
 		AppID:         "app-003",
 		BotID:         "bot-003",
 		AppToken:      "tok_nurl",
-		SigningSecret: "sec_nurl",
+		AppSigningSecret: "sec_nurl",
 		Handle:        "no-url-bot",
 	}
 
@@ -416,7 +416,7 @@ func TestInstallFlow_EndToEnd_DynamicURL(t *testing.T) {
 		AppID:         "app-e2e",
 		BotID:         "bot-e2e",
 		AppToken:      "tok_e2e",
-		SigningSecret: "sec_e2e",
+		AppSigningSecret: "sec_e2e",
 		Handle:        "my-app",
 	}
 

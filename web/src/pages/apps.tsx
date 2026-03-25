@@ -230,15 +230,16 @@ function InstallFlowDialog({ app, onClose }: { app: any; onClose: () => void }) 
               </select>
            </div>
            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase text-muted-foreground">Handle（可选）</label>
-              <Input value={handle} onChange={e => setHandle(e.target.value)} className="h-11 rounded-xl font-mono" placeholder="@mybot" />
+              <label className="text-xs font-bold uppercase text-muted-foreground">Handle（必填）</label>
+              <Input value={handle} onChange={e => setHandle(e.target.value)} className="h-11 rounded-xl font-mono" placeholder="如 notify-prod" />
+              <p className="text-[10px] text-muted-foreground">用户发送 @{handle || "handle"} 触发此应用</p>
            </div>
         </div>
       </div>
 
       <DialogFooter className="pt-4">
         <Button variant="ghost" onClick={onClose} className="rounded-full">取消</Button>
-        <Button onClick={handleInstall} disabled={saving || !botId} className="rounded-full px-8 gap-2 shadow-lg shadow-primary/20">
+        <Button onClick={handleInstall} disabled={saving || !botId || !handle.trim()} className="rounded-full px-8 gap-2 shadow-lg shadow-primary/20">
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
           安装
         </Button>

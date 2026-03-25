@@ -114,7 +114,7 @@ func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(map[string]any{
 		"installation_id": inst.ID,
 		"app_token":       inst.AppToken,
-		"signing_secret":  inst.SigningSecret,
+		"signing_secret":  app.SigningSecret,
 		"bot_id":          inst.BotID,
 	})
 }

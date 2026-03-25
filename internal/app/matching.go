@@ -47,7 +47,7 @@ func (d *Dispatcher) MatchHandle(botID, handle string) (*database.AppInstallatio
 	if err != nil {
 		return nil, err
 	}
-	if !inst.Enabled || inst.RequestURL == "" {
+	if !inst.Enabled || inst.AppRequestURL == "" {
 		return nil, nil
 	}
 	return inst, nil
@@ -71,7 +71,7 @@ func (d *Dispatcher) MatchCommand(botID string, content string) ([]database.AppI
 
 	var matched []database.AppInstallation
 	for _, inst := range installations {
-		if !inst.Enabled || inst.RequestURL == "" {
+		if !inst.Enabled || inst.AppRequestURL == "" {
 			continue
 		}
 
@@ -101,12 +101,7 @@ func (d *Dispatcher) MatchEvent(botID string, eventType string) ([]database.AppI
 
 	var matched []database.AppInstallation
 	for _, inst := range installations {
-		if !inst.Enabled || inst.RequestURL == "" {
-			continue
-		}
-
-		// Events require explicit opt-in at installation level
-		if !installationEventsEnabled(inst) {
+		if !inst.Enabled || inst.AppRequestURL == "" {
 			continue
 		}
 
@@ -218,17 +213,3 @@ func appSubscribesToEvent(app *database.App, eventType string) bool {
 	return false
 }
 
-// installationEventsEnabled checks if the installation has opted in to receive events.
-// Events are disabled by default; the user must explicitly enable via config.events_enabled.
-func installationEventsEnabled(inst database.AppInstallation) bool {
-	if len(inst.Config) == 0 {
-		return false
-	}
-	var cfg struct {
-		EventsEnabled bool `json:"events_enabled"`
-	}
-	if err := json.Unmarshal(inst.Config, &cfg); err != nil {
-		return false
-	}
-	return cfg.EventsEnabled
-}

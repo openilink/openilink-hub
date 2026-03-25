@@ -127,7 +127,7 @@ func (d *Dispatcher) store() appStore {
 // DeliverEvent posts a signed event payload to the installation's request_url
 // and logs the delivery attempt. Returns the delivery result or an error.
 func (d *Dispatcher) DeliverEvent(inst *database.AppInstallation, event *Event) (*DeliveryResult, error) {
-	if inst.RequestURL == "" {
+	if inst.AppRequestURL == "" {
 		return nil, fmt.Errorf("installation %s has no request_url configured", inst.ID)
 	}
 
@@ -166,10 +166,10 @@ func (d *Dispatcher) DeliverEvent(inst *database.AppInstallation, event *Event) 
 
 	// Compute signature.
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	signature := computeSignature(inst.SigningSecret, timestamp, body)
+	signature := computeSignature(inst.AppSigningSecret, timestamp, body)
 
 	// Build request.
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, inst.RequestURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, inst.AppRequestURL, bytes.NewReader(body))
 	if err != nil {
 		d.markFailed(logID, err.Error(), 0, 0)
 		return nil, fmt.Errorf("build request: %w", err)
@@ -188,7 +188,7 @@ func (d *Dispatcher) DeliverEvent(inst *database.AppInstallation, event *Event) 
 
 	if err != nil {
 		d.markFailed(logID, err.Error(), 0, durationMs)
-		return nil, fmt.Errorf("http request to %s failed: %w", inst.RequestURL, err)
+		return nil, fmt.Errorf("http request to %s failed: %w", inst.AppRequestURL, err)
 	}
 	defer resp.Body.Close()
 

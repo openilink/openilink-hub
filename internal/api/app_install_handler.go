@@ -62,7 +62,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	slog.Info("install: created", "inst", inst.ID, "app_token", inst.AppToken[:8]+"...")
 
 	// Set handle
-	if err := s.DB.UpdateInstallation(inst.ID, inst.RequestURL, handle, inst.Config, inst.Enabled); err != nil {
+	if err := s.DB.UpdateInstallation(inst.ID, handle, inst.Config, inst.Enabled); err != nil {
 		slog.Error("install: set handle failed", "inst", inst.ID, "err", err)
 	}
 	inst.Handle = handle
@@ -74,7 +74,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 		// Re-read installation to get updated request_url
 		if updated, err := s.DB.GetInstallation(inst.ID); err == nil {
 			inst = updated
-			slog.Info("install: after notify", "inst", inst.ID, "request_url", inst.RequestURL, "url_verified", inst.URLVerified)
+			slog.Info("install: after notify", "inst", inst.ID, "request_url", inst.AppRequestURL)
 		}
 	} else {
 		slog.Info("install: no redirect_url, skipping auto-notify", "inst", inst.ID, "setup_url", app.SetupURL, "redirect_url", app.RedirectURL)
@@ -141,20 +141,15 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		RequestURL *string          `json:"request_url"`
-		Handle     *string          `json:"handle"`
-		Config     json.RawMessage  `json:"config"`
-		Enabled    *bool            `json:"enabled"`
+		Handle  *string         `json:"handle"`
+		Config  json.RawMessage `json:"config"`
+		Enabled *bool           `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
 
-	requestURL := inst.RequestURL
-	if req.RequestURL != nil {
-		requestURL = *req.RequestURL
-	}
 	handle := inst.Handle
 	if req.Handle != nil {
 		handle = *req.Handle
@@ -168,14 +163,9 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 		enabled = *req.Enabled
 	}
 
-	if err := s.DB.UpdateInstallation(inst.ID, requestURL, handle, cfg, enabled); err != nil {
+	if err := s.DB.UpdateInstallation(inst.ID, handle, cfg, enabled); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
-	}
-
-	// Reset url_verified if URL changed
-	if req.RequestURL != nil && *req.RequestURL != inst.RequestURL {
-		_ = s.DB.SetInstallationURLVerified(inst.ID, false)
 	}
 
 	jsonOK(w)
@@ -220,18 +210,14 @@ func (s *Server) handleRegenerateToken(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"app_token": token})
 }
 
-// POST /api/apps/{id}/installations/{iid}/verify-url
+// POST /api/apps/{id}/verify-url
 func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
-	app := s.requireAppForInstall(w, r)
+	app := s.requireApp(w, r)
 	if app == nil {
 		return
 	}
-	inst := s.requireInstallation(w, r, app.ID)
-	if inst == nil {
-		return
-	}
 
-	if inst.RequestURL == "" {
+	if app.RequestURL == "" {
 		jsonError(w, "no request_url configured", http.StatusBadRequest)
 		return
 	}
@@ -249,10 +235,10 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 	})
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(inst.RequestURL, "application/json", bytes.NewReader(payload))
+	resp, err := client.Post(app.RequestURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("verify-url: request failed", "inst", inst.ID, "url", inst.RequestURL, "err", err)
-		jsonError(w, "验证失败：无法连接到 "+inst.RequestURL+" ("+err.Error()+")", http.StatusUnprocessableEntity)
+		slog.Error("verify-url: request failed", "app", app.ID, "url", app.RequestURL, "err", err)
+		jsonError(w, "验证失败：无法连接到 "+app.RequestURL+" ("+err.Error()+")", http.StatusUnprocessableEntity)
 		return
 	}
 	defer resp.Body.Close()
@@ -261,7 +247,7 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 	bodyStr := strings.TrimSpace(string(body))
 
 	if resp.StatusCode != http.StatusOK {
-		slog.Error("verify-url: remote error", "inst", inst.ID, "url", inst.RequestURL, "status", resp.StatusCode, "body", bodyStr)
+		slog.Error("verify-url: remote error", "app", app.ID, "url", app.RequestURL, "status", resp.StatusCode, "body", bodyStr)
 		msg := "验证失败：远端返回 HTTP " + strconv.Itoa(resp.StatusCode)
 		if bodyStr != "" {
 			msg += " — " + bodyStr
@@ -274,18 +260,18 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 		Challenge string `json:"challenge"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		slog.Error("verify-url: invalid response", "inst", inst.ID, "url", inst.RequestURL, "body", bodyStr, "err", err)
+		slog.Error("verify-url: invalid response", "app", app.ID, "url", app.RequestURL, "body", bodyStr, "err", err)
 		jsonError(w, "验证失败：远端返回了无效的响应", http.StatusUnprocessableEntity)
 		return
 	}
 
 	if result.Challenge != challenge {
-		slog.Error("verify-url: challenge mismatch", "inst", inst.ID)
+		slog.Error("verify-url: challenge mismatch", "app", app.ID)
 		jsonError(w, "challenge mismatch", http.StatusUnprocessableEntity)
 		return
 	}
 
-	if err := s.DB.SetInstallationURLVerified(inst.ID, true); err != nil {
+	if err := s.DB.SetAppURLVerified(app.ID, true); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
@@ -389,7 +375,7 @@ func (s *Server) notifyAppInstalled(app *database.App, inst *database.AppInstall
 	payload, _ := json.Marshal(map[string]string{
 		"installation_id": inst.ID,
 		"app_token":       inst.AppToken,
-		"signing_secret":  inst.SigningSecret,
+		"signing_secret":  app.SigningSecret,
 		"bot_id":          inst.BotID,
 		"handle":          inst.Handle,
 		"hub_url":         s.Config.RPOrigin,
@@ -420,18 +406,18 @@ func (s *Server) notifyAppInstalled(app *database.App, inst *database.AppInstall
 		return
 	}
 
-	slog.Info("notify: got request_url", "inst", inst.ID, "request_url", result.RequestURL)
+	slog.Info("notify: got request_url", "app", app.ID, "request_url", result.RequestURL)
 
-	// Auto-set request_url and verify
-	if err := s.DB.UpdateInstallation(inst.ID, result.RequestURL, inst.Handle, inst.Config, inst.Enabled); err != nil {
-		slog.Error("notify: update request_url failed", "inst", inst.ID, "err", err)
+	// Auto-set request_url on the App and verify
+	if err := s.DB.UpdateAppRequestURL(app.ID, result.RequestURL); err != nil {
+		slog.Error("notify: update request_url failed", "app", app.ID, "err", err)
 		return
 	}
-	s.autoVerifyURL(inst.ID, result.RequestURL)
+	s.autoVerifyURL(app.ID, result.RequestURL)
 }
 
-// autoVerifyURL sends a challenge to verify the request_url.
-func (s *Server) autoVerifyURL(instID, requestURL string) {
+// autoVerifyURL sends a challenge to verify the app's request_url.
+func (s *Server) autoVerifyURL(appID, requestURL string) {
 	challengeBytes := make([]byte, 16)
 	_, _ = rand.Read(challengeBytes)
 	challenge := hex.EncodeToString(challengeBytes)
@@ -442,20 +428,20 @@ func (s *Server) autoVerifyURL(instID, requestURL string) {
 		"challenge": challenge,
 	})
 
-	slog.Info("auto-verify: POST challenge", "inst", instID, "url", requestURL)
+	slog.Info("auto-verify: POST challenge", "app", appID, "url", requestURL)
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Post(requestURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("auto-verify: request failed", "inst", instID, "url", requestURL, "err", err)
+		slog.Error("auto-verify: request failed", "app", appID, "url", requestURL, "err", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	slog.Info("auto-verify: response", "inst", instID, "status", resp.StatusCode, "body", string(body))
+	slog.Info("auto-verify: response", "app", appID, "status", resp.StatusCode, "body", string(body))
 
 	if resp.StatusCode != http.StatusOK {
-		slog.Error("auto-verify: non-200", "inst", instID, "status", resp.StatusCode)
+		slog.Error("auto-verify: non-200", "app", appID, "status", resp.StatusCode)
 		return
 	}
 
@@ -463,13 +449,13 @@ func (s *Server) autoVerifyURL(instID, requestURL string) {
 		Challenge string `json:"challenge"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		slog.Error("auto-verify: invalid response", "inst", instID, "err", err)
+		slog.Error("auto-verify: invalid response", "app", appID, "err", err)
 		return
 	}
 	if result.Challenge == challenge {
-		_ = s.DB.SetInstallationURLVerified(instID, true)
-		slog.Info("auto-verify: success", "inst", instID)
+		_ = s.DB.SetAppURLVerified(appID, true)
+		slog.Info("auto-verify: success", "app", appID)
 	} else {
-		slog.Error("auto-verify: challenge mismatch", "inst", instID, "expected", challenge, "got", result.Challenge)
+		slog.Error("auto-verify: challenge mismatch", "app", appID, "expected", challenge, "got", result.Challenge)
 	}
 }

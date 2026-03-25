@@ -94,18 +94,6 @@ func TestComputeSignatureDifferentTimestamps(t *testing.T) {
 	}
 }
 
-func TestIsCommandEvent(t *testing.T) {
-	if !isCommandEvent("command") {
-		t.Error("expected 'command' to be a command event")
-	}
-	if isCommandEvent("message") {
-		t.Error("'message' should not be a command event")
-	}
-	if isCommandEvent("event_callback") {
-		t.Error("'event_callback' should not be a command event")
-	}
-}
-
 func TestNewEvent(t *testing.T) {
 	data := map[string]string{"key": "value"}
 	evt := NewEvent("message.text", data)
@@ -141,7 +129,7 @@ func TestDeliverEvent_Success(t *testing.T) {
 
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "test-secret", RequestURL: srv.URL,
+		AppSigningSecret: "test-secret", AppRequestURL: srv.URL,
 	}
 	event := NewEvent("message.text", map[string]string{"text": "hello"})
 
@@ -161,8 +149,8 @@ func TestDeliverEvent_Success(t *testing.T) {
 	if envelope.V != envelopeVersion {
 		t.Errorf("envelope.V = %d, want %d", envelope.V, envelopeVersion)
 	}
-	if envelope.Type != "event_callback" {
-		t.Errorf("envelope.Type = %q, want %q", envelope.Type, "event_callback")
+	if envelope.Type != "event" {
+		t.Errorf("envelope.Type = %q, want %q", envelope.Type, "event")
 	}
 	if !strings.HasPrefix(envelope.TraceID, "tr_") {
 		t.Errorf("TraceID = %q, expected tr_ prefix", envelope.TraceID)
@@ -215,7 +203,7 @@ func TestDeliverEvent_CommandEnvelopeType(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 	_, err := d.DeliverEvent(inst, NewEvent("command", map[string]string{"command": "help"}))
 	if err != nil {
@@ -224,8 +212,8 @@ func TestDeliverEvent_CommandEnvelopeType(t *testing.T) {
 
 	var envelope eventEnvelope
 	json.Unmarshal(receivedBody, &envelope)
-	if envelope.Type != "command" {
-		t.Errorf("envelope.Type = %q, want %q", envelope.Type, "command")
+	if envelope.Type != "event" {
+		t.Errorf("envelope.Type = %q, want %q", envelope.Type, "event")
 	}
 }
 
@@ -242,7 +230,7 @@ func TestDeliverEvent_SyncReply(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
 	if err != nil {
@@ -266,7 +254,7 @@ func TestDeliverEvent_SyncReplyDefaultType(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
 	if err != nil {
@@ -288,7 +276,7 @@ func TestDeliverEvent_Failure500(t *testing.T) {
 	d := newTestDispatcher(mock, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -318,7 +306,7 @@ func TestDeliverEvent_Timeout(t *testing.T) {
 	d := newTestDispatcher(mock, client)
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -334,7 +322,7 @@ func TestDeliverEvent_NoRequestURL(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, http.DefaultClient)
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		RequestURL: "",
+		AppRequestURL: "",
 	}
 
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -355,7 +343,7 @@ func TestDeliverEvent_EmptyResponseBody(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -383,7 +371,7 @@ func TestDeliverEvent_SignatureVerification(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: secret, RequestURL: srv.URL,
+		AppSigningSecret: secret, AppRequestURL: srv.URL,
 	}
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
 	if err != nil {
@@ -406,7 +394,7 @@ func TestDeliverEvent_CreateLogError(t *testing.T) {
 	d := newTestDispatcher(mock, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -429,7 +417,7 @@ func TestDeliverEvent_TraceIDHeader(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 	d.DeliverEvent(inst, NewEvent("message.text", nil))
 

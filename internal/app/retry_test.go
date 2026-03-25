@@ -23,7 +23,7 @@ func TestDeliverWithRetry_FirstAttemptSucceeds(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 	event := NewEvent("message.text", nil)
 
@@ -70,7 +70,7 @@ func TestDeliverWithRetry_FirstAttemptFails(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 	event := NewEvent("message.text", nil)
 
@@ -106,7 +106,7 @@ func TestDeliverWithRetry_AllRetriesFail(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 
 	result := d.DeliverWithRetry(inst, NewEvent("message.text", nil))
@@ -145,7 +145,7 @@ func TestDeliverWithRetry_TimeoutThenRecover(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, client)
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 
 	result := d.DeliverWithRetry(inst, NewEvent("message.text", nil))
@@ -172,7 +172,7 @@ func TestDeliverRetryAttempt(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &database.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		SigningSecret: "secret", RequestURL: srv.URL,
+		AppSigningSecret: "secret", AppRequestURL: srv.URL,
 	}
 
 	result, err := d.deliverRetryAttempt(inst, NewEvent("message.text", nil), 1)

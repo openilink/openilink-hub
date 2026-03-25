@@ -19,12 +19,12 @@ func TestMentionRouting_ParseAndMatchHandle(t *testing.T) {
 			{
 				ID: "i1", AppID: "a1", BotID: "b1",
 				Handle: "echo-work", Enabled: true,
-				RequestURL: "http://work.example.com",
+				AppRequestURL: "http://work.example.com",
 			},
 			{
 				ID: "i2", AppID: "a1", BotID: "b1",
 				Handle: "echo-family", Enabled: true,
-				RequestURL: "http://family.example.com",
+				AppRequestURL: "http://family.example.com",
 			},
 		},
 		apps: map[string]*database.App{
@@ -121,8 +121,8 @@ func TestMentionRouting_HandleWithCommand(t *testing.T) {
 		AppID:         "app-echo-1",
 		BotID:         "bot-echo-1",
 		Handle:        "echo-work",
-		SigningSecret: secret,
-		RequestURL:    srv.URL,
+		AppSigningSecret: secret,
+		AppRequestURL:    srv.URL,
 		Enabled:       true,
 	}
 
@@ -151,8 +151,8 @@ func TestMentionRouting_HandleWithCommand(t *testing.T) {
 	if env == nil {
 		t.Fatal("mock did not receive event")
 	}
-	if env.Type != "command" {
-		t.Errorf("envelope type = %q, want %q", env.Type, "command")
+	if env.Type != "event" {
+		t.Errorf("envelope type = %q, want %q", env.Type, "event")
 	}
 	if env.InstallationID != "inst-echo-1" {
 		t.Errorf("installation_id = %q, want %q", env.InstallationID, "inst-echo-1")
@@ -205,12 +205,12 @@ func TestMentionRouting_MultipleInstallsSameAppDifferentHandles(t *testing.T) {
 			{
 				ID: "i1", AppID: "a1", BotID: "b1",
 				Handle: "github-work", Enabled: true,
-				RequestURL: "http://work.example.com",
+				AppRequestURL: "http://work.example.com",
 			},
 			{
 				ID: "i2", AppID: "a1", BotID: "b1",
 				Handle: "github-personal", Enabled: true,
-				RequestURL: "http://personal.example.com",
+				AppRequestURL: "http://personal.example.com",
 			},
 		},
 		apps: map[string]*database.App{
@@ -231,8 +231,8 @@ func TestMentionRouting_MultipleInstallsSameAppDifferentHandles(t *testing.T) {
 	if inst1.ID != "i1" {
 		t.Errorf("expected i1, got %q", inst1.ID)
 	}
-	if inst1.RequestURL != "http://work.example.com" {
-		t.Errorf("request_url = %q, want %q", inst1.RequestURL, "http://work.example.com")
+	if inst1.AppRequestURL != "http://work.example.com" {
+		t.Errorf("request_url = %q, want %q", inst1.AppRequestURL, "http://work.example.com")
 	}
 
 	// Route to second handle
@@ -246,8 +246,8 @@ func TestMentionRouting_MultipleInstallsSameAppDifferentHandles(t *testing.T) {
 	if inst2.ID != "i2" {
 		t.Errorf("expected i2, got %q", inst2.ID)
 	}
-	if inst2.RequestURL != "http://personal.example.com" {
-		t.Errorf("request_url = %q, want %q", inst2.RequestURL, "http://personal.example.com")
+	if inst2.AppRequestURL != "http://personal.example.com" {
+		t.Errorf("request_url = %q, want %q", inst2.AppRequestURL, "http://personal.example.com")
 	}
 
 	// Verify they are different installations of the same app
@@ -322,7 +322,7 @@ func TestMentionRouting_FullMentionToEventDelivery(t *testing.T) {
 
 	// Mock App that handles mention events
 	m := newMockAppServer(secret, func(env eventEnvelope) any {
-		if env.Type == "event_callback" {
+		if env.Type == "event" {
 			return map[string]string{"reply": "got your mention"}
 		}
 		return nil
@@ -334,8 +334,8 @@ func TestMentionRouting_FullMentionToEventDelivery(t *testing.T) {
 			{
 				ID: "inst-m-1", AppID: "app-m-1", BotID: "bot-m-1",
 				Handle: "echo-work", Enabled: true,
-				RequestURL:    m.server.URL,
-				SigningSecret: secret,
+				AppRequestURL:    m.server.URL,
+				AppSigningSecret: secret,
 			},
 		},
 		apps: map[string]*database.App{
