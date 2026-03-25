@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,18 +20,25 @@ import (
 	"github.com/openilink/openilink-hub/internal/sink"
 	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/store/postgres"
+	"github.com/openilink/openilink-hub/internal/store/sqlite"
 	"github.com/openilink/openilink-hub/internal/storage"
 
 	// Register providers
 	_ "github.com/openilink/openilink-hub/internal/provider/ilink"
 )
 
+func openStore(dsn string) (store.Store, error) {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		return postgres.Open(dsn)
+	}
+	return sqlite.Open(dsn)
+}
+
 func main() {
 	cfg := config.Parse()
 
 	// Database
-	var s store.Store
-	s, err := postgres.Open(cfg.DBPath)
+	s, err := openStore(cfg.DBPath)
 	if err != nil {
 		slog.Error("database open failed", "err", err)
 		os.Exit(1)
