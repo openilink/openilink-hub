@@ -1,29 +1,42 @@
 version: 2
 
+project_name: openilink-hub
+
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: openilink-hub
+  - id: linux-amd64
     binary: openilink-hub
+    goos: [linux]
+    goarch: [amd64]
     env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    ldflags:
+      - CGO_ENABLED=1
+      - CC=gcc
+    ldflags: &ldflags
       - -s -w
       - -X main.version={{.Version}}
       - -X main.commit={{.ShortCommit}}
       - -X main.date={{.Date}}
+
+  - id: linux-arm64
+    binary: openilink-hub
+    goos: [linux]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+    ldflags: *ldflags
+
+  - id: windows-amd64
+    binary: openilink-hub
+    goos: [windows]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+    ldflags: *ldflags
 
 archives:
   - id: default
@@ -38,6 +51,8 @@ archives:
 
 checksum:
   name_template: checksums.txt
+  extra_files:
+    - glob: darwin-archives/*
 
 changelog:
   sort: asc
@@ -51,3 +66,31 @@ release:
   github:
     owner: openilink
     name: openilink-hub
+  extra_files:
+    - glob: darwin-archives/*
+
+dockers:
+  - image_templates:
+      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-amd64"
+    use: buildx
+    dockerfile: Dockerfile.release
+    build_flag_templates:
+      - "--platform=linux/amd64"
+    ids: [linux-amd64]
+  - image_templates:
+      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
+    use: buildx
+    dockerfile: Dockerfile.release
+    build_flag_templates:
+      - "--platform=linux/arm64"
+    ids: [linux-arm64]
+
+docker_manifests:
+  - name_template: "ghcr.io/openilink/openilink-hub:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-amd64"
+      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/openilink/openilink-hub:latest"
+    image_templates:
+      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-amd64"
+      - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
