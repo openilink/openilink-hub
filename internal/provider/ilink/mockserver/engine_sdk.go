@@ -325,7 +325,7 @@ func (e *Engine) FetchQRCode() (*QRResult, error) {
 		<-timer.C
 		e.mu.Lock()
 		defer e.mu.Unlock()
-		if e.qr == session && session.state == "wait" || session.state == "scanned" {
+		if e.qr == session && (session.state == "wait" || session.state == "scanned") {
 			session.state = "expired"
 			select {
 			case session.ch <- struct{}{}:
