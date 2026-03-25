@@ -89,11 +89,16 @@ function MarketplaceTab() {
   const [apps, setApps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [installApp, setInstallApp] = useState<any>(null);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     setLoading(true);
     api.listApps({ listed: true }).then(l => setApps(l || [])).finally(() => setLoading(false));
   }, []);
+
+  const filtered = apps.filter(a =>
+    !search || a.name.toLowerCase().includes(search.toLowerCase()) || (a.slug || "").toLowerCase().includes(search.toLowerCase())
+  );
 
   if (loading) return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -105,11 +110,11 @@ function MarketplaceTab() {
     <div className="space-y-6">
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="搜索应用..." className="pl-10 h-10 rounded-full bg-card shadow-sm border-border/50" />
+        <Input placeholder="搜索应用..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 rounded-full bg-card shadow-sm border-border/50" />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {apps.map((app) => (
+        {filtered.map((app) => (
           <Card key={app.id} className="group relative overflow-hidden rounded-[2rem] border-border/50 bg-card/50 transition-all hover:shadow-2xl hover:-translate-y-1">
             <CardHeader className="pb-4">
               <div className="flex items-start gap-4">
@@ -133,12 +138,7 @@ function MarketplaceTab() {
               </p>
             </CardContent>
             <CardFooter className="bg-muted/30 pt-4 flex justify-between items-center px-6">
-              <div className="flex items-center gap-3">
-                 <div className="flex -space-x-2">
-                    {[1, 2].map(i => <div key={i} className="h-6 w-6 rounded-full border-2 border-background bg-muted flex items-center justify-center"><Zap className="h-3 w-3 text-yellow-500" /></div>)}
-                 </div>
-                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Verified</span>
-              </div>
+              <span className="text-[10px] font-bold text-muted-foreground">{app.owner_name || app.slug}</span>
               <Button size="sm" onClick={() => setInstallApp(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs shadow-lg shadow-primary/10">
                 安装 <Download className="h-3 w-3" />
               </Button>
@@ -263,6 +263,10 @@ function InstallFlowDialog({ app, onClose }: { app: any; onClose: () => void }) 
                   ))}
                 </div>
               </div>
+            )}
+
+            {scopes.length === 0 && tools.length === 0 && events.length === 0 && (
+              <p className="text-sm text-muted-foreground">接收 @mention 消息并执行响应。</p>
             )}
           </div>
 

@@ -24,19 +24,19 @@ type SectionKey =
 
 const NAV_SECTIONS = [
   {
-    group: "Settings",
+    group: "设置",
     items: [
-      { key: "basic-info" as SectionKey, label: "Basic Information", icon: Settings },
-      { key: "install-app" as SectionKey, label: "Install App", icon: Download },
-      { key: "distribution" as SectionKey, label: "Manage Distribution", icon: Globe },
+      { key: "basic-info" as SectionKey, label: "基本信息", icon: Settings },
+      { key: "install-app" as SectionKey, label: "安装管理", icon: Download },
+      { key: "distribution" as SectionKey, label: "分发管理", icon: Globe },
     ],
   },
   {
-    group: "Features",
+    group: "功能",
     items: [
-      { key: "event-subscriptions" as SectionKey, label: "Event Subscriptions", icon: Radio },
-      { key: "commands" as SectionKey, label: "Commands / Tools", icon: Terminal },
-      { key: "oauth-permissions" as SectionKey, label: "OAuth & Permissions", icon: Shield },
+      { key: "event-subscriptions" as SectionKey, label: "事件订阅", icon: Radio },
+      { key: "commands" as SectionKey, label: "命令 / 工具", icon: Terminal },
+      { key: "oauth-permissions" as SectionKey, label: "OAuth 权限", icon: Shield },
     ],
   },
 ];
@@ -69,8 +69,15 @@ export function AppDetailPage() {
           <p className="text-xs text-muted-foreground font-mono">{app.slug}</p>
         </div>
         <Badge variant={app.status === "active" ? "default" : "outline"}>
-          {app.status === "active" ? "Active" : "Draft"}
+          {app.status === "active" ? "已启用" : "草稿"}
         </Badge>
+        {app.listed ? (
+          <Badge variant="default">已上架</Badge>
+        ) : app.listing_status === "pending" ? (
+          <Badge variant="outline">审核中</Badge>
+        ) : app.listing_status === "rejected" ? (
+          <Badge variant="destructive">已拒绝</Badge>
+        ) : null}
       </div>
 
       {/* Mobile nav */}
@@ -113,7 +120,7 @@ export function AppDetailPage() {
         </nav>
 
         <div className="flex-1 min-w-0">
-          {section === "basic-info" && <BasicInfoSection app={app} onUpdate={loadApp} />}
+          {section === "basic-info" && <BasicInfoSection key={app.updated_at} app={app} onUpdate={loadApp} />}
           {section === "install-app" && <InstallAppSection appId={id!} />}
           {section === "distribution" && <DistributionSection app={app} onUpdate={loadApp} />}
           {section === "event-subscriptions" && <EventSubscriptionsSection app={app} onUpdate={loadApp} />}
@@ -158,13 +165,13 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold">Basic Information</h2>
+        <h2 className="text-base font-semibold">基本信息</h2>
         <p className="text-sm text-muted-foreground mt-1">应用的基本信息和凭证。</p>
       </div>
 
       {/* Display Information */}
       <Card className="space-y-3">
-        <h3 className="text-sm font-medium">Display Information</h3>
+        <h3 className="text-sm font-medium">展示信息</h3>
         <form onSubmit={handleSave} className="space-y-2">
           <Input placeholder="名称" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-8 text-xs" />
           <Input placeholder="描述" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="h-8 text-xs" />
@@ -182,7 +189,7 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
 
       {/* App Credentials */}
       <Card className="space-y-4">
-        <h3 className="text-sm font-medium">App Credentials</h3>
+        <h3 className="text-sm font-medium">应用凭证</h3>
         <p className="text-xs text-muted-foreground">这些凭证用于你的 App 与 Hub 之间的安全通信。请妥善保管，不要泄露。</p>
         {app.client_secret && (
           <SecretField label="Client Secret" value={app.client_secret} description="用于 OAuth 流程中验证 App 身份" />
@@ -197,7 +204,7 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
 
       {/* Delete App */}
       <Card className="space-y-3">
-        <h3 className="text-sm font-medium text-destructive">Delete App</h3>
+        <h3 className="text-sm font-medium text-destructive">删除应用</h3>
         <p className="text-xs text-muted-foreground">删除后所有安装也将被移除，此操作不可撤销。</p>
         <Button variant="destructive" size="sm" onClick={handleDelete}>
           <Trash2 className="w-3.5 h-3.5 mr-1" /> 删除 App
@@ -237,13 +244,38 @@ function SecretField({ label, value, description }: { label: string; value: stri
 
 function InstallAppSection({ appId }: { appId: string }) {
   const [installations, setInstallations] = useState<any[]>([]);
+  const [bots, setBots] = useState<any[]>([]);
+  const [botId, setBotId] = useState("");
+  const [handle, setHandle] = useState("");
+  const [installing, setInstalling] = useState(false);
   const { toast } = useToast();
 
   async function load() {
     try { setInstallations((await api.listInstallations(appId)) || []); } catch {}
   }
 
-  useEffect(() => { load(); }, [appId]);
+  useEffect(() => {
+    load();
+    api.listBots().then(l => {
+      const items = l || [];
+      setBots(items);
+      if (items.length) setBotId(items[0].id);
+    });
+  }, [appId]);
+
+  async function handleInstall() {
+    if (!botId || !handle.trim()) return;
+    setInstalling(true);
+    try {
+      await api.installApp(appId, { bot_id: botId, handle: handle.trim() });
+      toast({ title: "安装成功" });
+      setHandle("");
+      load();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "安装失败", description: e.message });
+    }
+    setInstalling(false);
+  }
 
   async function handleDelete(instId: string) {
     if (!confirm("确定卸载此安装？")) return;
@@ -259,35 +291,58 @@ function InstallAppSection({ appId }: { appId: string }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold">Install App</h2>
-        <p className="text-sm text-muted-foreground mt-1">所有安装了此 App 的账号。每个安装实例有独立的 app_token 和 handle。</p>
+        <h2 className="text-base font-semibold">安装管理</h2>
+        <p className="text-sm text-muted-foreground mt-1">所有安装了此应用的账号。每个安装实例有独立的 app_token 和 handle。</p>
       </div>
 
-      {installations.length === 0 && (
+      {/* Install to Bot */}
+      <Card className="space-y-3">
+        <h3 className="text-sm font-medium">安装到账号</h3>
+        <div className="flex gap-2 items-end">
+          <div className="flex-1 space-y-1">
+            <label className="text-xs text-muted-foreground">账号</label>
+            <select value={botId} onChange={e => setBotId(e.target.value)}
+              className="w-full h-8 px-2 rounded-md border bg-background text-xs outline-none">
+              {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+          <div className="flex-1 space-y-1">
+            <label className="text-xs text-muted-foreground">Handle</label>
+            <Input value={handle} onChange={e => setHandle(e.target.value)} placeholder="如 notify" className="h-8 text-xs font-mono" />
+          </div>
+          <Button size="sm" onClick={handleInstall} disabled={installing || !botId || !handle.trim()} className="h-8">
+            {installing && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+            安装
+          </Button>
+        </div>
+      </Card>
+
+      {/* Existing installations */}
+      {installations.length === 0 ? (
         <p className="text-center text-sm text-muted-foreground py-8">暂无安装</p>
-      )}
-
-      <div className="space-y-2">
-        {installations.map((ins) => (
-          <Card key={ins.id} className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{ins.bot_name || ins.bot_id}</span>
-                {ins.handle && <Badge variant="outline" className="text-xs font-mono">@{ins.handle}</Badge>}
+      ) : (
+        <div className="space-y-2">
+          {installations.map((ins) => (
+            <Card key={ins.id} className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{ins.bot_name || ins.bot_id}</span>
+                  {ins.handle && <Badge variant="outline" className="text-xs font-mono">@{ins.handle}</Badge>}
+                </div>
+                <p className="text-[10px] text-muted-foreground font-mono">{ins.id}</p>
               </div>
-              <p className="text-[10px] text-muted-foreground font-mono">{ins.id}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant={ins.enabled ? "default" : "outline"}>
-                {ins.enabled ? "启用" : "禁用"}
-              </Badge>
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => handleDelete(ins.id)}>
-                <Trash2 className="w-3 h-3" />
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={ins.enabled ? "default" : "outline"}>
+                  {ins.enabled ? "启用" : "禁用"}
+                </Badge>
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => handleDelete(ins.id)}>
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -297,15 +352,21 @@ function InstallAppSection({ appId }: { appId: string }) {
 function DistributionSection({ app, onUpdate }: { app: any; onUpdate: () => void }) {
   const [loading, setLoading] = useState(false);
 
+  async function handleRequestListing() {
+    setLoading(true);
+    try { await api.requestListing(app.id); onUpdate(); } catch {}
+    setLoading(false);
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold">Manage Distribution</h2>
+        <h2 className="text-base font-semibold">分发管理</h2>
         <p className="text-sm text-muted-foreground mt-1">管理应用的上架状态，上架后其他用户可以搜索并安装。</p>
       </div>
 
       <Card className="space-y-4">
-        <h3 className="text-sm font-medium">App Marketplace</h3>
+        <h3 className="text-sm font-medium">应用市场</h3>
 
         {app.listed ? (
           <div className="flex items-center gap-2">
@@ -327,20 +388,16 @@ function DistributionSection({ app, onUpdate }: { app: any; onUpdate: () => void
                 <span className="text-xs text-destructive">原因：{app.listing_reject_reason}</span>
               )}
             </div>
-            <Button size="sm" variant="outline" disabled={loading} onClick={async () => {
-              setLoading(true);
-              try { await api.requestListing(app.id); onUpdate(); } catch {}
-              setLoading(false);
-            }}>{loading ? "..." : "重新申请"}</Button>
+            <Button size="sm" variant="outline" disabled={loading} onClick={handleRequestListing}>
+              {loading ? "..." : "重新申请"}
+            </Button>
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">你的应用尚未上架。上架后其他用户可以搜索并安装。</p>
-            <Button size="sm" variant="outline" disabled={loading} onClick={async () => {
-              setLoading(true);
-              try { await api.requestListing(app.id); onUpdate(); } catch {}
-              setLoading(false);
-            }}>{loading ? "..." : "申请上架"}</Button>
+            <Button size="sm" variant="outline" disabled={loading} onClick={handleRequestListing}>
+              {loading ? "..." : "申请上架"}
+            </Button>
           </div>
         )}
       </Card>
@@ -391,12 +448,12 @@ function EventSubscriptionsSection({ app, onUpdate }: { app: any; onUpdate: () =
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold">Event Subscriptions</h2>
+        <h2 className="text-base font-semibold">事件订阅</h2>
         <p className="text-sm text-muted-foreground mt-1">配置事件推送 URL 和订阅的事件类型。</p>
       </div>
 
       <Card className="space-y-4">
-        <h3 className="text-sm font-medium">Request URL</h3>
+        <h3 className="text-sm font-medium">请求地址</h3>
         <p className="text-xs text-muted-foreground">Hub 会将事件推送到此 URL，payload 中包含 installation_id 和 bot_id 以区分来源。</p>
         <div className="flex gap-2">
           <Input
@@ -418,7 +475,7 @@ function EventSubscriptionsSection({ app, onUpdate }: { app: any; onUpdate: () =
       </Card>
 
       <Card className="space-y-4">
-        <h3 className="text-sm font-medium">Subscribe to Events</h3>
+        <h3 className="text-sm font-medium">订阅事件</h3>
         <div className="grid grid-cols-2 gap-2">
           {EVENT_TYPES.map((et) => (
             <label key={et.key} className="flex items-center gap-2 cursor-pointer">
@@ -465,8 +522,8 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold">Commands / Tools</h2>
-          <p className="text-sm text-muted-foreground mt-1">定义 App 的工具和命令，用户通过 /command 触发。</p>
+          <h2 className="text-base font-semibold">命令 / 工具</h2>
+          <p className="text-sm text-muted-foreground mt-1">定义应用的工具和命令，用户通过 /command 触发。</p>
         </div>
         <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addTool}>
           <Plus className="w-3 h-3 mr-1" /> 添加
@@ -528,12 +585,12 @@ function OAuthPermissionsSection({ app, onUpdate }: { app: any; onUpdate: () => 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold">OAuth & Permissions</h2>
+        <h2 className="text-base font-semibold">OAuth 权限</h2>
         <p className="text-sm text-muted-foreground mt-1">管理应用通过 Bot API 调用时所需的权限范围。</p>
       </div>
 
       <Card className="space-y-4">
-        <h3 className="text-sm font-medium">Scopes</h3>
+        <h3 className="text-sm font-medium">权限范围</h3>
         <p className="text-xs text-muted-foreground">定义应用能够访问和执行的操作。安装时用户将看到这些权限描述。</p>
 
         <div className="space-y-2">

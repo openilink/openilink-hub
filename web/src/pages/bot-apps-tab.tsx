@@ -71,23 +71,14 @@ export function BotAppsTab({ botId }: { botId: string }) {
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
                     <AppIcon icon={inst.app_icon} iconUrl={inst.app_icon_url} size="h-10 w-10" />
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">{inst.app_name}</span>
                         {inst.handle && (
                           <Badge variant="secondary" className="text-[10px] font-mono">@{inst.handle}</Badge>
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {(inst.app_tools || []).slice(0, 3).map((t: any) => (
-                          <Badge key={t.name || t.command} variant="outline" className="text-[9px] font-mono">
-                            /{t.command || t.name}
-                          </Badge>
-                        ))}
-                        {(inst.app_tools || []).length > 3 && (
-                          <Badge variant="outline" className="text-[9px]">+{(inst.app_tools || []).length - 3}</Badge>
-                        )}
-                      </div>
+                      <p className="text-xs text-muted-foreground font-mono">{inst.app_slug}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -231,6 +222,10 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
                         ))}
                       </div>
                     </div>
+                  )}
+
+                  {scopes.length === 0 && tools.length === 0 && events.length === 0 && (
+                    <p className="text-sm text-muted-foreground">接收 @mention 消息并执行响应。</p>
                   )}
                 </div>
 
