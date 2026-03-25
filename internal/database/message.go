@@ -179,8 +179,8 @@ func (db *DB) GetLatestContextToken(botID string) string {
 func (db *DB) HasFreshContextToken(botID string, maxAge time.Duration) bool {
 	var exists bool
 	db.QueryRow(
-		"SELECT EXISTS(SELECT 1 FROM messages WHERE bot_id = $1 AND context_token != '' AND created_at > NOW() - $2::INTERVAL)",
-		botID, fmt.Sprintf("%d seconds", int(maxAge.Seconds())),
+		"SELECT EXISTS(SELECT 1 FROM messages WHERE bot_id = $1 AND context_token != '' AND created_at > NOW() - $2 * INTERVAL '1 second')",
+		botID, int(maxAge.Seconds()),
 	).Scan(&exists)
 	return exists
 }
@@ -191,19 +191,19 @@ func (db *DB) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration) m
 		return nil
 	}
 	result := make(map[string]bool, len(botIDs))
-	interval := fmt.Sprintf("%d seconds", int(maxAge.Seconds()))
+	secs := int(maxAge.Seconds())
 
 	// Build placeholders: $2, $3, ...
 	placeholders := make([]string, len(botIDs))
 	args := make([]any, 0, len(botIDs)+1)
-	args = append(args, interval)
+	args = append(args, secs)
 	for i, id := range botIDs {
 		placeholders[i] = fmt.Sprintf("$%d", i+2)
 		args = append(args, id)
 	}
 
 	rows, err := db.Query(
-		"SELECT DISTINCT bot_id FROM messages WHERE bot_id IN ("+strings.Join(placeholders, ",")+") AND context_token != '' AND created_at > NOW() - $1::INTERVAL",
+		"SELECT DISTINCT bot_id FROM messages WHERE bot_id IN ("+strings.Join(placeholders, ",")+") AND context_token != '' AND created_at > NOW() - $1 * INTERVAL '1 second'",
 		args...,
 	)
 	if err != nil {

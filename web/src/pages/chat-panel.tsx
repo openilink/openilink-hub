@@ -64,16 +64,13 @@ export function ChatPanel({ botId, canSend: initialCanSend = true, sendDisabledR
 
   const fetchData = async () => {
     try {
-      const [msgRes, bots] = await Promise.all([
-        api.messages(botId, 30),
-        api.listBots(),
-      ]);
-      setMessages((msgRes.messages || []).reverse());
-      // Refresh send status from bot list
-      const bot = (bots || []).find((b: any) => b.id === botId);
-      if (bot) {
-        setCanSend(bot.can_send ?? true);
-        setSendDisabledReason(bot.send_disabled_reason);
+      const res = await api.messages(botId, 30);
+      setMessages((res.messages || []).reverse());
+      // Refresh send status from messages API response
+      if (res.can_send !== undefined) {
+        setCanSend(res.can_send);
+        setSendDisabledReason(res.send_disabled_reason);
+        if (res.can_send) setSendError(""); // clear stale errors when status recovers
       }
     } catch {}
   };

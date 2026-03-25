@@ -97,7 +97,7 @@ export const api = {
 
   // Messages (under bots)
   messages: (botId: string, limit = 30, cursor?: string) =>
-    request<{ messages: any[]; next_cursor: string; has_more: boolean }>(
+    request<{ messages: any[]; next_cursor: string; has_more: boolean; can_send?: boolean; send_disabled_reason?: string }>(
       `/api/bots/${botId}/messages?limit=${limit}${cursor ? "&cursor=" + cursor : ""}`,
     ),
   sendMessage: (botId: string, data: any) =>
