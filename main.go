@@ -27,6 +27,13 @@ import (
 	_ "github.com/openilink/openilink-hub/internal/provider/ilink"
 )
 
+// Set by goreleaser ldflags.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func openStore(dsn string) (store.Store, error) {
 	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
 		return postgres.Open(dsn)
@@ -133,7 +140,7 @@ func main() {
 		httpSrv.Shutdown(shutCtx)
 	}()
 
-	fmt.Printf("OpeniLink Hub running on http://localhost%s\n", cfg.ListenAddr)
+	fmt.Printf("OpeniLink Hub %s (%s) running on http://localhost%s\n", version, commit, cfg.ListenAddr)
 	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
 		slog.Error("server error", "err", err)
 		os.Exit(1)
