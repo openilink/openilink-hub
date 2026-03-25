@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Blocks, Plus, Trash2, ShieldCheck, Eye, EyeOff,
-  Copy, Check, RefreshCw, ExternalLink, Loader2,
+  Copy, Check, ExternalLink, Loader2,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -271,6 +271,10 @@ function EventSubscriptionsSection({ app, onUpdate }: { app: any; onUpdate: () =
   async function handleVerify() {
     setVerifying(true);
     try {
+      // Save URL first if it changed, then verify
+      if (requestUrl !== (app.request_url || "")) {
+        await api.updateApp(app.id, { request_url: requestUrl });
+      }
       await api.verifyAppUrl(app.id);
       toast({ title: "URL 验证成功" });
       onUpdate();

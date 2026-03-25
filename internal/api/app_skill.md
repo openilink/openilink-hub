@@ -259,7 +259,7 @@ def handle():
             return create_issue(repo, title, args.get("body"))
 
     elif event_type.startswith("message."):
-        # Handle message events (only if events_enabled in installation config)
+        # Handle message events (delivered to all enabled installations)
         content = event_data.get("content", "")
         sender = event_data.get("sender", {})
         # ...process message...
@@ -366,7 +366,7 @@ Use async when:
 | `message.video` | Video message |
 | `message.file` | File message |
 
-**Important**: Message events are only delivered to installations that have `events_enabled: true` in their config. This is disabled by default — users must explicitly opt in when installing. Command/tool events (`event.type: "command"`) are always delivered regardless of this setting.
+**Important**: Message events are delivered to all enabled installations whose App subscribes to the event type. If your App has subscribed to an event in its configuration, all enabled installations will receive it.
 
 ### Request Signing
 
@@ -582,7 +582,7 @@ def handle_event():
             return jsonify({"reply": f"GitHub command received: {event_data['text']}"})
 
     elif event_type.startswith("message."):
-        # Only received if events_enabled is true on installation
+        # Received if the App subscribes to this event type
         pass
 
     return jsonify({"ok": True})
@@ -729,7 +729,7 @@ func main() {
 | PUT | `/api/apps/{id}/installations/{iid}` | Update installation |
 | DELETE | `/api/apps/{id}/installations/{iid}` | Uninstall |
 | POST | `/api/apps/{id}/installations/{iid}/regenerate-token` | Regenerate token |
-| POST | `/api/apps/{id}/installations/{iid}/verify-url` | Verify request URL |
+| POST | `/api/apps/{id}/verify-url` | Verify request URL |
 | GET | `/api/apps/{id}/installations/{iid}/event-logs` | Event delivery logs |
 | GET | `/api/apps/{id}/installations/{iid}/api-logs` | API call logs |
 
