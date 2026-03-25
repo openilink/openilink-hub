@@ -60,7 +60,7 @@ export function AppDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link to="/dashboard/apps/my" className="text-muted-foreground hover:text-foreground">
+        <Link to="/dashboard/apps/my" className="text-muted-foreground hover:text-foreground" aria-label="返回我的应用">
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-8 w-8" />
@@ -229,10 +229,10 @@ function SecretField({ label, value, description }: { label: string; value: stri
       {description && <p className="text-[10px] text-muted-foreground">{description}</p>}
       <div className="flex items-center gap-2 p-2 rounded-lg border bg-background">
         <code className="text-xs font-mono flex-1 break-all">{show ? value : masked}</code>
-        <button onClick={() => setShow(!show)} className="cursor-pointer text-muted-foreground hover:text-foreground">
+        <button onClick={() => setShow(!show)} className="cursor-pointer text-muted-foreground hover:text-foreground" aria-label={show ? "隐藏" : "显示"}>
           {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
         </button>
-        <button onClick={handleCopy} className="cursor-pointer text-muted-foreground hover:text-foreground">
+        <button onClick={handleCopy} className="cursor-pointer text-muted-foreground hover:text-foreground" aria-label="复制">
           {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
       </div>
@@ -335,7 +335,7 @@ function InstallAppSection({ appId }: { appId: string }) {
                 <Badge variant={ins.enabled ? "default" : "outline"}>
                   {ins.enabled ? "启用" : "禁用"}
                 </Badge>
-                <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => handleDelete(ins.id)}>
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" aria-label="卸载" onClick={() => handleDelete(ins.id)}>
                   <Trash2 className="w-3 h-3" />
                 </Button>
               </div>
@@ -551,7 +551,7 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
                 className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-[11px] font-mono placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 resize-none"
               />
             </div>
-            <button onClick={() => removeTool(i)} className="cursor-pointer mt-1"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
+            <button onClick={() => removeTool(i)} className="cursor-pointer mt-1" aria-label="删除工具"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
           </div>
         </Card>
       ))}

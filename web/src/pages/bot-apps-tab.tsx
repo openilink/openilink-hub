@@ -88,7 +88,7 @@ export function BotAppsTab({ botId }: { botId: string }) {
                     <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleToggle(inst)}>
                       {inst.enabled ? "停用" : "启用"}
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => handleUninstall(inst.app_id, inst.id)}>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" aria-label="卸载" onClick={() => handleUninstall(inst.app_id, inst.id)}>
                       <Trash2 className="w-3 h-3" />
                     </Button>
                   </div>
@@ -157,6 +157,10 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>安装 {confirmApp.name}</DialogTitle>
+            <DialogDescription>查看权限并确认安装。</DialogDescription>
+          </DialogHeader>
           <div className="py-2">
             <div className="flex flex-col sm:flex-row gap-6">
               {/* Left: App identity */}

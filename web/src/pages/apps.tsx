@@ -145,11 +145,18 @@ function MarketplaceTab() {
             </CardFooter>
           </Card>
         ))}
+        {filtered.length === 0 && apps.length > 0 && (
+          <p className="col-span-full text-center text-sm text-muted-foreground py-8">没有匹配的应用</p>
+        )}
       </div>
 
       {installApp && (
         <Dialog open={!!installApp} onOpenChange={(o: boolean) => !o && setInstallApp(null)}>
           <DialogContent className="sm:max-w-2xl rounded-[2rem]">
+            <DialogHeader className="sr-only">
+              <DialogTitle>安装 {installApp.name}</DialogTitle>
+              <DialogDescription>查看权限并确认安装。</DialogDescription>
+            </DialogHeader>
             <InstallFlowDialog app={installApp} onClose={() => setInstallApp(null)} />
           </DialogContent>
         </Dialog>
@@ -271,18 +278,24 @@ function InstallFlowDialog({ app, onClose }: { app: any; onClose: () => void }) 
           </div>
 
           <div className="space-y-3 pt-2 border-t">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium">安装到账号</label>
-              <select value={botId} onChange={e => setBotId(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20">
-                {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium">Handle</label>
-              <Input value={handle} onChange={e => setHandle(e.target.value)} className="h-9 font-mono" placeholder="如 notify-prod" />
-              <p className="text-[10px] text-muted-foreground">用户发送 @{handle || "handle"} 触发此应用</p>
-            </div>
+            {bots.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">请先创建一个账号，然后再安装应用。</p>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">安装到账号</label>
+                  <select value={botId} onChange={e => setBotId(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/20">
+                    {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Handle</label>
+                  <Input value={handle} onChange={e => setHandle(e.target.value)} className="h-9 font-mono" placeholder="如 notify-prod" />
+                  <p className="text-[10px] text-muted-foreground">用户发送 @{handle || "handle"} 触发此应用</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
