@@ -97,6 +97,12 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if the bot can send (context_token freshness)
+	if canSend, reason := s.checkSendability(inst.BotID, botInst.Status()); !canSend {
+		botAPIError(w, reason, http.StatusConflict)
+		return
+	}
+
 	// Auto-fill context_token from latest message if not available
 	contextToken := s.DB.GetLatestContextToken(inst.BotID)
 

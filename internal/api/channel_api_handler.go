@@ -121,6 +121,12 @@ func (s *Server) handleChannelSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if the bot can send (context_token freshness)
+	if canSend, reason := s.checkSendability(ch.BotID, inst.Status()); !canSend {
+		jsonError(w, reason, http.StatusConflict)
+		return
+	}
+
 	msg, msgType, err := parseSendRequest(r)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)

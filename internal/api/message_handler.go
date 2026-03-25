@@ -90,14 +90,18 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	canSend, sendReason := s.checkSendability(botID, status)
 
+	resp := map[string]any{
+		"messages":    msgs,
+		"next_cursor": nextCursor,
+		"has_more":    hasMore,
+		"can_send":    canSend,
+	}
+	if sendReason != "" {
+		resp["send_disabled_reason"] = sendReason
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"messages":              msgs,
-		"next_cursor":           nextCursor,
-		"has_more":              hasMore,
-		"can_send":              canSend,
-		"send_disabled_reason":  sendReason,
-	})
+	json.NewEncoder(w).Encode(resp)
 }
 
 func encodeMsgCursor(id int64) string {
