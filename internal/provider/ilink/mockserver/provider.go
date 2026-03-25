@@ -180,6 +180,9 @@ func convertWeixinToInbound(msg *ilink.WeixinMessage) provider.InboundMessage {
 		}
 	}
 
+	// Serialize the WeixinMessage as Raw so tests can verify raw storage.
+	raw, _ := json.Marshal(msg)
+
 	return provider.InboundMessage{
 		ExternalID:   fmt.Sprintf("%d", msg.MessageID),
 		Sender:       msg.FromUserID,
@@ -190,6 +193,7 @@ func convertWeixinToInbound(msg *ilink.WeixinMessage) provider.InboundMessage {
 		Items:        items,
 		ContextToken: msg.ContextToken,
 		SessionID:    msg.SessionID,
+		Raw:          raw,
 	}
 }
 
