@@ -74,8 +74,7 @@ export function BotDetailPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  const handleAutoRenewalChange = async (checked: boolean) => {
-    const hours = checked ? 23 : 0;
+  const handleAutoRenewalChange = async (hours: number) => {
     try {
       await api.updateBot(bot.id, { reminder_hours: hours });
       toast({ title: "已保存" });
@@ -119,15 +118,17 @@ export function BotDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-           {/* Inline auto-renewal checkbox */}
-           <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground cursor-pointer select-none">
-             <input
-               type="checkbox"
-               checked={(bot.reminder_hours || 0) > 0}
-               onChange={(e) => handleAutoRenewalChange(e.target.checked)}
-               className="h-4 w-4 accent-primary"
-             />
+           <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground select-none">
              自动续期
+             <select
+               value={bot.reminder_hours || 0}
+               onChange={(e) => handleAutoRenewalChange(Number(e.target.value))}
+               className="h-7 rounded-md border border-input bg-background px-2 text-xs font-bold cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring"
+             >
+               <option value={0}>不提醒</option>
+               <option value={23}>提前 1 小时</option>
+               <option value={22}>提前 2 小时</option>
+             </select>
            </label>
            <Separator orientation="vertical" className="h-5" />
            <Button variant="outline" size="sm" className="rounded-full px-4 font-bold text-xs gap-1.5" onClick={() => navigate(`/dashboard/accounts/${id}/console`)}>

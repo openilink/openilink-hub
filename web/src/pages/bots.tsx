@@ -265,7 +265,7 @@ function BotInstanceCard({ bot, onRefresh, onRebind }: { bot: any; onRefresh: ()
             <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">自动续期</p>
             <div className="flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5 text-orange-500/60" />
-              <span className="text-sm font-bold">{bot.reminder_hours || 0}h <span className="text-[10px] font-normal opacity-60">KEEP</span></span>
+              <span className="text-sm font-bold">{bot.reminder_hours ? `提前 ${24 - bot.reminder_hours}h` : "不提醒"}</span>
             </div>
           </div>
         </div>
