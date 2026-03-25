@@ -92,7 +92,7 @@ func checkSendStatus(status string, hasFreshToken bool) (bool, string) {
 		return false, "Bot 未连接"
 	}
 	if !hasFreshToken {
-		return false, "超过 24 小时未收到消息，无法主动发送"
+		return false, "暂无法发送：需要先收到用户消息"
 	}
 	return true, ""
 }
