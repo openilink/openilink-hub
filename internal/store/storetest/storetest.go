@@ -217,6 +217,27 @@ func TestUserCRUD(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("GetUserByID_NotFound", func(t *testing.T) {
+		_, err := s.GetUserByID("nonexistent-user-id")
+		if err == nil {
+			t.Error("expected error for non-existent user ID, got nil")
+		}
+	})
+
+	t.Run("GetUserByUsername_NotFound", func(t *testing.T) {
+		_, err := s.GetUserByUsername("nosuchusername")
+		if err == nil {
+			t.Error("expected error for non-existent username, got nil")
+		}
+	})
+
+	t.Run("GetUserByEmail_NotFound", func(t *testing.T) {
+		_, err := s.GetUserByEmail("nosuch@email.com")
+		if err == nil {
+			t.Error("expected error for non-existent email, got nil")
+		}
+	})
+
 	t.Run("DeleteUser", func(t *testing.T) {
 		u, _ := s.GetUserByUsername("second_user")
 		if err := s.DeleteUser(u.ID); err != nil {
@@ -446,6 +467,27 @@ func TestBotCRUD(t *testing.T, s store.Store) {
 	t.Run("LastActivityAt", func(t *testing.T) {
 		// May be nil if no messages yet
 		_ = s.LastActivityAt(u.ID)
+	})
+
+	t.Run("GetBot_NotFound", func(t *testing.T) {
+		_, err := s.GetBot("nonexistent-bot-id")
+		if err == nil {
+			t.Error("expected error for non-existent bot, got nil")
+		}
+	})
+
+	t.Run("FindBotByProviderID_NotFound", func(t *testing.T) {
+		_, err := s.FindBotByProviderID("nosuchprovider", "nosuchid")
+		if err == nil {
+			t.Error("expected error for non-existent provider ID, got nil")
+		}
+	})
+
+	t.Run("FindBotByCredential_NotFound", func(t *testing.T) {
+		_, err := s.FindBotByCredential("nosuchkey", "nosuchvalue")
+		if err == nil {
+			t.Error("expected error for non-existent credential, got nil")
+		}
 	})
 
 	t.Run("DeleteBot", func(t *testing.T) {
@@ -700,6 +742,80 @@ func TestMessageCRUD(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("UpdateMessagePayload", func(t *testing.T) {
+		// Save a message with media_status="downloading"
+		msgID := int64(5001)
+		res, err := s.SaveMessage(&store.Message{
+			BotID:       b.ID,
+			Direction:   "inbound",
+			MessageID:   &msgID,
+			FromUserID:  "sender1",
+			MediaStatus: "downloading",
+		})
+		if err != nil {
+			t.Fatalf("SaveMessage: %v", err)
+		}
+		payload := json.RawMessage(`{"media_status":"ready","media_key":"test.jpg"}`)
+		if err := s.UpdateMessagePayload(res.ID, payload); err != nil {
+			t.Fatalf("UpdateMessagePayload: %v", err)
+		}
+		got, err := s.GetMessage(res.ID)
+		if err != nil {
+			t.Fatalf("GetMessage after UpdateMessagePayload: %v", err)
+		}
+		if got.MediaStatus != "ready" {
+			t.Errorf("media_status = %q, want %q", got.MediaStatus, "ready")
+		}
+	})
+
+	t.Run("UpdateMediaPayloads", func(t *testing.T) {
+		// Save messages with media_status="downloading" for the bot
+		for i := 0; i < 2; i++ {
+			msgID := int64(6001 + i)
+			_, err := s.SaveMessage(&store.Message{
+				BotID:       b.ID,
+				Direction:   "inbound",
+				MessageID:   &msgID,
+				FromUserID:  "sender1",
+				MediaStatus: "downloading",
+			})
+			if err != nil {
+				t.Fatalf("SaveMessage: %v", err)
+			}
+		}
+		payload := json.RawMessage(`{"media_status":"ready","media_key":"test.jpg"}`)
+		if err := s.UpdateMediaPayloads(b.ID, "", payload); err != nil {
+			t.Fatalf("UpdateMediaPayloads: %v", err)
+		}
+		// All downloading messages for this bot should be updated
+		msgs, err := s.ListMessages(b.ID, 200, 0)
+		if err != nil {
+			t.Fatalf("ListMessages: %v", err)
+		}
+		for _, m := range msgs {
+			if m.MediaStatus == "downloading" {
+				t.Errorf("message %d still has media_status=downloading after UpdateMediaPayloads", m.ID)
+			}
+		}
+	})
+
+	t.Run("GetMessage_NotFound", func(t *testing.T) {
+		_, err := s.GetMessage(999999)
+		if err == nil {
+			t.Error("expected error for non-existent message, got nil")
+		}
+	})
+
+	t.Run("BatchHasFreshContextToken_Empty", func(t *testing.T) {
+		result := s.BatchHasFreshContextToken([]string{}, 1*time.Hour)
+		if result == nil {
+			t.Error("expected non-nil empty map, got nil")
+		}
+		if len(result) != 0 {
+			t.Errorf("expected empty map, got %d entries", len(result))
+		}
+	})
+
 	t.Run("PruneMessages", func(t *testing.T) {
 		// Just verify no error with large maxAge (should delete nothing)
 		_, err := s.PruneMessages(9999)
@@ -836,6 +952,23 @@ func TestChannelCRUD(t *testing.T, s store.Store) {
 		}
 		if count < 1 {
 			t.Errorf("count = %d, want >= 1", count)
+		}
+	})
+
+	t.Run("GetChannel_NotFound", func(t *testing.T) {
+		_, err := s.GetChannel("nonexistent-channel-id")
+		if err == nil {
+			t.Error("expected error for non-existent channel, got nil")
+		}
+	})
+
+	t.Run("ListChannelsByBotIDs_Empty", func(t *testing.T) {
+		chs, err := s.ListChannelsByBotIDs([]string{})
+		if err != nil {
+			t.Fatalf("ListChannelsByBotIDs(empty): %v", err)
+		}
+		if chs != nil {
+			t.Errorf("expected nil for empty botIDs, got %d entries", len(chs))
 		}
 	})
 
@@ -1144,6 +1277,20 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("GetApp_NotFound", func(t *testing.T) {
+		_, err := s.GetApp("nonexistent-app-id")
+		if err == nil {
+			t.Error("expected error for non-existent app, got nil")
+		}
+	})
+
+	t.Run("ExchangeOAuthCode_NotFound", func(t *testing.T) {
+		_, _, err := s.ExchangeOAuthCode("nonexistent-code")
+		if err == nil {
+			t.Error("expected error for non-existent OAuth code, got nil")
+		}
+	})
+
 	t.Run("DeleteApp", func(t *testing.T) {
 		app2 := mustCreateApp(t, s, u.ID, "ToDelete", "to-delete")
 		if err := s.DeleteApp(app2.ID); err != nil {
@@ -1443,6 +1590,33 @@ func TestPluginCRUD(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("GetPlugin_NotFound", func(t *testing.T) {
+		_, err := s.GetPlugin("nonexistent-plugin-id")
+		if err == nil {
+			t.Error("expected error for non-existent plugin, got nil")
+		}
+	})
+
+	t.Run("ResolvePluginScript_NotApproved", func(t *testing.T) {
+		// Create a new pending version and try to resolve it
+		pendingV, err := s.CreatePluginVersion(&store.PluginVersion{
+			PluginID:     pluginID,
+			Version:      "9.0.0",
+			Script:       "pending script",
+			ConfigSchema: json.RawMessage(`[]`),
+			MatchTypes:   "*",
+		})
+		if err != nil {
+			t.Fatalf("CreatePluginVersion: %v", err)
+		}
+		_, _, _, err = s.ResolvePluginScript(pendingV.ID)
+		if err == nil {
+			t.Error("expected error resolving non-approved plugin version, got nil")
+		}
+		// Clean up
+		s.CancelPluginVersion(pendingV.ID)
+	})
+
 	t.Run("DeletePlugin", func(t *testing.T) {
 		p2, _ := s.CreatePlugin(&store.Plugin{
 			Name:    "to-delete-plugin",
@@ -1622,6 +1796,13 @@ func TestOAuthCRUD(t *testing.T, s store.Store) {
 		}
 		if len(accts) < 1 {
 			t.Fatal("expected at least 1 account")
+		}
+	})
+
+	t.Run("GetOAuthAccount_NotFound", func(t *testing.T) {
+		_, err := s.GetOAuthAccount("nosuchprovider", "nosuchid")
+		if err == nil {
+			t.Error("expected error for non-existent OAuth account, got nil")
 		}
 	})
 
@@ -1931,6 +2112,13 @@ func TestSessionCRUD(t *testing.T, s store.Store) {
 		// Compare at second precision (epoch storage)
 		if expiresAt.Unix() != exp.Unix() {
 			t.Errorf("expiresAt = %v, want %v", expiresAt.Unix(), exp.Unix())
+		}
+	})
+
+	t.Run("GetSession_NotFound", func(t *testing.T) {
+		_, _, err := s.GetSession("nonexistent-token")
+		if err == nil {
+			t.Error("expected error for non-existent session token, got nil")
 		}
 	})
 
