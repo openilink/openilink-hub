@@ -82,6 +82,7 @@ type PluginStore interface {
 	ReviewPluginVersion(id, status, reviewedBy, reason string) error
 	DeletePluginVersion(id string) error
 	RecordPluginInstall(pluginID, userID string) error
+	CancelPluginVersion(id string) error
 	FindPluginOwner(name string) (string, error)
 	ResolvePluginScript(versionID string) (script, version string, timeoutSec int, err error)
 }

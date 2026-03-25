@@ -13,13 +13,13 @@ import (
 
 	ilinkProvider "github.com/openilink/openilink-hub/internal/provider/ilink"
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/provider"
 )
 
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
-	bots, err := s.DB.ListBotsByUser(userID)
+	bots, err := s.Store.ListBotsByUser(userID)
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
@@ -42,7 +42,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 	for i, b := range bots {
 		botIDs[i] = b.ID
 	}
-	freshTokens := s.DB.BatchHasFreshContextToken(botIDs, contextTokenMaxAge)
+	freshTokens := s.Store.BatchHasFreshContextToken(botIDs, contextTokenMaxAge)
 
 	var result []botResp
 	for _, b := range bots {
@@ -99,7 +99,7 @@ func checkSendStatus(status string, hasFreshToken bool) (bool, string) {
 
 // checkSendability queries the DB and returns send capability for a single bot.
 func (s *Server) checkSendability(botID, status string) (bool, string) {
-	hasFresh := s.DB.HasFreshContextToken(botID, contextTokenMaxAge)
+	hasFresh := s.Store.HasFreshContextToken(botID, contextTokenMaxAge)
 	return checkSendStatus(status, hasFresh)
 }
 
@@ -192,18 +192,18 @@ func (s *Server) handleBindStatus(w http.ResponseWriter, r *http.Request) {
 			}
 			json.Unmarshal(result.Credentials, &creds)
 
-			var bot *database.Bot
+			var bot *store.Bot
 
 			// 1. Match by provider_id (exact bot_id)
 			if creds.BotID != "" {
-				existing, _ := s.DB.FindBotByProviderID("ilink", creds.BotID)
+				existing, _ := s.Store.FindBotByProviderID("ilink", creds.BotID)
 				if existing != nil {
 					if existing.UserID != entry.UserID {
 						sendEvent("error", `{"message":"this account is already bound by another user"}`)
 						return
 					}
 					s.BotManager.StopBot(existing.ID)
-					if err := s.DB.UpdateBotCredentials(existing.ID, creds.BotID, result.Credentials); err != nil {
+					if err := s.Store.UpdateBotCredentials(existing.ID, creds.BotID, result.Credentials); err != nil {
 						slog.Error("rebind update failed", "err", err)
 						sendEvent("error", `{"message":"rebind failed"}`)
 						return
@@ -216,10 +216,10 @@ func (s *Server) handleBindStatus(w http.ResponseWriter, r *http.Request) {
 
 			// 2. Match by ilink_user_id (same WeChat user, new bot_id)
 			if bot == nil && creds.ILinkUserID != "" {
-				sibling, _ := s.DB.FindBotByCredential("ilink_user_id", creds.ILinkUserID)
+				sibling, _ := s.Store.FindBotByCredential("ilink_user_id", creds.ILinkUserID)
 				if sibling != nil && sibling.UserID == entry.UserID {
 					s.BotManager.StopBot(sibling.ID)
-					if err := s.DB.UpdateBotCredentials(sibling.ID, creds.BotID, result.Credentials); err != nil {
+					if err := s.Store.UpdateBotCredentials(sibling.ID, creds.BotID, result.Credentials); err != nil {
 						slog.Error("rebind update failed", "err", err)
 						sendEvent("error", `{"message":"rebind failed"}`)
 						return
@@ -233,18 +233,18 @@ func (s *Server) handleBindStatus(w http.ResponseWriter, r *http.Request) {
 
 			if bot == nil {
 				var err error
-				bot, err = s.DB.CreateBot(entry.UserID, "", "ilink", creds.BotID, result.Credentials)
+				bot, err = s.Store.CreateBot(entry.UserID, "", "ilink", creds.BotID, result.Credentials)
 				if err != nil {
 					slog.Error("save bot failed", "err", err)
 					sendEvent("error", `{"message":"save failed"}`)
 					return
 				}
 				// Auto-create default channel for new bots only
-				var aiCfg *database.AIConfig
+				var aiCfg *store.AIConfig
 				if enableAI {
-					aiCfg = &database.AIConfig{Enabled: true, Source: "builtin"}
+					aiCfg = &store.AIConfig{Enabled: true, Source: "builtin"}
 				}
-				s.DB.CreateChannel(bot.ID, "默认", "", nil, aiCfg)
+				s.Store.CreateChannel(bot.ID, "默认", "", nil, aiCfg)
 			}
 
 			s.BotManager.StartBot(context.Background(), bot)
@@ -260,7 +260,7 @@ func (s *Server) handleReconnect(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -279,14 +279,14 @@ func (s *Server) handleDeleteBot(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
 
 	s.BotManager.StopBot(botID)
-	s.DB.DeleteBot(botID)
+	s.Store.DeleteBot(botID)
 	jsonOK(w)
 }
 
@@ -294,7 +294,7 @@ func (s *Server) handleUpdateBot(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -310,7 +310,7 @@ func (s *Server) handleUpdateBot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Name != nil && *req.Name != "" {
-		if err := s.DB.UpdateBotName(botID, *req.Name); err != nil {
+		if err := s.Store.UpdateBotName(botID, *req.Name); err != nil {
 			jsonError(w, "update failed", http.StatusInternalServerError)
 			return
 		}
@@ -321,7 +321,7 @@ func (s *Server) handleUpdateBot(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "reminder_hours must be 0, 22 or 23", http.StatusBadRequest)
 			return
 		}
-		if err := s.DB.UpdateBotReminder(botID, hours); err != nil {
+		if err := s.Store.UpdateBotReminder(botID, hours); err != nil {
 			jsonError(w, "update failed", http.StatusInternalServerError)
 			return
 		}
@@ -331,7 +331,7 @@ func (s *Server) handleUpdateBot(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
-	stats, err := s.DB.GetBotStats(userID)
+	stats, err := s.Store.GetBotStats(userID)
 	if err != nil {
 		jsonError(w, "stats failed", http.StatusInternalServerError)
 		return
@@ -342,7 +342,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := s.DB.GetAdminStats()
+	stats, err := s.Store.GetAdminStats()
 	if err != nil {
 		jsonError(w, "stats failed", http.StatusInternalServerError)
 		return
@@ -360,7 +360,7 @@ func (s *Server) handleBotSend(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -390,7 +390,7 @@ func (s *Server) handleBotSend(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-fill context_token from latest message if not provided
 	if msg.ContextToken == "" {
-		msg.ContextToken = s.DB.GetLatestContextToken(botID)
+		msg.ContextToken = s.Store.GetLatestContextToken(botID)
 	}
 
 	clientID, err := inst.Send(r.Context(), msg)
@@ -408,18 +408,18 @@ func (s *Server) handleBotSend(w http.ResponseWriter, r *http.Request) {
 
 	mediaStatus := ""
 	mediaKeys := json.RawMessage(`{}`)
-	if len(msg.Data) > 0 && s.Store != nil {
+	if len(msg.Data) > 0 && s.ObjectStore != nil {
 		ct := detectContentType(msgType)
 		ext := detectExt(msg.FileName, msgType)
 		key := fmt.Sprintf("%s/%s/out_%d%s", botID,
 			time.Now().Format("2006/01/02"), time.Now().UnixMilli(), ext)
-		if _, err := s.Store.Put(r.Context(), key, ct, msg.Data); err == nil {
+		if _, err := s.ObjectStore.Put(r.Context(), key, ct, msg.Data); err == nil {
 			mediaStatus = "ready"
 			mediaKeys, _ = json.Marshal(map[string]string{"0": key})
 		}
 	}
 
-	s.DB.SaveMessage(&database.Message{
+	s.Store.SaveMessage(&store.Message{
 		BotID:       botID,
 		Direction:   "outbound",
 		ToUserID:    msg.Recipient,
@@ -526,13 +526,13 @@ func (s *Server) handleBotContacts(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
 
-	contacts, err := s.DB.ListRecentContacts(botID, 100)
+	contacts, err := s.Store.ListRecentContacts(botID, 100)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return

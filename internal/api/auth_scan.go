@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/provider"
 	ilinkProvider "github.com/openilink/openilink-hub/internal/provider/ilink"
 )
@@ -125,14 +125,14 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 
 	// 1. Try to find existing bot by provider_id → get its owner
 	var userID string
-	var bot *database.Bot
+	var bot *store.Bot
 	if creds.BotID != "" {
-		existing, _ := s.DB.FindBotByProviderID("ilink", creds.BotID)
+		existing, _ := s.Store.FindBotByProviderID("ilink", creds.BotID)
 		if existing != nil {
 			userID = existing.UserID
 			// Rebind: update credentials
 			s.BotManager.StopBot(existing.ID)
-			if err := s.DB.UpdateBotCredentials(existing.ID, creds.BotID, result.Credentials); err != nil {
+			if err := s.Store.UpdateBotCredentials(existing.ID, creds.BotID, result.Credentials); err != nil {
 				sendEvent("error", `{"message":"rebind failed"}`)
 				return
 			}
@@ -144,12 +144,12 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 
 	// 2. No bot_id match → find another bot from the same ilink_user_id → rebind it
 	if bot == nil && creds.ILinkUserID != "" {
-		sibling, _ := s.DB.FindBotByCredential("ilink_user_id", creds.ILinkUserID)
+		sibling, _ := s.Store.FindBotByCredential("ilink_user_id", creds.ILinkUserID)
 		if sibling != nil {
 			userID = sibling.UserID
 			// Rebind the existing bot with the new credentials/provider_id
 			s.BotManager.StopBot(sibling.ID)
-			if err := s.DB.UpdateBotCredentials(sibling.ID, creds.BotID, result.Credentials); err != nil {
+			if err := s.Store.UpdateBotCredentials(sibling.ID, creds.BotID, result.Credentials); err != nil {
 				sendEvent("error", `{"message":"rebind failed"}`)
 				return
 			}
@@ -166,7 +166,7 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 		if len(suffix) > 8 {
 			suffix = suffix[:8]
 		}
-		user, err := s.DB.CreateUser("ilink_"+suffix, "iLink User")
+		user, err := s.Store.CreateUser("ilink_"+suffix, "iLink User")
 		if err != nil {
 			slog.Error("scan-login create user failed", "err", err)
 			sendEvent("error", `{"message":"create user failed"}`)
@@ -177,31 +177,31 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 	}
 
 	// Verify user is active
-	user, err := s.DB.GetUserByID(userID)
+	user, err := s.Store.GetUserByID(userID)
 	if err != nil {
 		sendEvent("error", `{"message":"user not found"}`)
 		return
 	}
-	if user.Status != database.StatusActive {
+	if user.Status != store.StatusActive {
 		sendEvent("error", `{"message":"account disabled"}`)
 		return
 	}
 
 	// Create new bot if not rebinding
 	if bot == nil {
-		bot, err = s.DB.CreateBot(userID, "", "ilink", creds.BotID, result.Credentials)
+		bot, err = s.Store.CreateBot(userID, "", "ilink", creds.BotID, result.Credentials)
 		if err != nil {
 			slog.Error("scan-login create bot failed", "err", err)
 			sendEvent("error", `{"message":"save failed"}`)
 			return
 		}
-		s.DB.CreateChannel(bot.ID, "默认", "", nil, nil)
+		s.Store.CreateChannel(bot.ID, "默认", "", nil, nil)
 	}
 
 	s.BotManager.StartBot(context.Background(), bot)
 
 	// Login: create session — send token via WS (can't set cookie on WS)
-	sessionToken, _ := auth.CreateSession(s.DB, user.ID)
+	sessionToken, _ := auth.CreateSession(s.Store, user.ID)
 
 	j, _ := json.Marshal(map[string]string{"status": "connected", "bot_id": bot.ID, "session_token": sessionToken})
 	sendEvent("status", string(j))

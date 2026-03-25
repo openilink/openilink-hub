@@ -17,7 +17,7 @@ import (
 
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/config"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // --- OAuth provider definitions ---
@@ -53,7 +53,7 @@ var oauthProviderDefs = map[string]struct {
 // oauthProviders returns enabled OAuth providers.
 // DB config takes precedence over env vars.
 func (s *Server) oauthProviders() map[string]*oauthProvider {
-	dbConf, _ := s.DB.ListConfigByPrefix("oauth.")
+	dbConf, _ := s.Store.ListConfigByPrefix("oauth.")
 	providers := map[string]*oauthProvider{}
 
 	for name, def := range oauthProviderDefs {
@@ -208,12 +208,12 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Bind mode: link OAuth account to existing logged-in user
 	if entry.BindUID != "" {
-		existing, err := s.DB.GetOAuthAccount(name, providerID)
+		existing, err := s.Store.GetOAuthAccount(name, providerID)
 		if err == nil && existing.UserID != entry.BindUID {
 			// Check if the linked user still exists — clean up stale records
-			if _, userErr := s.DB.GetUserByID(existing.UserID); userErr != nil {
+			if _, userErr := s.Store.GetUserByID(existing.UserID); userErr != nil {
 				slog.Info("oauth cleanup stale binding", "provider", name, "old_user", existing.UserID)
-				s.DB.DeleteOAuthAccount(name, providerID)
+				s.Store.DeleteOAuthAccount(name, providerID)
 			} else {
 				http.Redirect(w, r, "/dashboard/settings?oauth_error=already_linked", http.StatusFound)
 				return
@@ -221,7 +221,7 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err == sql.ErrNoRows || (err == nil && existing.UserID != entry.BindUID) {
-			if err := s.DB.CreateOAuthAccount(&database.OAuthAccount{
+			if err := s.Store.CreateOAuthAccount(&store.OAuthAccount{
 				Provider:   name,
 				ProviderID: providerID,
 				UserID:     entry.BindUID,
@@ -246,12 +246,12 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.Status != database.StatusActive {
+	if user.Status != store.StatusActive {
 		jsonError(w, "account disabled", http.StatusForbidden)
 		return
 	}
 
-	token, _ := auth.CreateSession(s.DB, user.ID)
+	token, _ := auth.CreateSession(s.Store, user.ID)
 	setSessionCookie(w, token)
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
@@ -286,7 +286,7 @@ func (s *Server) handleOAuthBind(w http.ResponseWriter, r *http.Request) {
 // GET /api/auth/oauth/accounts — list linked OAuth accounts for current user
 func (s *Server) handleOAuthAccounts(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
-	accounts, err := s.DB.ListOAuthAccountsByUser(userID)
+	accounts, err := s.Store.ListOAuthAccountsByUser(userID)
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
@@ -300,14 +300,14 @@ func (s *Server) handleOAuthUnbind(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	providerName := r.PathValue("provider")
 
-	accounts, err := s.DB.ListOAuthAccountsByUser(userID)
+	accounts, err := s.Store.ListOAuthAccountsByUser(userID)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
 	}
 
 	// Find the account to unlink
-	var target *database.OAuthAccount
+	var target *store.OAuthAccount
 	for _, a := range accounts {
 		if a.Provider == providerName {
 			target = &a
@@ -320,7 +320,7 @@ func (s *Server) handleOAuthUnbind(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ensure user has another login method (password or other OAuth)
-	user, err := s.DB.GetUserByID(userID)
+	user, err := s.Store.GetUserByID(userID)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusInternalServerError)
 		return
@@ -336,7 +336,7 @@ func (s *Server) handleOAuthUnbind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.DB.DeleteOAuthAccount(target.Provider, target.ProviderID); err != nil {
+	if err := s.Store.DeleteOAuthAccount(target.Provider, target.ProviderID); err != nil {
 		jsonError(w, "unlink failed", http.StatusInternalServerError)
 		return
 	}
@@ -344,20 +344,20 @@ func (s *Server) handleOAuthUnbind(w http.ResponseWriter, r *http.Request) {
 }
 
 // findOrCreateOAuthUser links an OAuth account to an existing user or creates a new one.
-func (s *Server) findOrCreateOAuthUser(provider, providerID, username, email, avatarURL string) (*database.User, error) {
+func (s *Server) findOrCreateOAuthUser(provider, providerID, username, email, avatarURL string) (*store.User, error) {
 	// Check if OAuth account already linked
-	oa, err := s.DB.GetOAuthAccount(provider, providerID)
+	oa, err := s.Store.GetOAuthAccount(provider, providerID)
 	if err == nil {
-		return s.DB.GetUserByID(oa.UserID)
+		return s.Store.GetUserByID(oa.UserID)
 	}
 	if err != sql.ErrNoRows {
 		return nil, err
 	}
 
 	// Try to find existing user by email
-	var user *database.User
+	var user *store.User
 	if email != "" {
-		user, err = s.DB.GetUserByEmail(email)
+		user, err = s.Store.GetUserByEmail(email)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, err
 		}
@@ -366,23 +366,23 @@ func (s *Server) findOrCreateOAuthUser(provider, providerID, username, email, av
 	// Create new user if not found
 	if user == nil {
 		displayName := username
-		role := database.RoleMember
-		count, _ := s.DB.UserCount()
+		role := store.RoleMember
+		count, _ := s.Store.UserCount()
 		if count == 0 {
-			role = database.RoleSuperAdmin
+			role = store.RoleSuperAdmin
 		}
 		uname := provider + "_" + username
-		if _, err := s.DB.GetUserByUsername(uname); err == nil {
+		if _, err := s.Store.GetUserByUsername(uname); err == nil {
 			uname = provider + "_" + username + "_" + providerID
 		}
-		user, err = s.DB.CreateUserFull(uname, email, displayName, "", role)
+		user, err = s.Store.CreateUserFull(uname, email, displayName, "", role)
 		if err != nil {
 			return nil, fmt.Errorf("create user: %w", err)
 		}
 	}
 
 	// Link OAuth account
-	if err := s.DB.CreateOAuthAccount(&database.OAuthAccount{
+	if err := s.Store.CreateOAuthAccount(&store.OAuthAccount{
 		Provider:   provider,
 		ProviderID: providerID,
 		UserID:     user.ID,

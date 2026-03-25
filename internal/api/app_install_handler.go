@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // POST /api/apps/{id}/install
@@ -36,7 +36,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	handle := req.Handle
 
 	// Verify user owns the bot
-	bot, err := s.DB.GetBot(req.BotID)
+	bot, err := s.Store.GetBot(req.BotID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "bot not found", http.StatusNotFound)
 		return
@@ -44,7 +44,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 
 	// Check handle uniqueness on this bot (only if handle is set)
 	if handle != "" {
-		existing, _ := s.DB.GetInstallationByHandle(req.BotID, handle)
+		existing, _ := s.Store.GetInstallationByHandle(req.BotID, handle)
 		if existing != nil {
 			jsonError(w, "handle @"+handle+" already in use on this bot", http.StatusConflict)
 			return
@@ -53,7 +53,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("install: creating", "app", app.Slug, "bot", req.BotID, "handle", handle)
 
-	inst, err := s.DB.InstallApp(app.ID, req.BotID)
+	inst, err := s.Store.InstallApp(app.ID, req.BotID)
 	if err != nil {
 		slog.Error("install: db insert failed", "app", app.ID, "bot", req.BotID, "err", err)
 		jsonError(w, "install failed", http.StatusInternalServerError)
@@ -62,7 +62,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	slog.Info("install: created", "inst", inst.ID, "app_token", inst.AppToken[:8]+"...")
 
 	// Set handle
-	if err := s.DB.UpdateInstallation(inst.ID, handle, inst.Config, inst.Enabled); err != nil {
+	if err := s.Store.UpdateInstallation(inst.ID, handle, inst.Config, inst.Enabled); err != nil {
 		slog.Error("install: set handle failed", "inst", inst.ID, "err", err)
 	}
 	inst.Handle = handle
@@ -72,7 +72,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 		slog.Info("install: notifying app", "inst", inst.ID, "redirect_url", app.RedirectURL)
 		s.notifyAppInstalled(app, inst)
 		// Re-read installation to get updated request_url
-		if updated, err := s.DB.GetInstallation(inst.ID); err == nil {
+		if updated, err := s.Store.GetInstallation(inst.ID); err == nil {
 			inst = updated
 			slog.Info("install: after notify", "inst", inst.ID, "request_url", inst.AppRequestURL)
 		}
@@ -92,7 +92,7 @@ func (s *Server) handleListInstallations(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	installations, err := s.DB.ListInstallationsByApp(app.ID)
+	installations, err := s.Store.ListInstallationsByApp(app.ID)
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
@@ -163,7 +163,7 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 		enabled = *req.Enabled
 	}
 
-	if err := s.DB.UpdateInstallation(inst.ID, handle, cfg, enabled); err != nil {
+	if err := s.Store.UpdateInstallation(inst.ID, handle, cfg, enabled); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
@@ -182,7 +182,7 @@ func (s *Server) handleDeleteInstallation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := s.DB.DeleteInstallation(inst.ID); err != nil {
+	if err := s.Store.DeleteInstallation(inst.ID); err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
 		return
 	}
@@ -200,7 +200,7 @@ func (s *Server) handleRegenerateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.DB.RegenerateInstallationToken(inst.ID)
+	token, err := s.Store.RegenerateInstallationToken(inst.ID)
 	if err != nil {
 		jsonError(w, "regenerate failed", http.StatusInternalServerError)
 		return
@@ -271,7 +271,7 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.DB.SetAppURLVerified(app.ID, true); err != nil {
+	if err := s.Store.SetAppURLVerified(app.ID, true); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
@@ -298,7 +298,7 @@ func (s *Server) handleAppEventLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.DB.ListEventLogs(inst.ID, limit)
+	logs, err := s.Store.ListEventLogs(inst.ID, limit)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -329,7 +329,7 @@ func (s *Server) handleAppAPILogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.DB.ListAPILogs(inst.ID, limit)
+	logs, err := s.Store.ListAPILogs(inst.ID, limit)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -347,13 +347,13 @@ func (s *Server) handleListBotApps(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	botID := r.PathValue("id")
 
-	bot, err := s.DB.GetBot(botID)
+	bot, err := s.Store.GetBot(botID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
 
-	installations, err := s.DB.ListInstallationsByBot(botID)
+	installations, err := s.Store.ListInstallationsByBot(botID)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -361,14 +361,14 @@ func (s *Server) handleListBotApps(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if installations == nil {
-		installations = []database.AppInstallation{}
+		installations = []store.AppInstallation{}
 	}
 	json.NewEncoder(w).Encode(installations)
 }
 
 // notifyAppInstalled POSTs installation credentials to the App's redirect_url.
 // The App responds with its request_url, which Hub auto-sets and verifies.
-func (s *Server) notifyAppInstalled(app *database.App, inst *database.AppInstallation) {
+func (s *Server) notifyAppInstalled(app *store.App, inst *store.AppInstallation) {
 	if app.RedirectURL == "" {
 		return
 	}
@@ -409,7 +409,7 @@ func (s *Server) notifyAppInstalled(app *database.App, inst *database.AppInstall
 	slog.Info("notify: got request_url", "app", app.ID, "request_url", result.RequestURL)
 
 	// Auto-set request_url on the App and verify
-	if err := s.DB.UpdateAppRequestURL(app.ID, result.RequestURL); err != nil {
+	if err := s.Store.UpdateAppRequestURL(app.ID, result.RequestURL); err != nil {
 		slog.Error("notify: update request_url failed", "app", app.ID, "err", err)
 		return
 	}
@@ -453,7 +453,7 @@ func (s *Server) autoVerifyURL(appID, requestURL string) {
 		return
 	}
 	if result.Challenge == challenge {
-		_ = s.DB.SetAppURLVerified(appID, true)
+		_ = s.Store.SetAppURLVerified(appID, true)
 		slog.Info("auto-verify: success", "app", appID)
 	} else {
 		slog.Error("auto-verify: challenge mismatch", "app", appID, "expected", challenge, "got", result.Challenge)

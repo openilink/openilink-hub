@@ -48,7 +48,7 @@ func TestMiddlewareAcceptsValidSession(t *testing.T) {
 	db := testDB(t)
 
 	user, _ := db.CreateUser("test_mw_user", "MW User")
-	t.Cleanup(func() { db.Exec("DELETE FROM users WHERE id = $1", user.ID) })
+	t.Cleanup(func() { db.DeleteUser(user.ID) })
 
 	token, _ := CreateSession(db, user.ID)
 

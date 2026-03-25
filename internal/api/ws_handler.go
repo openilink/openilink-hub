@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/relay"
 )
@@ -23,7 +23,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, err := s.DB.GetChannelByAPIKey(apiKey)
+	ch, err := s.Store.GetChannelByAPIKey(apiKey)
 	if err != nil || !ch.Enabled {
 		http.Error(w, `{"error":"invalid or disabled key"}`, http.StatusUnauthorized)
 		return
@@ -52,7 +52,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Replay missed messages since last_seq
 	if ch.LastSeq > 0 {
-		missed, err := s.DB.GetMessagesSince(ch.BotID, ch.LastSeq, 100)
+		missed, err := s.Store.GetMessagesSince(ch.BotID, ch.LastSeq, 100)
 		if err == nil && len(missed) > 0 {
 			for _, m := range missed {
 				ts := m.CreatedAt * 1000
@@ -67,7 +67,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				})
 				conn.Send(env)
 			}
-			if err := s.DB.UpdateChannelLastSeq(ch.ID, missed[len(missed)-1].ID); err != nil {
+			if err := s.Store.UpdateChannelLastSeq(ch.ID, missed[len(missed)-1].ID); err != nil {
 				slog.Error("update channel last_seq failed", "channel", ch.ID, "err", err)
 			}
 		}
@@ -108,7 +108,7 @@ func (s *Server) SetupUpstreamHandler() relay.UpstreamHandler {
 				return
 			}
 
-			ctxToken := s.DB.GetLatestContextToken(conn.BotID)
+			ctxToken := s.Store.GetLatestContextToken(conn.BotID)
 			clientID, err := inst.Send(context.Background(), provider.OutboundMessage{
 				Recipient:    data.Recipient,
 				Text:         data.Text,
@@ -120,7 +120,7 @@ func (s *Server) SetupUpstreamHandler() relay.UpstreamHandler {
 			}
 
 			itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": data.Text}})
-			s.DB.SaveMessage(&database.Message{
+			s.Store.SaveMessage(&store.Message{
 				BotID:       conn.BotID,
 				Direction:   "outbound",
 				ToUserID:    data.Recipient,

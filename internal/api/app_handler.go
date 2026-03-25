@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 //go:embed app_skill.md
@@ -55,12 +55,12 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check slug uniqueness
-	if existing, _ := s.DB.GetAppBySlug(slug); existing != nil {
+	if existing, _ := s.Store.GetAppBySlug(slug); existing != nil {
 		jsonError(w, "slug already taken", http.StatusConflict)
 		return
 	}
 
-	app, err := s.DB.CreateApp(&database.App{
+	app, err := s.Store.CreateApp(&store.App{
 		OwnerID:     userID,
 		Name:        req.Name,
 		Slug:        slug,
@@ -86,21 +86,21 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/apps?listed=true — public marketplace; otherwise my apps
 func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
-	var apps []database.App
+	var apps []store.App
 	var err error
 
 	if r.URL.Query().Get("listed") == "true" {
-		apps, err = s.DB.ListListedApps()
+		apps, err = s.Store.ListListedApps()
 	} else {
 		userID := auth.UserIDFromContext(r.Context())
-		apps, err = s.DB.ListAppsByOwner(userID)
+		apps, err = s.Store.ListAppsByOwner(userID)
 	}
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
 	}
 	if apps == nil {
-		apps = []database.App{}
+		apps = []store.App{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(apps)
@@ -111,7 +111,7 @@ func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	appID := r.PathValue("id")
 
-	app, err := s.DB.GetApp(appID)
+	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -135,7 +135,7 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	appID := r.PathValue("id")
 
-	app, err := s.DB.GetApp(appID)
+	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -204,14 +204,14 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		scopes = req.Scopes
 	}
 
-	if err := s.DB.UpdateApp(appID, name, description, icon, iconURL, homepage, setupURL, redirectURL, tools, events, scopes); err != nil {
+	if err := s.Store.UpdateApp(appID, name, description, icon, iconURL, homepage, setupURL, redirectURL, tools, events, scopes); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
 
 	// Update request_url separately (resets url_verified)
 	if req.RequestURL != nil && *req.RequestURL != app.RequestURL {
-		if err := s.DB.UpdateAppRequestURL(appID, *req.RequestURL); err != nil {
+		if err := s.Store.UpdateAppRequestURL(appID, *req.RequestURL); err != nil {
 			jsonError(w, "update request_url failed", http.StatusInternalServerError)
 			return
 		}
@@ -225,7 +225,7 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	appID := r.PathValue("id")
 
-	app, err := s.DB.GetApp(appID)
+	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
@@ -235,7 +235,7 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.DB.DeleteApp(appID); err != nil {
+	if err := s.Store.DeleteApp(appID); err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
 		return
 	}
@@ -256,7 +256,7 @@ func (s *Server) handleRequestListing(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "already pending review", http.StatusBadRequest)
 		return
 	}
-	if err := s.DB.RequestListing(app.ID); err != nil {
+	if err := s.Store.RequestListing(app.ID); err != nil {
 		jsonError(w, "request failed", http.StatusInternalServerError)
 		return
 	}
@@ -278,7 +278,7 @@ func (s *Server) handleReviewListing(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "reason required for rejection", http.StatusBadRequest)
 		return
 	}
-	if err := s.DB.ReviewListing(appID, req.Approve, req.Reason); err != nil {
+	if err := s.Store.ReviewListing(appID, req.Approve, req.Reason); err != nil {
 		jsonError(w, "review failed", http.StatusInternalServerError)
 		return
 	}
@@ -287,13 +287,13 @@ func (s *Server) handleReviewListing(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/admin/apps — list all apps (admin only)
 func (s *Server) handleAdminListApps(w http.ResponseWriter, r *http.Request) {
-	apps, err := s.DB.ListAllApps()
+	apps, err := s.Store.ListAllApps()
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
 	}
 	if apps == nil {
-		apps = []database.App{}
+		apps = []store.App{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(apps)
@@ -309,7 +309,7 @@ func (s *Server) handleSetAppListed(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	if err := s.DB.SetAppListed(appID, req.Listed); err != nil {
+	if err := s.Store.SetAppListed(appID, req.Listed); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
@@ -318,11 +318,11 @@ func (s *Server) handleSetAppListed(w http.ResponseWriter, r *http.Request) {
 
 // requireApp loads an app by path ID and verifies ownership.
 // Returns the app or nil (with error already written to w).
-func (s *Server) requireApp(w http.ResponseWriter, r *http.Request) *database.App {
+func (s *Server) requireApp(w http.ResponseWriter, r *http.Request) *store.App {
 	userID := auth.UserIDFromContext(r.Context())
 	appID := r.PathValue("id")
 
-	app, err := s.DB.GetApp(appID)
+	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return nil
@@ -336,18 +336,18 @@ func (s *Server) requireApp(w http.ResponseWriter, r *http.Request) *database.Ap
 
 // requireAppForInstall loads an app that the user can install:
 // either they own it, or it's publicly listed.
-func (s *Server) requireAppForInstall(w http.ResponseWriter, r *http.Request) *database.App {
+func (s *Server) requireAppForInstall(w http.ResponseWriter, r *http.Request) *store.App {
 	userID := auth.UserIDFromContext(r.Context())
 	appID := r.PathValue("id")
 
-	app, err := s.DB.GetApp(appID)
+	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return nil
 	}
 	// Admin can access all apps; otherwise must be owner or listed
-	user, _ := s.DB.GetUserByID(userID)
-	isAdmin := user != nil && database.IsAdmin(user.Role)
+	user, _ := s.Store.GetUserByID(userID)
+	isAdmin := user != nil && store.IsAdmin(user.Role)
 	if !isAdmin && app.OwnerID != userID && !app.Listed {
 		jsonError(w, "not found", http.StatusNotFound)
 		return nil
@@ -357,11 +357,11 @@ func (s *Server) requireAppForInstall(w http.ResponseWriter, r *http.Request) *d
 
 // requireInstallation loads an installation by path IID and verifies it belongs to the app
 // and the current user owns the bot.
-func (s *Server) requireInstallation(w http.ResponseWriter, r *http.Request, appID string) *database.AppInstallation {
+func (s *Server) requireInstallation(w http.ResponseWriter, r *http.Request, appID string) *store.AppInstallation {
 	userID := auth.UserIDFromContext(r.Context())
 	iid := r.PathValue("iid")
 
-	inst, err := s.DB.GetInstallation(iid)
+	inst, err := s.Store.GetInstallation(iid)
 	if err != nil {
 		jsonError(w, "installation not found", http.StatusNotFound)
 		return nil
@@ -372,12 +372,12 @@ func (s *Server) requireInstallation(w http.ResponseWriter, r *http.Request, app
 	}
 
 	// Verify: admin, app owner, or bot owner
-	user, _ := s.DB.GetUserByID(userID)
-	isAdmin := user != nil && database.IsAdmin(user.Role)
-	app, _ := s.DB.GetApp(appID)
+	user, _ := s.Store.GetUserByID(userID)
+	isAdmin := user != nil && store.IsAdmin(user.Role)
+	app, _ := s.Store.GetApp(appID)
 	isAppOwner := app != nil && app.OwnerID == userID
 	if !isAdmin && !isAppOwner {
-		bot, err := s.DB.GetBot(inst.BotID)
+		bot, err := s.Store.GetBot(inst.BotID)
 		if err != nil || bot.UserID != userID {
 			jsonError(w, "installation not found", http.StatusNotFound)
 			return nil

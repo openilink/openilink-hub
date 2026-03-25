@@ -7,15 +7,15 @@ import (
 	"net/http"
 
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // requireAdmin is a middleware that rejects non-admin users.
 func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := auth.UserIDFromContext(r.Context())
-		user, err := s.DB.GetUserByID(userID)
-		if err != nil || !database.IsAdmin(user.Role) {
+		user, err := s.Store.GetUserByID(userID)
+		if err != nil || !store.IsAdmin(user.Role) {
 			jsonError(w, "admin required", http.StatusForbidden)
 			return
 		}
@@ -24,7 +24,7 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.DB.ListUsers()
+	users, err := s.Store.ListUsers()
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
@@ -51,8 +51,8 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	role := req.Role
-	if role != database.RoleAdmin && role != database.RoleMember {
-		role = database.RoleMember
+	if role != store.RoleAdmin && role != store.RoleMember {
+		role = store.RoleMember
 	}
 	displayName := req.DisplayName
 	if displayName == "" {
@@ -60,7 +60,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := auth.HashPassword(req.Password)
-	user, err := s.DB.CreateUserFull(req.Username, req.Email, displayName, hash, role)
+	user, err := s.Store.CreateUserFull(req.Username, req.Email, displayName, hash, role)
 	if err != nil {
 		jsonError(w, "create user failed: "+err.Error(), http.StatusConflict)
 		return
@@ -80,30 +80,30 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	if req.Role != database.RoleAdmin && req.Role != database.RoleMember {
+	if req.Role != store.RoleAdmin && req.Role != store.RoleMember {
 		jsonError(w, "role must be admin or member", http.StatusBadRequest)
 		return
 	}
 
 	// Protect superadmin
-	target, err := s.DB.GetUserByID(id)
+	target, err := s.Store.GetUserByID(id)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
 	}
-	if target.Role == database.RoleSuperAdmin {
+	if target.Role == store.RoleSuperAdmin {
 		jsonError(w, "cannot change superadmin role", http.StatusForbidden)
 		return
 	}
 
 	// Prevent self-demotion
 	currentUserID := auth.UserIDFromContext(r.Context())
-	if id == currentUserID && !database.IsAdmin(req.Role) {
+	if id == currentUserID && !store.IsAdmin(req.Role) {
 		jsonError(w, "cannot demote yourself", http.StatusBadRequest)
 		return
 	}
 
-	if err := s.DB.UpdateUserRole(id, req.Role); err != nil {
+	if err := s.Store.UpdateUserRole(id, req.Role); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
@@ -119,18 +119,18 @@ func (s *Server) handleUpdateUserStatus(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	if req.Status != database.StatusActive && req.Status != database.StatusDisabled {
+	if req.Status != store.StatusActive && req.Status != store.StatusDisabled {
 		jsonError(w, "status must be active or disabled", http.StatusBadRequest)
 		return
 	}
 
 	// Protect superadmin
-	target, err := s.DB.GetUserByID(id)
+	target, err := s.Store.GetUserByID(id)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
 	}
-	if target.Role == database.RoleSuperAdmin {
+	if target.Role == store.RoleSuperAdmin {
 		jsonError(w, "cannot disable superadmin", http.StatusForbidden)
 		return
 	}
@@ -142,14 +142,14 @@ func (s *Server) handleUpdateUserStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := s.DB.UpdateUserStatus(id, req.Status); err != nil {
+	if err := s.Store.UpdateUserStatus(id, req.Status); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
 
 	// Invalidate all sessions for disabled user
-	if req.Status == database.StatusDisabled {
-		s.DB.Exec("DELETE FROM sessions WHERE user_id = $1", id)
+	if req.Status == store.StatusDisabled {
+		s.Store.DeleteSessionsByUserID(id)
 	}
 	jsonOK(w)
 }
@@ -158,12 +158,12 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	// Protect superadmin
-	target, err := s.DB.GetUserByID(id)
+	target, err := s.Store.GetUserByID(id)
 	if err != nil {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
 	}
-	if target.Role == database.RoleSuperAdmin {
+	if target.Role == store.RoleSuperAdmin {
 		jsonError(w, "cannot delete superadmin", http.StatusForbidden)
 		return
 	}
@@ -174,7 +174,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.DB.DeleteUser(id); err != nil {
+	if err := s.Store.DeleteUser(id); err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
 		return
 	}
@@ -190,7 +190,7 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 	password := base64.RawURLEncoding.EncodeToString(b)[:16]
 
 	hash := auth.HashPassword(password)
-	if err := s.DB.UpdateUserPassword(id, hash); err != nil {
+	if err := s.Store.UpdateUserPassword(id, hash); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}

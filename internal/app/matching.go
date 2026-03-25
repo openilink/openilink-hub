@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // ParseMention extracts handle, command, and text from @handle messages.
@@ -42,7 +42,7 @@ func ParseMention(content string) (handle, command, text string) {
 }
 
 // MatchHandle finds an enabled installation with the given handle on a bot.
-func (d *Dispatcher) MatchHandle(botID, handle string) (*database.AppInstallation, error) {
+func (d *Dispatcher) MatchHandle(botID, handle string) (*store.AppInstallation, error) {
 	inst, err := d.store().GetInstallationByHandle(botID, handle)
 	if err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func (d *Dispatcher) MatchHandle(botID, handle string) (*database.AppInstallatio
 // Content format: "/commandname args..." or "@bothandle /commandname args..."
 // Returns matching installations, the parsed command name (without "/"), and
 // the remaining args string.
-func (d *Dispatcher) MatchCommand(botID string, content string) ([]database.AppInstallation, string, string, error) {
+func (d *Dispatcher) MatchCommand(botID string, content string) ([]store.AppInstallation, string, string, error) {
 	command, args := parseCommand(content)
 	if command == "" {
 		return nil, "", "", nil
@@ -69,7 +69,7 @@ func (d *Dispatcher) MatchCommand(botID string, content string) ([]database.AppI
 		return nil, "", "", fmt.Errorf("list installations: %w", err)
 	}
 
-	var matched []database.AppInstallation
+	var matched []store.AppInstallation
 	for _, inst := range installations {
 		if !inst.Enabled || inst.AppRequestURL == "" {
 			continue
@@ -93,13 +93,13 @@ func (d *Dispatcher) MatchCommand(botID string, content string) ([]database.AppI
 // MatchEvent finds installations on the given bot whose app subscribes to
 // the specified event type. The wildcard event type "message" matches any
 // "message.*" event.
-func (d *Dispatcher) MatchEvent(botID string, eventType string) ([]database.AppInstallation, error) {
+func (d *Dispatcher) MatchEvent(botID string, eventType string) ([]store.AppInstallation, error) {
 	installations, err := d.store().ListInstallationsByBot(botID)
 	if err != nil {
 		return nil, fmt.Errorf("list installations: %w", err)
 	}
 
-	var matched []database.AppInstallation
+	var matched []store.AppInstallation
 	for _, inst := range installations {
 		if !inst.Enabled || inst.AppRequestURL == "" {
 			continue
@@ -164,12 +164,12 @@ func parseCommand(content string) (string, string) {
 }
 
 // appHasCommand checks whether an app has a tool with a matching Command trigger.
-func appHasCommand(app *database.App, commandName string) bool {
+func appHasCommand(app *store.App, commandName string) bool {
 	if app == nil || len(app.Tools) == 0 {
 		return false
 	}
 
-	var tools []database.AppTool
+	var tools []store.AppTool
 	if err := json.Unmarshal(app.Tools, &tools); err != nil {
 		slog.Error("failed to unmarshal app tools",
 			"app_id", app.ID, "err", err)
@@ -189,7 +189,7 @@ func appHasCommand(app *database.App, commandName string) bool {
 
 // appSubscribesToEvent checks whether an app subscribes to the given event type.
 // Supports the wildcard "message" which matches any "message.*" event.
-func appSubscribesToEvent(app *database.App, eventType string) bool {
+func appSubscribesToEvent(app *store.App, eventType string) bool {
 	if app == nil || len(app.Events) == 0 {
 		return false
 	}

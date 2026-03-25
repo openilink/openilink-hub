@@ -7,12 +7,12 @@ import (
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // WebAuthnUser adapts our DB user to the webauthn.User interface.
 type WebAuthnUser struct {
-	user  *database.User
+	user  *store.User
 	creds []webauthn.Credential
 }
 
@@ -55,8 +55,8 @@ func (s *SessionStore) Get(key string) *webauthn.SessionData {
 }
 
 // LoadWebAuthnUser loads a user and their credentials from the DB.
-func LoadWebAuthnUser(db *database.DB, user *database.User) (*WebAuthnUser, error) {
-	dbCreds, err := db.GetCredentialsByUserID(user.ID)
+func LoadWebAuthnUser(s store.CredentialStore, user *store.User) (*WebAuthnUser, error) {
+	dbCreds, err := s.GetCredentialsByUserID(user.ID)
 	if err != nil {
 		return nil, err
 	}

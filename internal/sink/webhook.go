@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
-	"github.com/openilink/openilink-hub/internal/database"
 	"github.com/openilink/openilink-hub/internal/provider"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // Webhook pushes messages to a configured HTTP endpoint.
@@ -42,7 +42,7 @@ import (
 //	    if (data.answer) ctx.reply(data.answer);
 //	}
 type Webhook struct {
-	DB *database.DB
+	Store store.Store
 }
 
 func (s *Webhook) Name() string { return "webhook" }
@@ -328,7 +328,7 @@ func (s *Webhook) Handle(d Delivery) {
 		msgID = &d.SeqID
 	}
 	pluginVersion := ""
-	logID, logErr := s.DB.CreateWebhookLog(&database.WebhookLog{
+	logID, logErr := s.Store.CreateWebhookLog(&store.WebhookLog{
 		BotID: d.BotDBID, ChannelID: d.Channel.ID, MessageID: msgID, PluginID: cfg.VersionID, PluginVersion: pluginVersion,
 	})
 	if logErr != nil {
@@ -353,7 +353,7 @@ func (s *Webhook) Handle(d Delivery) {
 	script := cfg.Script
 	scriptTimeout := scriptTimeout // default 5s
 	if cfg.VersionID != "" {
-		resolvedScript, resolvedVersion, timeoutSec, err := s.DB.ResolvePluginScript(cfg.VersionID)
+		resolvedScript, resolvedVersion, timeoutSec, err := s.Store.ResolvePluginScript(cfg.VersionID)
 		if err != nil {
 			slog.Error("webhook plugin resolve failed", "channel", d.Channel.ID, "version_id", cfg.VersionID, "err", err)
 		} else {
@@ -365,7 +365,7 @@ func (s *Webhook) Handle(d Delivery) {
 		}
 	}
 	if pluginVersion != "" {
-		s.DB.Exec("UPDATE webhook_logs SET plugin_version = $1 WHERE id = $2", pluginVersion, logID)
+		s.Store.UpdateWebhookLogPluginVersion(logID, pluginVersion)
 	}
 
 	// Step 1: Run script
@@ -374,18 +374,18 @@ func (s *Webhook) Handle(d Delivery) {
 		req, res, replies, skipped, err = s.runScript(script, msg, req, d.Channel.ID, scriptTimeout)
 		if err != nil {
 			slog.Error("webhook script error", "channel", d.Channel.ID, "err", err)
-			s.DB.UpdateWebhookLogResult(logID, "error", err.Error(), nil)
+			s.Store.UpdateWebhookLogResult(logID, "error", err.Error(), nil)
 			return
 		}
 		if skipped || req == nil {
 			replyTexts := extractReplyTexts(replies)
-			s.DB.UpdateWebhookLogResult(logID, "skipped", "", replyTexts)
+			s.Store.UpdateWebhookLogResult(logID, "skipped", "", replyTexts)
 			return
 		}
 	}
 
 	// Step 2: Log request
-	s.DB.UpdateWebhookLogRequest(logID, "requesting", req.URL, req.Method, truncate(req.Body, 4096))
+	s.Store.UpdateWebhookLogRequest(logID, "requesting", req.URL, req.Method, truncate(req.Body, 4096))
 
 	// Step 3: Send HTTP
 	if res == nil {
@@ -400,9 +400,9 @@ func (s *Webhook) Handle(d Delivery) {
 		if res.Status >= 400 {
 			status = "failed"
 		}
-		s.DB.UpdateWebhookLogResponse(logID, status, res.Status, truncate(res.Body, 4096), duration)
+		s.Store.UpdateWebhookLogResponse(logID, status, res.Status, truncate(res.Body, 4096), duration)
 	} else {
-		s.DB.UpdateWebhookLogResponse(logID, "failed", 0, "", duration)
+		s.Store.UpdateWebhookLogResponse(logID, "failed", 0, "", duration)
 	}
 
 	// Auto-reply from response {"reply": "..."}
@@ -416,7 +416,7 @@ func (s *Webhook) Handle(d Delivery) {
 	// Step 5: Log
 	replyTexts := extractReplyTexts(replies)
 	if len(replyTexts) > 0 {
-		s.DB.UpdateWebhookLogResult(logID, "success", "", replyTexts)
+		s.Store.UpdateWebhookLogResult(logID, "success", "", replyTexts)
 	}
 
 	// Step 6: Process all replies
@@ -506,7 +506,7 @@ func (s *Webhook) forwardMedia(d Delivery, res *resData) {
 	}
 
 	itemList, _ := json.Marshal([]map[string]any{{"type": itemType, "file_name": fileName}})
-	s.DB.SaveMessage(&database.Message{
+	s.Store.SaveMessage(&store.Message{
 		BotID:       d.BotDBID,
 		Direction:   "outbound",
 		ToUserID:    d.Message.Sender,
@@ -812,7 +812,7 @@ func (s *Webhook) processReplies(d Delivery, res *resData, replies []replyAction
 				continue
 			}
 			itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": r.Text}})
-			s.DB.SaveMessage(&database.Message{
+			s.Store.SaveMessage(&store.Message{
 				BotID: d.BotDBID, Direction: "outbound", ToUserID: d.Message.Sender, MessageType: 2, ItemList: itemList,
 			})
 
@@ -849,7 +849,7 @@ func (s *Webhook) processReplies(d Delivery, res *resData, replies []replyAction
 				_, itemType = contentTypeToFileInfo(mime)
 			}
 			itemList, _ := json.Marshal([]map[string]any{{"type": itemType, "file_name": fileName}})
-			s.DB.SaveMessage(&database.Message{
+			s.Store.SaveMessage(&store.Message{
 				BotID: d.BotDBID, Direction: "outbound", ToUserID: d.Message.Sender, MessageType: 2, ItemList: itemList,
 			})
 		}
@@ -942,7 +942,7 @@ func convertWebhookItem(item provider.MessageItem) webhookItem {
 
 // --- HTTP helpers ---
 
-func applyAuth(req *reqData, auth *database.WebhookAuth, body []byte) {
+func applyAuth(req *reqData, auth *store.WebhookAuth, body []byte) {
 	if auth == nil {
 		return
 	}

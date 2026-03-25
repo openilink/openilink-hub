@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 type contextKey string
@@ -16,7 +16,7 @@ func UserIDFromContext(ctx context.Context) string {
 	return v
 }
 
-func Middleware(db *database.DB) func(http.Handler) http.Handler {
+func Middleware(s store.Store) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie("session")
@@ -24,14 +24,14 @@ func Middleware(db *database.DB) func(http.Handler) http.Handler {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
-			userID, err := ValidateSession(db, cookie.Value)
+			userID, err := ValidateSession(s, cookie.Value)
 			if err != nil || userID == "" {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
 			// Check user is active
-			user, err := db.GetUserByID(userID)
-			if err != nil || user.Status != database.StatusActive {
+			user, err := s.GetUserByID(userID)
+			if err != nil || user.Status != store.StatusActive {
 				http.Error(w, `{"error":"account disabled"}`, http.StatusForbidden)
 				return
 			}

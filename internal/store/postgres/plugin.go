@@ -202,6 +202,11 @@ func (db *DB) SupersedeNonApprovedVersions(pluginID string) {
 	db.Exec("UPDATE plugin_versions SET status = 'superseded' WHERE plugin_id = $1 AND status IN ('pending', 'rejected')", pluginID)
 }
 
+func (db *DB) CancelPluginVersion(id string) error {
+	_, err := db.Exec("UPDATE plugin_versions SET status = 'cancelled' WHERE id = $1", id)
+	return err
+}
+
 func (db *DB) FindPendingVersion(pluginID string) (*store.PluginVersion, error) {
 	return db.getVersionByPluginAndStatus(pluginID, "pending")
 }

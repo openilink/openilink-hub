@@ -27,6 +27,7 @@ type WebhookLogStore interface {
 	UpdateWebhookLogRequest(id int64, status, url, method, body string) error
 	UpdateWebhookLogResponse(id int64, status string, respStatus int, respBody string, durationMs int) error
 	UpdateWebhookLogResult(id int64, status, scriptError string, replies []string) error
+	UpdateWebhookLogPluginVersion(id int64, version string) error
 	ListWebhookLogs(botID, channelID string, limit int) ([]WebhookLog, error)
 	CleanOldWebhookLogs(days int) error
 }

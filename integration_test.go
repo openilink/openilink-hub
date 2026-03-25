@@ -20,17 +20,18 @@ import (
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
-	"github.com/openilink/openilink-hub/internal/database"
 	"github.com/openilink/openilink-hub/internal/provider"
 	mockProvider "github.com/openilink/openilink-hub/internal/provider/mock"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
+	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/store/postgres"
 	"github.com/openilink/openilink-hub/internal/storage"
 )
 
 // ==================== Test infrastructure ====================
 
-func testDB(t *testing.T) *database.DB {
+func testDB(t *testing.T) *postgres.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -45,7 +46,7 @@ func testDB(t *testing.T) *database.DB {
 	preDB.Exec("DROP TABLE IF EXISTS schema_version, plugin_installs, plugin_versions, plugins CASCADE")
 	preDB.Close()
 
-	db, err := database.Open(dsn)
+	db, err := postgres.Open(dsn)
 	if err != nil {
 		t.Skipf("skip: database unavailable: %v", err)
 	}
@@ -57,7 +58,7 @@ func testDB(t *testing.T) *database.DB {
 
 type testEnv struct {
 	t      *testing.T
-	db     *database.DB
+	db     store.Store
 	srv    *httptest.Server
 	client *http.Client
 	mgr    *bot.Manager
@@ -77,7 +78,7 @@ func setup(t *testing.T) *testEnv {
 	}
 
 	server := &api.Server{
-		DB:           db,
+		Store:        db,
 		SessionStore: auth.NewSessionStore(),
 		Config:       cfg,
 		OAuthStates:  api.SetupOAuth(cfg),
@@ -86,8 +87,8 @@ func setup(t *testing.T) *testEnv {
 	hub := relay.NewHub(server.SetupUpstreamHandler())
 	sinks := []sink.Sink{
 		&sink.WS{Hub: hub},
-		&sink.AI{DB: db},
-		&sink.Webhook{DB: db},
+		&sink.AI{Store: db},
+		&sink.Webhook{Store: db},
 	}
 	mgr := bot.NewManager(db, hub, sinks, nil, "http://localhost")
 	server.BotManager = mgr
@@ -217,7 +218,7 @@ func (e *testEnv) userID() string {
 }
 
 // createBotForUser creates a mock bot owned by the current user.
-func (e *testEnv) createBotForUser(name string) *database.Bot {
+func (e *testEnv) createBotForUser(name string) *store.Bot {
 	e.t.Helper()
 	uid := e.userID()
 	b, err := e.db.CreateBot(uid, name, "mock", "", mockProvider.Credentials())
@@ -671,7 +672,7 @@ func TestMessages(t *testing.T) {
 	// Save some messages
 	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": "hello"}})
 	for i := 0; i < 3; i++ {
-		env.db.SaveMessage(&database.Message{
+		env.db.SaveMessage(&store.Message{
 			BotID: botObj.ID, Direction: "inbound", FromUserID: "user@wechat",
 			MessageType: 1, ItemList: itemList,
 		})
@@ -734,7 +735,7 @@ func TestBotContacts(t *testing.T) {
 	// Save inbound messages from different senders
 	contactItems, _ := json.Marshal([]map[string]any{{"type": "text", "text": "hi"}})
 	for _, sender := range []string{"alice@wechat", "bob@wechat", "alice@wechat"} {
-		env.db.SaveMessage(&database.Message{
+		env.db.SaveMessage(&store.Message{
 			BotID: botObj.ID, Direction: "inbound", FromUserID: sender,
 			MessageType: 1, ItemList: contactItems,
 		})
@@ -1290,7 +1291,7 @@ func TestInboundNoMatchStoredWithoutChannelID(t *testing.T) {
 	env.mgr.StartBot(context.Background(), botObj)
 
 	// Channel with user filter that won't match
-	filter := &database.FilterRule{UserIDs: []string{"specific@wx"}}
+	filter := &store.FilterRule{UserIDs: []string{"specific@wx"}}
 	env.db.CreateChannel(botObj.ID, "Filtered", "", filter, nil)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
@@ -1500,12 +1501,12 @@ func TestChannelContextFullIsolation(t *testing.T) {
 
 	// Add outbound (stored globally, no channel_id)
 	r1Items, _ := json.Marshal([]map[string]any{{"type": "text", "text": "support reply"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "outbound",
 		ToUserID: "u@wx", MessageType: 2, ItemList: r1Items,
 	})
 	r2Items, _ := json.Marshal([]map[string]any{{"type": "text", "text": "sales reply"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "outbound",
 		ToUserID: "u@wx", MessageType: 2, ItemList: r2Items,
 	})
@@ -1579,7 +1580,7 @@ func TestChannelHTTPMessages(t *testing.T) {
 
 	paginationItems, _ := json.Marshal([]map[string]any{{"type": "text", "text": "hello"}})
 	for i := 0; i < 5; i++ {
-		env.db.SaveMessage(&database.Message{
+		env.db.SaveMessage(&store.Message{
 			BotID: botObj.ID, Direction: "inbound", FromUserID: "u@wx",
 			MessageType: 1, ItemList: paginationItems,
 		})
@@ -1718,7 +1719,7 @@ func TestWebhookDelivery(t *testing.T) {
 	// Create channel with webhook
 	ch, _ := env.db.CreateChannel(botObj.ID, "HookChan", "", nil, nil)
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Auth: &database.WebhookAuth{Type: "bearer", Token: "test-token"}}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Auth: &store.WebhookAuth{Type: "bearer", Token: "test-token"}}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
 	mock := inst.Provider.(*mockProvider.Provider)
@@ -1773,7 +1774,7 @@ func TestWebhookHMACSignature(t *testing.T) {
 
 	ch, _ := env.db.CreateChannel(botObj.ID, "HmacChan", "", nil, nil)
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Auth: &database.WebhookAuth{Type: "hmac", Secret: "my-secret"}}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Auth: &store.WebhookAuth{Type: "hmac", Secret: "my-secret"}}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
 	mock := inst.Provider.(*mockProvider.Provider)
@@ -1822,7 +1823,7 @@ function onRequest(ctx) {
 }
 `
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
 	mock := inst.Provider.(*mockProvider.Provider)
@@ -1872,7 +1873,7 @@ function onRequest(ctx) {
 }
 `
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
 	mock := inst.Provider.(*mockProvider.Provider)
@@ -1922,7 +1923,7 @@ function onResponse(ctx) {
 }
 `
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, Script: script}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
 	mock := inst.Provider.(*mockProvider.Provider)
@@ -1977,7 +1978,7 @@ func TestWebhookAutoReplyWithoutScript(t *testing.T) {
 	ch, _ := env.db.CreateChannel(botObj.ID, "AutoChan", "", nil, nil)
 	// No script — auto-reply from {"reply": "..."} in response
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL}, true)
+		&store.WebhookConfig{URL: hookSrv.URL}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
 	mock := inst.Provider.(*mockProvider.Provider)
@@ -2044,24 +2045,24 @@ func TestAIContextIsolation(t *testing.T) {
 
 	// Inbound stored globally (no channel_id)
 	items1, _ := json.Marshal([]map[string]any{{"type": "text", "text": "help me"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "inbound",
 		FromUserID: sender, MessageType: 1, ItemList: items1,
 	})
 	items2, _ := json.Marshal([]map[string]any{{"type": "text", "text": "price?"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "inbound",
 		FromUserID: sender, MessageType: 1, ItemList: items2,
 	})
 
 	// Outbound replies (stored globally, no channel_id)
 	reply1, _ := json.Marshal([]map[string]any{{"type": "text", "text": "support reply"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "outbound",
 		ToUserID: sender, MessageType: 2, ItemList: reply1,
 	})
 	reply2, _ := json.Marshal([]map[string]any{{"type": "text", "text": "sales reply"}})
-	env.db.SaveMessage(&database.Message{
+	env.db.SaveMessage(&store.Message{
 		BotID: botObj.ID, Direction: "outbound",
 		ToUserID: sender, MessageType: 2, ItemList: reply2,
 	})
@@ -2093,7 +2094,7 @@ func TestAIContextIsolation(t *testing.T) {
 
 func TestMediaStorageAndProxy(t *testing.T) {
 	// Requires MinIO running on localhost:19000
-	store, err := storage.New(storage.Config{
+	objStore, err := storage.New(storage.Config{
 		Endpoint:  "localhost:19000",
 		AccessKey: "openilink",
 		SecretKey: "openilink",
@@ -2108,12 +2109,12 @@ func TestMediaStorageAndProxy(t *testing.T) {
 	db := testDB(t)
 	cfg := &config.Config{RPOrigin: "http://localhost", RPID: "localhost", RPName: "Test", Secret: "test"}
 	server := &api.Server{
-		DB: db, SessionStore: auth.NewSessionStore(), Config: cfg,
-		OAuthStates: api.SetupOAuth(cfg), Store: store,
+		Store: db, SessionStore: auth.NewSessionStore(), Config: cfg,
+		OAuthStates: api.SetupOAuth(cfg), ObjectStore: objStore,
 	}
 	hub := relay.NewHub(server.SetupUpstreamHandler())
-	sinks := []sink.Sink{&sink.WS{Hub: hub}, &sink.AI{DB: db}, &sink.Webhook{DB: db}}
-	mgr := bot.NewManager(db, hub, sinks, store, "http://localhost")
+	sinks := []sink.Sink{&sink.WS{Hub: hub}, &sink.AI{Store: db}, &sink.Webhook{Store: db}}
+	mgr := bot.NewManager(db, hub, sinks, objStore, "http://localhost")
 	server.BotManager = mgr
 	server.Hub = hub
 	ts := httptest.NewServer(server.Handler())
@@ -2246,7 +2247,7 @@ func TestWebhookPluginFullLifecycle(t *testing.T) {
 	defer env.close()
 
 	env.register("plugadmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'plugadmin'")
+	u, _ := env.db.GetUserByUsername("plugadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginScript := `// @name 测试通知
 // @author testauthor
@@ -2323,7 +2324,7 @@ function onResponse(ctx) {
 	env.mgr.StartBot(context.Background(), botObj)
 	ch, _ := env.db.CreateChannel(botObj.ID, "PlugChan", "", nil, nil)
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL, VersionID: versionID}, true)
+		&store.WebhookConfig{URL: hookSrv.URL, VersionID: versionID}, true)
 
 	inst, _ := env.mgr.GetInstance(botObj.ID)
 	mock := inst.Provider.(*mockProvider.Provider)
@@ -2351,7 +2352,7 @@ func TestWebhookPluginRejectWithReason(t *testing.T) {
 	defer env.close()
 
 	env.register("rejectadmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'rejectadmin'")
+	u, _ := env.db.GetUserByUsername("rejectadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginID, versionID := env.submitPlugin("// @name BadPlugin\nfunction onRequest(ctx) {}")
 
@@ -2424,7 +2425,7 @@ func TestWebhookPluginDeleteByAdmin(t *testing.T) {
 	defer env.close()
 
 	env.register("deladmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'deladmin'")
+	u, _ := env.db.GetUserByUsername("deladmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginID, _ := env.submitPlugin("// @name DeleteMe\nfunction onRequest(ctx) {}")
 
@@ -2442,7 +2443,7 @@ func TestWebhookPluginVersionHistory(t *testing.T) {
 	defer env.close()
 
 	env.register("veradmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'veradmin'")
+	u, _ := env.db.GetUserByUsername("veradmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	// Submit v1
 	pluginID, v1ID := env.submitPlugin("// @name VersionedPlugin\n// @version 1.0.0\nfunction onRequest(ctx) {}")
@@ -2485,7 +2486,7 @@ func TestWebhookPluginResubmitSupersedesPending(t *testing.T) {
 	}
 
 	// v1 should be superseded, v2 should be pending
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'resubuser'")
+	u, _ := env.db.GetUserByUsername("resubuser"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 	code, versions := env.getList("/api/webhook-plugins/" + pluginID + "/versions")
 	assertCode(t, "versions", code, 200)
 	if len(versions) != 2 {
@@ -2527,7 +2528,7 @@ func TestWebhookPluginInstallToChannel(t *testing.T) {
 	defer env.close()
 
 	env.register("chtadmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'chtadmin'")
+	u, _ := env.db.GetUserByUsername("chtadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginID, versionID := env.submitPlugin(`// @name ChanPlugin
 // @version 1.0.0
@@ -2551,7 +2552,7 @@ function onRequest(ctx) {
 	defer hookSrv.Close()
 
 	env.db.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig,
-		&database.WebhookConfig{URL: hookSrv.URL}, true)
+		&store.WebhookConfig{URL: hookSrv.URL}, true)
 
 	code, _ := env.postCode("/api/webhook-plugins/"+pluginID+"/install-to-channel", map[string]string{
 		"bot_id": botObj.ID, "channel_id": ch.ID,
@@ -2585,7 +2586,7 @@ func TestWebhookPluginInstallCountTracksUsers(t *testing.T) {
 	defer env.close()
 
 	env.register("countadmin", "password123")
-	env.db.Exec("UPDATE users SET role = 'admin' WHERE username = 'countadmin'")
+	u, _ := env.db.GetUserByUsername("countadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
 
 	pluginID, versionID := env.submitPlugin("// @name CountPlugin\nfunction onRequest(ctx) {}")
 	env.approveVersion(versionID)

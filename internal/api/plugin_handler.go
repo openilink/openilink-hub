@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/sink"
 )
 
@@ -66,14 +66,14 @@ func (s *Server) handleSubmitPlugin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find or create plugin
-	plugin, err := s.DB.GetPluginByName(meta.Name)
+	plugin, err := s.Store.GetPluginByName(meta.Name)
 	if err != nil {
 		// New plugin — check name not taken by someone else
-		if owner, _ := s.DB.FindPluginOwner(meta.Name); owner != "" && owner != userID {
+		if owner, _ := s.Store.FindPluginOwner(meta.Name); owner != "" && owner != userID {
 			jsonError(w, "plugin name already taken by another user", http.StatusConflict)
 			return
 		}
-		plugin, err = s.DB.CreatePlugin(&database.Plugin{
+		plugin, err = s.Store.CreatePlugin(&store.Plugin{
 			Name: meta.Name, Namespace: meta.Namespace, Description: meta.Description,
 			Author: meta.Author, Icon: meta.Icon, License: meta.License, Homepage: meta.Homepage,
 			OwnerID: userID,
@@ -94,15 +94,15 @@ func (s *Server) handleSubmitPlugin(w http.ResponseWriter, r *http.Request) {
 	plugin.License = meta.License
 	plugin.Homepage = meta.Homepage
 	plugin.Namespace = meta.Namespace
-	s.DB.UpdatePluginMeta(plugin.ID, plugin)
+	s.Store.UpdatePluginMeta(plugin.ID, plugin)
 
 	configSchema, _ := json.Marshal(meta.Config)
 
 	// Cancel all non-approved versions (pending/rejected → superseded)
-	s.DB.SupersedeNonApprovedVersions(plugin.ID)
+	s.Store.SupersedeNonApprovedVersions(plugin.ID)
 
 	// Create new version
-	ver, err := s.DB.CreatePluginVersion(&database.PluginVersion{
+	ver, err := s.Store.CreatePluginVersion(&store.PluginVersion{
 		PluginID: plugin.ID, Version: meta.Version, Changelog: meta.Changelog,
 		Script: script, ConfigSchema: configSchema,
 		GithubURL: githubURL, CommitHash: commitHash,
@@ -124,13 +124,13 @@ func (s *Server) handleCancelVersion(w http.ResponseWriter, r *http.Request) {
 	versionID := r.PathValue("vid")
 	userID := auth.UserIDFromContext(r.Context())
 
-	plugin, err := s.DB.GetPlugin(pluginID)
+	plugin, err := s.Store.GetPlugin(pluginID)
 	if err != nil || plugin.OwnerID != userID {
 		jsonError(w, "not found or not owner", http.StatusNotFound)
 		return
 	}
 
-	ver, err := s.DB.GetPluginVersion(versionID)
+	ver, err := s.Store.GetPluginVersion(versionID)
 	if err != nil || ver.PluginID != pluginID {
 		jsonError(w, "version not found", http.StatusNotFound)
 		return
@@ -140,7 +140,7 @@ func (s *Server) handleCancelVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.DB.Exec("UPDATE plugin_versions SET status = 'cancelled' WHERE id = $1", versionID); err != nil {
+	if err := s.Store.CancelPluginVersion(versionID); err != nil {
 		jsonError(w, "cancel failed", http.StatusInternalServerError)
 		return
 	}
@@ -154,11 +154,11 @@ func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
 	if status == "pending" {
 		// Admin only
 		user := s.optionalUser(r)
-		if user == nil || !database.IsAdmin(user.Role) {
+		if user == nil || !store.IsAdmin(user.Role) {
 			jsonError(w, "admin required", http.StatusForbidden)
 			return
 		}
-		versions, err := s.DB.ListPendingVersions()
+		versions, err := s.Store.ListPendingVersions()
 		if err != nil {
 			jsonError(w, "list failed", http.StatusInternalServerError)
 			return
@@ -169,7 +169,7 @@ func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Default: list plugins with latest approved version
-	plugins, err := s.DB.ListPlugins()
+	plugins, err := s.Store.ListPlugins()
 	if err != nil {
 		slog.Error("list plugins failed", "err", err)
 		jsonError(w, "list failed", http.StatusInternalServerError)
@@ -182,16 +182,16 @@ func (s *Server) handleListPlugins(w http.ResponseWriter, r *http.Request) {
 // GET /api/webhook-plugins/{id} — get plugin detail
 func (s *Server) handleGetPlugin(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	plugin, err := s.DB.GetPlugin(id)
+	plugin, err := s.Store.GetPlugin(id)
 	if err != nil {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
 
 	// Get latest version info
-	var latestVersion *database.PluginVersion
+	var latestVersion *store.PluginVersion
 	if plugin.LatestVersionID != "" {
-		latestVersion, _ = s.DB.GetPluginVersion(plugin.LatestVersionID)
+		latestVersion, _ = s.Store.GetPluginVersion(plugin.LatestVersionID)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -204,7 +204,7 @@ func (s *Server) handleGetPlugin(w http.ResponseWriter, r *http.Request) {
 // GET /api/webhook-plugins/{id}/versions
 func (s *Server) handlePluginVersions(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	versions, err := s.DB.ListPluginVersions(id)
+	versions, err := s.Store.ListPluginVersions(id)
 	if err != nil {
 		jsonError(w, "query failed", http.StatusInternalServerError)
 		return
@@ -231,7 +231,7 @@ func (s *Server) handleReviewPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.DB.ReviewPluginVersion(versionID, req.Status, userID, req.Reason); err != nil {
+	if err := s.Store.ReviewPluginVersion(versionID, req.Status, userID, req.Reason); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
@@ -241,7 +241,7 @@ func (s *Server) handleReviewPlugin(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/admin/webhook-plugins/{id}
 func (s *Server) handleDeletePlugin(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.DB.DeletePlugin(id); err != nil {
+	if err := s.Store.DeletePlugin(id); err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
 		return
 	}
@@ -251,20 +251,20 @@ func (s *Server) handleDeletePlugin(w http.ResponseWriter, r *http.Request) {
 // POST /api/webhook-plugins/{id}/install — get script for a version
 func (s *Server) handleInstallPlugin(w http.ResponseWriter, r *http.Request) {
 	pluginID := r.PathValue("id")
-	plugin, err := s.DB.GetPlugin(pluginID)
+	plugin, err := s.Store.GetPlugin(pluginID)
 	if err != nil || plugin.LatestVersionID == "" {
 		jsonError(w, "plugin not found or no approved version", http.StatusNotFound)
 		return
 	}
 
-	ver, err := s.DB.GetPluginVersion(plugin.LatestVersionID)
+	ver, err := s.Store.GetPluginVersion(plugin.LatestVersionID)
 	if err != nil || ver.Status != "approved" {
 		jsonError(w, "no approved version", http.StatusNotFound)
 		return
 	}
 
 	userID := auth.UserIDFromContext(r.Context())
-	s.DB.RecordPluginInstall(pluginID, userID)
+	s.Store.RecordPluginInstall(pluginID, userID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -280,7 +280,7 @@ func (s *Server) handleInstallPluginToChannel(w http.ResponseWriter, r *http.Req
 	pluginID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
-	plugin, err := s.DB.GetPlugin(pluginID)
+	plugin, err := s.Store.GetPlugin(pluginID)
 	if err != nil || plugin.LatestVersionID == "" {
 		jsonError(w, "plugin not found or no approved version", http.StatusNotFound)
 		return
@@ -295,12 +295,12 @@ func (s *Server) handleInstallPluginToChannel(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	bot, err := s.DB.GetBot(req.BotID)
+	bot, err := s.Store.GetBot(req.BotID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "bot not found", http.StatusNotFound)
 		return
 	}
-	ch, err := s.DB.GetChannel(req.ChannelID)
+	ch, err := s.Store.GetChannel(req.ChannelID)
 	if err != nil || ch.BotID != req.BotID {
 		jsonError(w, "channel not found", http.StatusNotFound)
 		return
@@ -310,14 +310,14 @@ func (s *Server) handleInstallPluginToChannel(w http.ResponseWriter, r *http.Req
 	ch.WebhookConfig.PluginID = pluginID
 	ch.WebhookConfig.VersionID = plugin.LatestVersionID
 	ch.WebhookConfig.Script = ""
-	if err := s.DB.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig, &ch.WebhookConfig, ch.Enabled); err != nil {
+	if err := s.Store.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, &ch.AIConfig, &ch.WebhookConfig, ch.Enabled); err != nil {
 		jsonError(w, "update channel failed", http.StatusInternalServerError)
 		return
 	}
 
-	s.DB.RecordPluginInstall(pluginID, userID)
+	s.Store.RecordPluginInstall(pluginID, userID)
 
-	ver, _ := s.DB.GetPluginVersion(plugin.LatestVersionID)
+	ver, _ := s.Store.GetPluginVersion(plugin.LatestVersionID)
 	versionStr := ""
 	if ver != nil {
 		versionStr = ver.Version
@@ -332,7 +332,7 @@ func (s *Server) handleInstallPluginToChannel(w http.ResponseWriter, r *http.Req
 // GET /api/me/plugins
 func (s *Server) handleMyPlugins(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
-	plugins, err := s.DB.ListPluginsByOwner(userID)
+	plugins, err := s.Store.ListPluginsByOwner(userID)
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
@@ -390,16 +390,16 @@ func (s *Server) handleDebugResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 // optionalUser tries to extract the current user from session cookie.
-func (s *Server) optionalUser(r *http.Request) *database.User {
+func (s *Server) optionalUser(r *http.Request) *store.User {
 	cookie, err := r.Cookie("session")
 	if err != nil {
 		return nil
 	}
-	userID, err := auth.ValidateSession(s.DB, cookie.Value)
+	userID, err := auth.ValidateSession(s.Store, cookie.Value)
 	if err != nil {
 		return nil
 	}
-	user, _ := s.DB.GetUserByID(userID)
+	user, _ := s.Store.GetUserByID(userID)
 	return user
 }
 
@@ -451,7 +451,7 @@ type pluginMeta struct {
 	Match, Connect, Changelog                                              string
 	TimeoutSec                                                             int
 	Grant                                                                  []string
-	Config                                                                 []database.ConfigField
+	Config                                                                 []store.ConfigField
 }
 
 var metaRe = regexp.MustCompile(`//\s*@(\w+)\s+(.+)`)
@@ -515,7 +515,7 @@ func parsePluginMeta(script string) pluginMeta {
 				if len(parts) == 3 {
 					desc = strings.Trim(parts[2], `"`)
 				}
-				meta.Config = append(meta.Config, database.ConfigField{Name: parts[0], Type: parts[1], Description: desc})
+				meta.Config = append(meta.Config, store.ConfigField{Name: parts[0], Type: parts[1], Description: desc})
 			}
 		}
 	}

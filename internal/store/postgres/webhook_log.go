@@ -35,6 +35,11 @@ func (db *DB) UpdateWebhookLogResult(id int64, status, scriptError string, repli
 	return err
 }
 
+func (db *DB) UpdateWebhookLogPluginVersion(id int64, version string) error {
+	_, err := db.Exec(`UPDATE webhook_logs SET plugin_version = $1 WHERE id = $2`, version, id)
+	return err
+}
+
 func (db *DB) ListWebhookLogs(botID, channelID string, limit int) ([]store.WebhookLog, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50

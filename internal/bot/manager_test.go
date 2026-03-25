@@ -3,7 +3,7 @@ package bot
 import (
 	"testing"
 
-	"github.com/openilink/openilink-hub/internal/database"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 func TestParseMentions(t *testing.T) {
@@ -38,21 +38,21 @@ func TestParseMentions(t *testing.T) {
 func TestMatchFilter(t *testing.T) {
 	tests := []struct {
 		name    string
-		rule    database.FilterRule
+		rule    store.FilterRule
 		sender  string
 		text    string
 		msgType string
 		want    bool
 	}{
-		{"empty filter matches all", database.FilterRule{}, "user1", "hello", "text", true},
-		{"user match", database.FilterRule{UserIDs: []string{"user1"}}, "user1", "hello", "text", true},
-		{"user no match", database.FilterRule{UserIDs: []string{"user2"}}, "user1", "hello", "text", false},
-		{"keyword match", database.FilterRule{Keywords: []string{"hello"}}, "user1", "Hello World", "text", true},
-		{"keyword no match", database.FilterRule{Keywords: []string{"bye"}}, "user1", "Hello World", "text", false},
-		{"msgtype match", database.FilterRule{MessageTypes: []string{"image"}}, "user1", "", "image", true},
-		{"msgtype no match", database.FilterRule{MessageTypes: []string{"image"}}, "user1", "", "text", false},
-		{"combined match", database.FilterRule{UserIDs: []string{"u1"}, Keywords: []string{"hi"}}, "u1", "hi there", "text", true},
-		{"combined user fail", database.FilterRule{UserIDs: []string{"u2"}, Keywords: []string{"hi"}}, "u1", "hi there", "text", false},
+		{"empty filter matches all", store.FilterRule{}, "user1", "hello", "text", true},
+		{"user match", store.FilterRule{UserIDs: []string{"user1"}}, "user1", "hello", "text", true},
+		{"user no match", store.FilterRule{UserIDs: []string{"user2"}}, "user1", "hello", "text", false},
+		{"keyword match", store.FilterRule{Keywords: []string{"hello"}}, "user1", "Hello World", "text", true},
+		{"keyword no match", store.FilterRule{Keywords: []string{"bye"}}, "user1", "Hello World", "text", false},
+		{"msgtype match", store.FilterRule{MessageTypes: []string{"image"}}, "user1", "", "image", true},
+		{"msgtype no match", store.FilterRule{MessageTypes: []string{"image"}}, "user1", "", "text", false},
+		{"combined match", store.FilterRule{UserIDs: []string{"u1"}, Keywords: []string{"hi"}}, "u1", "hi there", "text", true},
+		{"combined user fail", store.FilterRule{UserIDs: []string{"u2"}, Keywords: []string{"hi"}}, "u1", "hi there", "text", false},
 	}
 
 	for _, tt := range tests {

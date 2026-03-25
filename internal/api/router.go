@@ -7,21 +7,21 @@ import (
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
-	"github.com/openilink/openilink-hub/internal/database"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/storage"
+	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/web"
 )
 
 type Server struct {
-	DB           *database.DB
+	Store        store.Store
 	WebAuthn     *webauthn.WebAuthn
 	SessionStore *auth.SessionStore
 	BotManager   *bot.Manager
 	Hub          *relay.Hub
 	Config       *config.Config
 	OAuthStates  *oauthStateStore
-	Store        *storage.Storage // optional
+	ObjectStore  *storage.Storage // optional
 }
 
 func cors(next http.Handler) http.Handler {
@@ -200,7 +200,7 @@ func (s *Server) Handler() http.Handler {
 	// App OAuth exchange (no user auth — app uses client_secret)
 	mux.HandleFunc("POST /api/apps/{id}/oauth/exchange", s.handleAppOAuthExchange)
 
-	mux.Handle("/api/", auth.Middleware(s.DB)(protected))
+	mux.Handle("/api/", auth.Middleware(s.Store)(protected))
 
 	// --- Bot API (app_token auth) ---
 	botAPI := http.NewServeMux()

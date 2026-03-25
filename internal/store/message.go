@@ -50,6 +50,7 @@ type MessageStore interface {
 	HasFreshContextToken(botID string, maxAge time.Duration) bool
 	BatchHasFreshContextToken(botIDs []string, maxAge time.Duration) map[string]bool
 	UpdateMediaStatus(botID, status string, keys json.RawMessage) error
+	UpdateMediaStatusByID(id int64, status string, keys json.RawMessage) error
 	UpdateMessagePayload(id int64, payload json.RawMessage) error
 	UpdateMediaPayloads(botID, eqp string, newPayload json.RawMessage) error
 	MarkProcessed(id int64) error
