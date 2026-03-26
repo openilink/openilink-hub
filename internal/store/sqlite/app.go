@@ -266,14 +266,16 @@ func (db *DB) GetInstallation(id string) (*store.AppInstallation, error) {
 		i.handle, i.config, i.scopes, i.enabled,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
-		a.webhook_url, a.webhook_secret
+		a.webhook_url, a.webhook_secret,
+		a.kind, a.registry, a.readme, a.guide
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.id = ?`, id).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
 		&i.Handle, &i.Config, &i.Scopes, &i.Enabled,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
-		&i.AppWebhookURL, &i.AppWebhookSecret)
+		&i.AppWebhookURL, &i.AppWebhookSecret,
+		&i.AppKind, &i.AppRegistry, &i.AppReadme, &i.AppGuide)
 	if err != nil {
 		return nil, err
 	}
@@ -286,14 +288,16 @@ func (db *DB) GetInstallationByToken(token string) (*store.AppInstallation, erro
 		i.handle, i.config, i.scopes, i.enabled,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
-		a.webhook_url, a.webhook_secret
+		a.webhook_url, a.webhook_secret,
+		a.kind, a.registry, a.readme, a.guide
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.app_token = ?`, token).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
 		&i.Handle, &i.Config, &i.Scopes, &i.Enabled,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
-		&i.AppWebhookURL, &i.AppWebhookSecret)
+		&i.AppWebhookURL, &i.AppWebhookSecret,
+		&i.AppKind, &i.AppRegistry, &i.AppReadme, &i.AppGuide)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +317,8 @@ func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation,
 		i.handle, i.config, i.scopes, i.enabled,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
-		a.webhook_url, a.webhook_secret
+		a.webhook_url, a.webhook_secret,
+		a.kind, a.registry, a.readme, a.guide
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE %s ORDER BY i.created_at DESC`, where), arg)
 	if err != nil {
@@ -327,7 +332,8 @@ func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation,
 			&i.Handle, &i.Config, &i.Scopes, &i.Enabled,
 			&i.CreatedAt, &i.UpdatedAt,
 			&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
-			&i.AppWebhookURL, &i.AppWebhookSecret); err != nil {
+			&i.AppWebhookURL, &i.AppWebhookSecret,
+			&i.AppKind, &i.AppRegistry, &i.AppReadme, &i.AppGuide); err != nil {
 			return nil, err
 		}
 		list = append(list, i)
@@ -363,14 +369,16 @@ func (db *DB) GetInstallationByHandle(botID, handle string) (*store.AppInstallat
 		i.handle, i.config, i.scopes, i.enabled,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
-		a.webhook_url, a.webhook_secret
+		a.webhook_url, a.webhook_secret,
+		a.kind, a.registry, a.readme, a.guide
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.bot_id = ? AND i.handle = ?`, botID, handle).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
 		&i.Handle, &i.Config, &i.Scopes, &i.Enabled,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
-		&i.AppWebhookURL, &i.AppWebhookSecret)
+		&i.AppWebhookURL, &i.AppWebhookSecret,
+		&i.AppKind, &i.AppRegistry, &i.AppReadme, &i.AppGuide)
 	if err != nil {
 		return nil, err
 	}

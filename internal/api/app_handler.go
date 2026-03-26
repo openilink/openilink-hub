@@ -122,9 +122,9 @@ func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	// Owner can see everything; others can only see listed apps (without secrets)
+	// Owner can see everything; others can see listed apps or apps they have installed
 	if app.OwnerID != userID {
-		if app.Listing != "listed" {
+		if app.Listing != "listed" && !s.userHasInstallation(userID, appID) {
 			jsonError(w, "not found", http.StatusNotFound)
 			return
 		}
@@ -318,6 +318,21 @@ func (s *Server) handleAdminListApps(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(apps)
+}
+
+// userHasInstallation checks if the user owns any bot that has this app installed.
+func (s *Server) userHasInstallation(userID, appID string) bool {
+	installations, err := s.Store.ListInstallationsByApp(appID)
+	if err != nil {
+		return false
+	}
+	for _, inst := range installations {
+		bot, err := s.Store.GetBot(inst.BotID)
+		if err == nil && bot.UserID == userID {
+			return true
+		}
+	}
+	return false
 }
 
 // requireApp loads an app by path ID and verifies ownership.

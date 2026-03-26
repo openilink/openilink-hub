@@ -60,6 +60,10 @@ type AppInstallation struct {
 	AppIconURL       string `json:"app_icon_url,omitempty"`
 	AppWebhookURL    string `json:"-"`
 	AppWebhookSecret string `json:"-"`
+	AppKind          string `json:"app_kind,omitempty"`
+	AppRegistry      string `json:"app_registry,omitempty"`
+	AppReadme        string `json:"app_readme,omitempty"`
+	AppGuide         string `json:"app_guide,omitempty"`
 	BotName          string `json:"bot_name,omitempty"`
 }
 
