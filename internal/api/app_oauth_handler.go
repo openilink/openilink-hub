@@ -71,8 +71,7 @@ func (s *Server) handleAppOAuthAuthorize(w http.ResponseWriter, r *http.Request)
 
 // POST /api/apps/{id}/oauth/exchange
 // App exchanges a temporary code for installation credentials.
-// Supports PKCE (code_verifier) for auth. If no PKCE was used at authorize time,
-// the code itself is sufficient (single-use, short-lived).
+// Requires PKCE (code_verifier + code_challenge) for all OAuth exchanges.
 func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) {
 	appID := r.PathValue("id")
 

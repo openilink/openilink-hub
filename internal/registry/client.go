@@ -73,22 +73,34 @@ func (c *Client) SetSources(sources []struct{ Name, URL string }) {
 	}
 }
 
-// ListApps returns all apps from all sources, with source URL attached
+// ListApps returns all apps from all sources, with source URL attached.
+// Returns an error only if ALL sources fail. Partial failures are skipped.
 func (c *Client) ListApps() ([]AppWithSource, error) {
 	c.mu.RLock()
 	sources := make([]*Source, len(c.sources))
 	copy(sources, c.sources)
 	c.mu.RUnlock()
 
+	if len(sources) == 0 {
+		return nil, nil
+	}
+
 	var result []AppWithSource
+	var lastErr error
+	successCount := 0
 	for _, src := range sources {
 		apps, err := c.fetchSource(src)
 		if err != nil {
-			continue // skip failed sources
+			lastErr = err
+			continue
 		}
+		successCount++
 		for _, app := range apps {
 			result = append(result, AppWithSource{App: app, RegistryURL: src.URL, RegistryName: src.Name})
 		}
+	}
+	if successCount == 0 && lastErr != nil {
+		return nil, fmt.Errorf("all registry sources failed: %w", lastErr)
 	}
 	return result, nil
 }
@@ -139,11 +151,17 @@ func (c *Client) fetchSource(src *Source) ([]App, error) {
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
+		if src.cache != nil {
+			return src.cache.Apps, nil
+		}
 		return nil, fmt.Errorf("registry read failed: %w", err)
 	}
 
 	var manifest Manifest
 	if err := json.Unmarshal(body, &manifest); err != nil {
+		if src.cache != nil {
+			return src.cache.Apps, nil
+		}
 		return nil, fmt.Errorf("registry parse failed: %w", err)
 	}
 

@@ -100,7 +100,9 @@ func main() {
 	// Registry client
 	regClient := registry.NewClient(0)
 	registries, err := s.ListRegistries()
-	if err == nil {
+	if err != nil {
+		slog.Warn("failed to load registry sources", "err", err)
+	} else {
 		enabledCount := 0
 		for _, reg := range registries {
 			if reg.Enabled {
