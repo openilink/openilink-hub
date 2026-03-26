@@ -99,7 +99,7 @@ export function LoginPage() {
               document.cookie = `session=${d.session_token}; path=/; max-age=${7*24*3600}; samesite=lax`;
             }
             ws.close();
-            navigate(d.bot_id ? `/dashboard/onboarding?bot_id=${d.bot_id}` : "/dashboard");
+            navigate(d.is_new && d.bot_id ? `/dashboard/onboarding?bot_id=${d.bot_id}` : "/dashboard");
           }
         } else if (d.event === "error") {
           setScanMessage(d.message || "扫码登录失败");

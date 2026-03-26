@@ -88,7 +88,7 @@ export function BotsPage() {
           if (data.status === "connected") {
             ws.close();
             setBinding(false);
-            navigate(data.bot_id ? `/dashboard/onboarding?bot_id=${data.bot_id}` : "/dashboard/accounts");
+            navigate(data.is_new && data.bot_id ? `/dashboard/onboarding?bot_id=${data.bot_id}` : "/dashboard/accounts");
           }
         }
       };

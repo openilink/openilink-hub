@@ -188,7 +188,8 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 	}
 
 	// Create new bot if not rebinding
-	if bot == nil {
+	isNew := bot == nil
+	if isNew {
 		bot, err = s.Store.CreateBot(userID, "", "ilink", creds.BotID, result.Credentials)
 		if err != nil {
 			slog.Error("scan-login create bot failed", "err", err)
@@ -205,6 +206,7 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 	// Login: create session — send token via WS (can't set cookie on WS)
 	sessionToken, _ := auth.CreateSession(s.Store, user.ID)
 
-	j, _ := json.Marshal(map[string]string{"status": "connected", "bot_id": bot.ID, "session_token": sessionToken})
+	resp := map[string]any{"status": "connected", "bot_id": bot.ID, "session_token": sessionToken, "is_new": isNew}
+	j, _ := json.Marshal(resp)
 	sendEvent("status", string(j))
 }

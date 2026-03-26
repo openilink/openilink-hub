@@ -230,7 +230,8 @@ func (s *Server) handleBindStatus(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			if bot == nil {
+			isNew := bot == nil
+			if isNew {
 				var err error
 				bot, err = s.Store.CreateBot(entry.UserID, "", "ilink", creds.BotID, result.Credentials)
 				if err != nil {
@@ -244,7 +245,7 @@ func (s *Server) handleBindStatus(w http.ResponseWriter, r *http.Request) {
 
 			s.BotManager.StartBot(context.Background(), bot)
 
-			j, _ := json.Marshal(map[string]string{"status": "connected", "bot_id": bot.ID})
+			j, _ := json.Marshal(map[string]any{"status": "connected", "bot_id": bot.ID, "is_new": isNew})
 			sendEvent("status", string(j))
 			return
 		}
