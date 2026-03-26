@@ -1,21 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { api } from "../lib/api";
-import {
-  RefreshCw,
-  ChevronRight,
-  ChevronDown,
-  CheckCircle2,
-  XCircle,
-  MinusCircle,
-  Activity,
-  User,
-  Clock,
-  ExternalLink,
-  Info,
-  Layers,
-} from "lucide-react";
+import { RefreshCw, Activity } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -24,114 +12,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
-
-interface TraceSpan {
-  id: number;
-  trace_id: string;
-  span_id: string;
-  parent_span_id: string;
-  name: string;
-  kind: string;
-  status_code: string;
-  status_message: string;
-  start_time: number;
-  end_time: number;
-  attributes: Record<string, any> | null;
-  events: { name: string; timestamp: number; attributes?: Record<string, any> }[] | null;
-  created_at: number;
-}
-
-const kindColors: Record<string, string> = {
-  internal: "bg-slate-500",
-  client: "bg-blue-500",
-  server: "bg-green-500",
-};
-
-function StatusIcon({ code, size = "w-4 h-4" }: { code: string; size?: string }) {
-  if (code === "ok") return <CheckCircle2 className={`${size} text-green-500 shrink-0`} />;
-  if (code === "error") return <XCircle className={`${size} text-destructive shrink-0`} />;
-  return <MinusCircle className={`${size} text-muted-foreground shrink-0`} />;
-}
-
-function durationMs(span: TraceSpan): number {
-  return span.end_time > span.start_time ? span.end_time - span.start_time : 0;
-}
-
-function buildTree(spans: TraceSpan[]): Map<string, TraceSpan[]> {
-  const children = new Map<string, TraceSpan[]>();
-  for (const s of spans) {
-    const parentKey = s.parent_span_id || "";
-    if (!children.has(parentKey)) children.set(parentKey, []);
-    children.get(parentKey)!.push(s);
-  }
-  return children;
-}
-
-function SpanNode({ span, depth, tree }: {
-  span: TraceSpan;
-  depth: number;
-  tree: Map<string, TraceSpan[]>;
-}) {
-  const children = tree.get(span.span_id) || [];
-  const dur = durationMs(span);
-  const [expanded, setExpanded] = useState(depth < 2);
-
-  return (
-    <div className="space-y-1">
-      <div 
-        className="flex items-center gap-2 py-1.5 px-2 hover:bg-muted/50 rounded-md transition-colors cursor-pointer group"
-        style={{ marginLeft: `${depth * 16}px` }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="w-4 flex items-center justify-center">
-          {children.length > 0 && (
-            expanded ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />
-          )}
-        </div>
-        <StatusIcon code={span.status_code} size="w-3.5 h-3.5" />
-        <Badge variant="outline" className={`text-[9px] h-4 px-1 leading-none text-white ${kindColors[span.kind] || "bg-gray-400"}`}>
-          {span.kind}
-        </Badge>
-        <span className="text-[11px] font-mono font-medium truncate flex-1">{span.name}</span>
-        {dur > 0 && <span className="text-[10px] font-mono text-muted-foreground px-1.5 py-0.5 rounded bg-muted group-hover:bg-background">{dur}ms</span>}
-      </div>
-
-      {expanded && (
-        <div className="space-y-1">
-          {span.attributes && Object.keys(span.attributes).length > 0 && (
-            <div className="ml-10 text-[10px] space-y-0.5 opacity-70">
-               {Object.entries(span.attributes).map(([k, v]) => (
-                 <div key={k} className="flex gap-2">
-                   <span className="text-blue-500 font-bold shrink-0">{k}:</span>
-                   <span className="truncate">{String(v)}</span>
-                 </div>
-               ))}
-            </div>
-          )}
-          {children.map((child) => (
-            <SpanNode key={child.span_id} span={child} depth={depth + 1} tree={tree} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+import { TraceSpan, durationMs, StatusIcon } from "@/lib/trace-utils";
 
 export function BotTracesTab({ botId }: { botId: string }) {
+  const navigate = useNavigate();
   const [rootSpans, setRootSpans] = useState<TraceSpan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
-  const [traceSpans, setTraceSpans] = useState<TraceSpan[]>([]);
-  const [traceLoading, setTraceLoading] = useState(false);
   const fetchIdRef = useRef(0);
 
   async function load() {
@@ -145,24 +32,8 @@ export function BotTracesTab({ botId }: { botId: string }) {
 
   useEffect(() => {
     ++fetchIdRef.current;
-    setSelectedTraceId(null);
-    setTraceSpans([]);
     load();
   }, [botId]);
-
-  async function handleRowClick(traceId: string) {
-    const id = ++fetchIdRef.current;
-    setSelectedTraceId(traceId);
-    setTraceSpans([]);
-    setTraceLoading(true);
-    try {
-      const spans = await api.getTrace(botId, traceId);
-      if (fetchIdRef.current !== id) return;
-      setTraceSpans(spans || []);
-    } finally {
-      if (fetchIdRef.current === id) setTraceLoading(false);
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -209,12 +80,12 @@ export function BotTracesTab({ botId }: { botId: string }) {
                 const dur = durationMs(root);
                 const sender = root.attributes?.["message.sender"] || "System";
                 const content = root.attributes?.["message.content"] || root.name;
-                
+
                 return (
-                  <TableRow 
-                    key={root.id} 
+                  <TableRow
+                    key={root.id}
                     className="cursor-pointer group hover:bg-muted/50"
-                    onClick={() => handleRowClick(root.trace_id)}
+                    onClick={() => navigate(`/dashboard/accounts/${botId}/traces/${root.trace_id}`)}
                   >
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -243,41 +114,6 @@ export function BotTracesTab({ botId }: { botId: string }) {
           </TableBody>
         </Table>
       </div>
-
-      <Dialog open={!!selectedTraceId} onOpenChange={(open: boolean) => !open && setSelectedTraceId(null)}>
-        <DialogContent className="sm:max-w-xl max-h-[80vh] flex flex-col overflow-hidden">
-          <DialogHeader className="mb-6">
-            <div className="flex items-center gap-2 mb-1 text-primary">
-              <Layers className="w-4 h-4" />
-              <span className="text-xs font-bold uppercase tracking-widest">追踪时间线</span>
-            </div>
-            <DialogTitle className="text-xl font-mono truncate">{selectedTraceId}</DialogTitle>
-            <DialogDescription>
-              点击节点展开查看详情。
-            </DialogDescription>
-          </DialogHeader>
-
-          {traceLoading ? (
-            <div className="space-y-4 py-8">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-[90%] ml-auto" />
-              <Skeleton className="h-8 w-[85%] ml-auto" />
-            </div>
-          ) : (
-            <ScrollArea className="min-h-0 flex-1 pr-4">
-              <div className="space-y-1">
-                {(() => {
-                  const tree = buildTree(traceSpans);
-                  const roots = traceSpans.filter((s) => !s.parent_span_id);
-                  return roots.map((s) => (
-                    <SpanNode key={s.span_id} span={s} depth={0} tree={tree} />
-                  ));
-                })()}
-              </div>
-            </ScrollArea>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

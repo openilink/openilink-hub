@@ -16,6 +16,7 @@ import { AppsPage } from "./pages/apps";
 import { AppDetailPage } from "./pages/app-detail";
 import { DashboardOverviewPage } from "./pages/dashboard-overview";
 import { TracesPage } from "./pages/traces";
+import { TraceDetailPage } from "./pages/trace-detail";
 import { ConsolePage } from "./pages/console/console-page";
 import { ThemeProvider } from "./lib/theme";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -46,6 +47,7 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="apps" element={null} />
               </Route>
               <Route path="accounts/:id/traces" element={<TracesPage />} />
+              <Route path="accounts/:id/traces/:traceId" element={<TraceDetailPage />} />
               <Route path="accounts/:id/console" element={<ConsolePage />} />
               <Route path="accounts/:id/channel/:cid" element={<ChannelDetailPage />}>
                 <Route index element={<Navigate to="overview" replace />} />
