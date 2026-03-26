@@ -43,6 +43,7 @@ export function BotDetailPage() {
   const [builtinApps, setBuiltinApps] = useState<any[]>([]);
   const [marketplaceApps, setMarketplaceApps] = useState<any[]>([]);
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
   const marketplaceRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +107,7 @@ export function BotDetailPage() {
   };
 
   const handleInstallApp = async (app: any) => {
+    setSyncing(true);
     try {
       if (app.local_id) {
         navigate(`/dashboard/accounts/${id}/install/${app.local_id}`);
@@ -115,6 +117,8 @@ export function BotDetailPage() {
       }
     } catch (e: any) {
       toast({ variant: "destructive", title: "同步失败", description: e.message });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -366,13 +370,13 @@ export function BotDetailPage() {
                   <CardFooter className="bg-muted/30 pt-4 flex justify-between items-center px-6">
                     <span className="text-[10px] font-bold text-muted-foreground">{app.author || app.slug}</span>
                     {app.installed && app.update_available ? (
-                      <Button size="sm" variant="outline" onClick={() => handleInstallApp(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs">
+                      <Button size="sm" variant="outline" disabled={syncing} onClick={() => handleInstallApp(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs">
                         更新 <RefreshCw className="h-3 w-3" />
                       </Button>
                     ) : app.installed ? (
                       <Badge variant="secondary" className="text-xs">已安装</Badge>
                     ) : (
-                      <Button size="sm" onClick={() => handleInstallApp(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs shadow-lg shadow-primary/10">
+                      <Button size="sm" disabled={syncing} onClick={() => handleInstallApp(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs shadow-lg shadow-primary/10">
                         安装 <Download className="h-3 w-3" />
                       </Button>
                     )}

@@ -91,6 +91,7 @@ function MarketplaceTab() {
   const [pendingApp, setPendingApp] = useState<any>(null);
   const [bots, setBots] = useState<any[]>([]);
   const [selectedBotId, setSelectedBotId] = useState("");
+  const [syncing, setSyncing] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -108,6 +109,7 @@ function MarketplaceTab() {
 
   async function handleInstallConfirm() {
     if (!pendingApp || !selectedBotId) return;
+    setSyncing(true);
     try {
       if (pendingApp.local_id) {
         navigate(`/dashboard/accounts/${selectedBotId}/install/${pendingApp.local_id}`);
@@ -117,7 +119,9 @@ function MarketplaceTab() {
       }
       setPendingApp(null);
     } catch (e: any) {
-      toast({ variant: "destructive", title: "操作失败", description: e.message });
+      toast({ variant: "destructive", title: "同步失败", description: e.message });
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -206,7 +210,7 @@ function MarketplaceTab() {
                 className="w-full h-9 px-3 rounded-md border bg-background text-sm">
                 {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-              <Button className="w-full" onClick={handleInstallConfirm}>继续安装</Button>
+              <Button className="w-full" disabled={syncing} onClick={handleInstallConfirm}>继续安装</Button>
             </div>
           )}
         </DialogContent>

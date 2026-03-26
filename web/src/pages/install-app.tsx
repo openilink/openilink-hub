@@ -37,8 +37,7 @@ export function InstallAppPage() {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botId, appId]);
+  }, [botId, appId, toast]);
 
   useEffect(() => {
     loadData();
@@ -50,7 +49,7 @@ export function InstallAppPage() {
       const result = await api.unifiedInstall(botId!, {
         app_id: appId,
         handle: handle.trim(),
-        scopes: app.scopes,
+        scopes: app.scopes || [],
       });
 
       const installationId = result?.id || result?.installation_id;
@@ -64,7 +63,7 @@ export function InstallAppPage() {
               config: JSON.stringify(configForm),
             });
           } catch {
-            // config save failure is non-fatal
+            toast({ title: "配置保存失败", description: "应用已安装，但配置未保存。" });
           }
         }
       }
