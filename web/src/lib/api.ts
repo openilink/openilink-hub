@@ -126,8 +126,8 @@ export const api = {
   // Apps
   createApp: (data: any) =>
     request<any>("/api/apps", { method: "POST", body: JSON.stringify(data) }),
-  listApps: (opts?: { listed?: boolean }) =>
-    request<any[]>(`/api/apps${opts?.listed ? "?listed=true" : ""}`),
+  listApps: (opts?: { listing?: boolean }) =>
+    request<any[]>(`/api/apps${opts?.listing ? "?listing=true" : ""}`),
   getApp: (id: string) => request<any>(`/api/apps/${id}`),
   updateApp: (id: string, data: any) =>
     request<any>(`/api/apps/${id}`, { method: "PUT", body: JSON.stringify(data) }),
@@ -137,8 +137,8 @@ export const api = {
 
   // Admin: Apps
   adminListApps: () => request<any[]>("/api/admin/apps"),
-  setAppListed: (id: string, listed: boolean) =>
-    request(`/api/admin/apps/${id}/listed`, { method: "PUT", body: JSON.stringify({ listed }) }),
+  setAppListing: (id: string, listing: string) =>
+    request(`/api/admin/apps/${id}/listing`, { method: "PUT", body: JSON.stringify({ listing }) }),
 
   // App Installations
   installApp: (appId: string, data: any) =>
@@ -174,6 +174,20 @@ export const api = {
     request<any[]>(
       `/api/bots/${botId}/webhook-logs?limit=${limit}${channelId ? "&channel_id=" + channelId : ""}`,
     ),
+
+  // Marketplace
+  getMarketplace: () => request<any[]>("/api/marketplace"),
+  syncMarketplaceApp: (slug: string) => request<any>(`/api/marketplace/sync/${slug}`, { method: "POST" }),
+
+  // Registry admin
+  getRegistries: () => request<any[]>("/api/admin/registries"),
+  createRegistry: (data: { name: string; url: string }) => request<any>("/api/admin/registries", { method: "POST", body: JSON.stringify(data) }),
+  updateRegistry: (id: string, data: { enabled: boolean }) => request<any>(`/api/admin/registries/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteRegistry: (id: string) => request<any>(`/api/admin/registries/${id}`, { method: "DELETE" }),
+
+  // Registry config
+  getRegistryConfig: () => request<any>("/api/admin/config/registry"),
+  setRegistryConfig: (data: { enabled: string }) => request<any>("/api/admin/config/registry", { method: "PUT", body: JSON.stringify(data) }),
 
   // Admin: Dashboard
   adminStats: () => request<any>("/api/admin/stats"),

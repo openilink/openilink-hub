@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Users, Cpu, Globe, Blocks, Database, Settings } from "lucide-react";
+import { BarChart3, Users, Cpu, Globe, Blocks, Database, Settings, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -107,10 +107,165 @@ export function AdminOverviewPage() {
           <CardFooter className="bg-muted/30 pt-4 flex justify-end"><Button onClick={handleSaveAI} disabled={saving} className="rounded-full">保存</Button></CardFooter>
         </Card>
 
-        <Card className="border-border/50 bg-muted/10 opacity-60 rounded-[2rem] flex items-center justify-center border-dashed">
-          <div className="text-center p-8"><Settings className="h-10 w-10 mx-auto opacity-20 mb-4" /><p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">更多配置开发中</p></div>
-        </Card>
+        <RegistryConfigCard />
       </div>
     </div>
+  );
+}
+
+// ==================== Registry Config ====================
+
+function RegistryConfigCard() {
+  const [registryConfig, setRegistryConfig] = useState<any>(null);
+  const [registries, setRegistries] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+  const [adding, setAdding] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    api.getRegistryConfig().then(setRegistryConfig).catch(() => setRegistryConfig({ enabled: "false" }));
+    api.getRegistries().then(r => setRegistries(r || [])).catch(() => {});
+  }, []);
+
+  async function handleToggleExpose() {
+    setSaving(true);
+    try {
+      const newEnabled = registryConfig?.enabled === "true" ? "false" : "true";
+      await api.setRegistryConfig({ enabled: newEnabled });
+      setRegistryConfig({ ...registryConfig, enabled: newEnabled });
+      toast({ title: "Registry 配置已保存" });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "保存失败", description: e.message });
+    }
+    setSaving(false);
+  }
+
+  async function handleAddRegistry() {
+    if (!newName.trim() || !newUrl.trim()) return;
+    setAdding(true);
+    try {
+      await api.createRegistry({ name: newName.trim(), url: newUrl.trim() });
+      setNewName("");
+      setNewUrl("");
+      const r = await api.getRegistries();
+      setRegistries(r || []);
+      toast({ title: "Registry 已添加" });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "添加失败", description: e.message });
+    }
+    setAdding(false);
+  }
+
+  async function handleToggleRegistry(reg: any) {
+    try {
+      await api.updateRegistry(reg.id, { enabled: !reg.enabled });
+      const r = await api.getRegistries();
+      setRegistries(r || []);
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "操作失败", description: e.message });
+    }
+  }
+
+  async function handleDeleteRegistry(reg: any) {
+    if (!confirm(`确定删除 Registry "${reg.name}"？`)) return;
+    try {
+      await api.deleteRegistry(reg.id);
+      const r = await api.getRegistries();
+      setRegistries(r || []);
+      toast({ title: "已删除" });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "删除失败", description: e.message });
+    }
+  }
+
+  return (
+    <Card className="border-border/50 bg-card/50 rounded-[2rem]">
+      <CardHeader>
+        <CardTitle>Registry 配置</CardTitle>
+        <CardDescription>管理应用市场 Registry 来源。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Expose toggle */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
+          <div>
+            <p className="text-sm font-medium">对外暴露 Registry</p>
+            <p className="text-xs text-muted-foreground">允许其他 Hub 从此实例拉取应用</p>
+          </div>
+          <Button
+            variant={registryConfig?.enabled === "true" ? "default" : "outline"}
+            size="sm"
+            onClick={handleToggleExpose}
+            disabled={saving}
+          >
+            {registryConfig?.enabled === "true" ? "已启用" : "已禁用"}
+          </Button>
+        </div>
+
+        {/* Registry Sources */}
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Registry 来源</p>
+          {registries.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">暂无 Registry 来源</p>
+          ) : (
+            registries.map((reg) => (
+              <div key={reg.id} className="flex items-center justify-between p-2.5 rounded-lg border bg-background">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{reg.name}</p>
+                  <p className="text-xs text-muted-foreground font-mono truncate">{reg.url}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant={reg.enabled ? "default" : "outline"}
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => handleToggleRegistry(reg)}
+                  >
+                    {reg.enabled ? "启用" : "禁用"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-destructive"
+                    onClick={() => handleDeleteRegistry(reg)}
+                    aria-label="删除"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Add Registry */}
+        <div className="space-y-2 pt-2 border-t">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">添加 Registry</p>
+          <div className="flex gap-2">
+            <Input
+              placeholder="名称"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              className="rounded-xl h-9 flex-1"
+            />
+            <Input
+              placeholder="URL"
+              value={newUrl}
+              onChange={e => setNewUrl(e.target.value)}
+              className="rounded-xl h-9 flex-[2]"
+            />
+            <Button
+              size="sm"
+              onClick={handleAddRegistry}
+              disabled={adding || !newName.trim() || !newUrl.trim()}
+              className="h-9 rounded-xl"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" /> 添加
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

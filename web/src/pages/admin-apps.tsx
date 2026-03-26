@@ -21,9 +21,10 @@ export function AdminAppsTab() {
     setEditing(false);
   }
 
-  async function toggleListed(e: React.MouseEvent, app: any) {
+  async function toggleListing(e: React.MouseEvent, app: any) {
     e.stopPropagation();
-    try { await api.setAppListed(app.id, !app.listed); load(); } catch (err: any) { setError(err.message); }
+    const newListing = app.listing === "listed" ? "unlisted" : "listed";
+    try { await api.setAppListing(app.id, newListing); load(); } catch (err: any) { setError(err.message); }
   }
 
   async function handleDelete(app: any) {
@@ -56,9 +57,9 @@ export function AdminAppsTab() {
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-medium">{app.name}</span>
                   <span className="text-xs text-muted-foreground font-mono">{app.slug}</span>
-                  {app.listed && <Badge variant="default" className="text-[10px]">已上架</Badge>}
-                  {app.listing_status === "pending" && <Badge variant="outline" className="text-[10px] text-orange-500 border-orange-500">待审核</Badge>}
-                  {app.listing_status === "rejected" && <Badge variant="destructive" className="text-[10px]">已拒绝</Badge>}
+                  {app.listing === "listed" && <Badge variant="default" className="text-[10px]">已上架</Badge>}
+                  {app.listing === "pending" && <Badge variant="outline" className="text-[10px] text-orange-500 border-orange-500">待审核</Badge>}
+                  {app.listing === "rejected" && <Badge variant="destructive" className="text-[10px]">已拒绝</Badge>}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {app.owner_name && `by ${app.owner_name} · `}
@@ -67,7 +68,7 @@ export function AdminAppsTab() {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              {app.listing_status === "pending" && (
+              {app.listing === "pending" && (
                 <>
                   <button onClick={(e) => { e.stopPropagation(); handleApprove(app); }}
                     className="text-xs px-2 py-0.5 rounded cursor-pointer bg-primary/10 text-primary">通过</button>
@@ -75,9 +76,9 @@ export function AdminAppsTab() {
                     className="text-xs px-2 py-0.5 rounded cursor-pointer bg-destructive/10 text-destructive">拒绝</button>
                 </>
               )}
-              <button onClick={(e) => toggleListed(e, app)}
-                className={`text-xs px-2 py-0.5 rounded cursor-pointer ${app.listed ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`}>
-                {app.listed ? "下架" : "上架"}
+              <button onClick={(e) => toggleListing(e, app)}
+                className={`text-xs px-2 py-0.5 rounded cursor-pointer ${app.listing === "listed" ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`}>
+                {app.listing === "listed" ? "下架" : "上架"}
               </button>
             </div>
           </div>
@@ -91,7 +92,7 @@ export function AdminAppsTab() {
             {editing ? (
               <AppEditForm app={selected} onSave={() => { setEditing(false); load(); setSelected(null); }} onCancel={() => setEditing(false)} />
             ) : (
-              <AppDetailView app={selected} onEdit={() => setEditing(true)} onDelete={() => handleDelete(selected)} onClose={() => setSelected(null)} onToggleListed={() => { api.setAppListed(selected.id, !selected.listed).then(() => { load(); setSelected({ ...selected, listed: !selected.listed }); }); }} />
+              <AppDetailView app={selected} onEdit={() => setEditing(true)} onDelete={() => handleDelete(selected)} onClose={() => setSelected(null)} onToggleListing={() => { const newListing = selected.listing === "listed" ? "unlisted" : "listed"; api.setAppListing(selected.id, newListing).then(() => { load(); setSelected({ ...selected, listing: newListing }); }); }} />
             )}
           </div>
         </div>
@@ -100,7 +101,7 @@ export function AdminAppsTab() {
   );
 }
 
-function AppDetailView({ app, onEdit, onDelete, onClose, onToggleListed }: { app: any; onEdit: () => void; onDelete: () => void; onClose: () => void; onToggleListed: () => void }) {
+function AppDetailView({ app, onEdit, onDelete, onClose, onToggleListing }: { app: any; onEdit: () => void; onDelete: () => void; onClose: () => void; onToggleListing: () => void }) {
   const tools = (app.tools || []) as any[];
   const events = (app.events || []) as string[];
   const scopes = (app.scopes || []) as string[];
@@ -172,8 +173,8 @@ function AppDetailView({ app, onEdit, onDelete, onClose, onToggleListed }: { app
           <Button variant="destructive" size="sm" onClick={onDelete}>
             <Trash2 className="w-3.5 h-3.5 mr-1" /> 删除
           </Button>
-          <Button variant="outline" size="sm" onClick={onToggleListed}>
-            {app.listed ? "下架" : "上架"}
+          <Button variant="outline" size="sm" onClick={onToggleListing}>
+            {app.listing === "listed" ? "下架" : "上架"}
           </Button>
         </div>
         <div className="flex gap-2">

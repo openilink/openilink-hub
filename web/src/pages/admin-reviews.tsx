@@ -55,10 +55,10 @@ export function AdminReviewsPage() {
                   <TableCell className="font-bold">{a.name}</TableCell>
                   <TableCell className="font-mono text-xs opacity-60">{a.slug}</TableCell>
                   <TableCell className="text-xs">{a.owner_username}</TableCell>
-                  <TableCell><Badge variant={a.listed ? "default" : "secondary"}>{a.listed ? "已上架" : "待上架"}</Badge></TableCell>
+                  <TableCell><Badge variant={a.listing === "listed" ? "default" : "secondary"}>{a.listing === "listed" ? "已上架" : "待上架"}</Badge></TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={async () => { await api.setAppListed(a.id, !a.listed); loadApps(); }}>
-                      {a.listed ? "下架" : "上架"}
+                    <Button variant="ghost" size="sm" onClick={async () => { const newListing = a.listing === "listed" ? "unlisted" : "listed"; await api.setAppListing(a.id, newListing); loadApps(); }}>
+                      {a.listing === "listed" ? "下架" : "上架"}
                     </Button>
                   </TableCell>
                 </TableRow>

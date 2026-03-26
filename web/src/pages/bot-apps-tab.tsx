@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 
 export function BotAppsTab({ botId }: { botId: string }) {
+  const navigate = useNavigate();
   const [installations, setInstallations] = useState<any[]>([]);
   const [showInstall, setShowInstall] = useState(false);
   const { toast } = useToast();
@@ -59,7 +61,7 @@ export function BotAppsTab({ botId }: { botId: string }) {
         <div className="text-center py-16 space-y-3 border-2 border-dashed rounded-2xl">
           <Blocks className="w-10 h-10 mx-auto text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">暂无安装的应用</p>
-          <Button variant="outline" size="sm" onClick={() => setShowInstall(true)}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/dashboard/apps/marketplace")}>
             浏览应用市场
           </Button>
         </div>
@@ -121,7 +123,7 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
   useEffect(() => {
     if (!open) { setConfirmApp(null); setSearch(""); return; }
     setLoading(true);
-    Promise.all([api.listApps(), api.listApps({ listed: true })]).then(([my, listed]) => {
+    Promise.all([api.listApps(), api.listApps({ listing: true })]).then(([my, listed]) => {
       const seen = new Set<string>();
       const merged: any[] = [];
       for (const a of [...(my || []), ...(listed || [])]) {

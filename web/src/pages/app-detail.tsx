@@ -71,11 +71,12 @@ export function AppDetailPage() {
         <Badge variant={app.status === "active" ? "default" : "outline"}>
           {app.status === "active" ? "已启用" : "草稿"}
         </Badge>
-        {app.listed ? (
+        {app.registry && <Badge variant="outline">来自应用市场</Badge>}
+        {app.listing === "listed" ? (
           <Badge variant="default">已上架</Badge>
-        ) : app.listing_status === "pending" ? (
+        ) : app.listing === "pending" ? (
           <Badge variant="outline">审核中</Badge>
-        ) : app.listing_status === "rejected" ? (
+        ) : app.listing === "rejected" ? (
           <Badge variant="destructive">已拒绝</Badge>
         ) : null}
       </div>
@@ -174,10 +175,11 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
       <Card className="space-y-3">
         <h3 className="text-sm font-medium">展示信息</h3>
         <form onSubmit={handleSave} className="space-y-2">
-          <Input placeholder="名称" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-8 text-xs" />
-          <Input placeholder="描述" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="h-8 text-xs" />
-          <Input placeholder="图标 (emoji 或 URL)" value={form.icon} onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))} className="h-8 text-xs" />
-          <Input placeholder="主页 URL" value={form.homepage} onChange={(e) => setForm((f) => ({ ...f, homepage: e.target.value }))} className="h-8 text-xs" />
+          <Input placeholder="名称" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
+          <Input placeholder="描述" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
+          <Input placeholder="图标 (emoji 或 URL)" value={form.icon} onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
+          <Input placeholder="主页 URL" value={form.homepage} onChange={(e) => setForm((f) => ({ ...f, homepage: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
+          {!app.registry && (
           <div className="flex items-center justify-between">
             <div>
               {error && <span className="text-xs text-destructive">{error}</span>}
@@ -185,20 +187,58 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
             </div>
             <Button type="submit" size="sm" disabled={saving}>{saving ? "..." : "保存"}</Button>
           </div>
+          )}
         </form>
       </Card>
+
+      {/* Registry badge */}
+      {app.registry && (
+        <Card className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">来自应用市场</Badge>
+            <span className="text-xs text-muted-foreground">此应用来自应用市场 Registry，配置不可编辑。</span>
+          </div>
+        </Card>
+      )}
+
+      {/* Integration Token Guide */}
+      {app.kind === "integration" && (
+        <IntegrationTokenGuide app={app} />
+      )}
+
+      {/* Readme */}
+      {app.readme && (
+        <Card className="space-y-3">
+          <h3 className="text-sm font-medium">说明文档</h3>
+          <div className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
+            {app.readme.replace(/\{hub_url\}/g, window.location.origin).replace(/\{your_token\}/g, "<your_token>")}
+          </div>
+        </Card>
+      )}
+
+      {app.kind === "integration" && !app.readme && (
+        <Card className="space-y-3">
+          <h3 className="text-sm font-medium">使用说明</h3>
+          <p className="text-xs text-muted-foreground">此应用为 Integration 类型，使用 Token 进行 API 调用。请在安装管理中查看 Token。</p>
+          <div className="space-y-2 text-xs font-mono text-muted-foreground">
+            <p className="font-sans text-xs font-medium text-foreground">HTTP 发消息</p>
+            <pre className="p-2 rounded-lg bg-muted/30 border overflow-x-auto whitespace-pre-wrap">{`curl -X POST ${window.location.origin}/bot/v1/message/send \\
+  -H "Authorization: Bearer <your_token>" \\
+  -d '{"to":"wxid_xxx","content":"hello"}'`}</pre>
+            <p className="font-sans text-xs font-medium text-foreground">WebSocket 连接</p>
+            <pre className="p-2 rounded-lg bg-muted/30 border overflow-x-auto whitespace-pre-wrap">{`wss://${window.location.origin.replace(/^https?:\/\//, "")}/bot/v1/ws?token=<your_token>`}</pre>
+          </div>
+        </Card>
+      )}
 
       {/* App Credentials */}
       <Card className="space-y-4">
         <h3 className="text-sm font-medium">应用凭证</h3>
         <p className="text-xs text-muted-foreground">这些凭证用于你的 App 与 Hub 之间的安全通信。请妥善保管，不要泄露。</p>
-        {app.client_secret && (
-          <SecretField label="Client Secret" value={app.client_secret} description="用于 OAuth 流程中验证 App 身份" />
+        {app.webhook_secret && (
+          <SecretField label="Webhook Secret" value={app.webhook_secret} description="Hub 使用此密钥对推送事件签名，App 用它验证请求来源" />
         )}
-        {app.signing_secret && (
-          <SecretField label="Signing Secret" value={app.signing_secret} description="Hub 使用此密钥对推送事件签名，App 用它验证请求来源" />
-        )}
-        {!app.client_secret && !app.signing_secret && (
+        {!app.webhook_secret && (
           <p className="text-xs text-muted-foreground italic">凭证仅对 App 所有者可见。</p>
         )}
       </Card>
@@ -212,6 +252,29 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
         </Button>
       </Card>
     </div>
+  );
+}
+
+function IntegrationTokenGuide({ app }: { app: any }) {
+  const hubUrl = window.location.origin;
+
+  return (
+    <Card className="space-y-4">
+      <h3 className="text-sm font-medium">Integration Token 使用指南</h3>
+      <p className="text-xs text-muted-foreground">此应用为 Integration 类型。安装实例的 Token 可在「安装管理」中查看。</p>
+      <div className="space-y-3 text-xs">
+        <div className="space-y-1">
+          <p className="font-medium text-foreground">HTTP 发消息</p>
+          <pre className="p-2 rounded-lg bg-muted/30 border font-mono overflow-x-auto whitespace-pre-wrap">{`curl -X POST ${hubUrl}/bot/v1/message/send \\
+  -H "Authorization: Bearer {token}" \\
+  -d '{"to":"wxid_xxx","content":"hello"}'`}</pre>
+        </div>
+        <div className="space-y-1">
+          <p className="font-medium text-foreground">WebSocket 连接</p>
+          <pre className="p-2 rounded-lg bg-muted/30 border font-mono overflow-x-auto whitespace-pre-wrap">{`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token={token}`}</pre>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -373,19 +436,19 @@ function DistributionSection({ app, onUpdate }: { app: any; onUpdate: () => void
       <Card className="space-y-4">
         <h3 className="text-sm font-medium">应用市场</h3>
 
-        {app.listed ? (
+        {app.listing === "listed" ? (
           <div className="flex items-center gap-2">
             <Badge variant="default">已上架</Badge>
             <span className="text-xs text-muted-foreground">你的应用已在应用市场中展示。</span>
           </div>
-        ) : app.listing_status === "pending" ? (
+        ) : app.listing === "pending" ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Badge variant="outline">审核中</Badge>
               <span className="text-xs text-muted-foreground">上架申请已提交，等待管理员审核。</span>
             </div>
           </div>
-        ) : app.listing_status === "rejected" ? (
+        ) : app.listing === "rejected" ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Badge variant="destructive">已拒绝</Badge>
@@ -413,7 +476,7 @@ function DistributionSection({ app, onUpdate }: { app: any; onUpdate: () => void
 // ==================== Event Subscriptions ====================
 
 function EventSubscriptionsSection({ app, onUpdate }: { app: any; onUpdate: () => void }) {
-  const [requestUrl, setRequestUrl] = useState(app.request_url || "");
+  const [webhookUrl, setWebhookUrl] = useState(app.webhook_url || "");
   const [events, setEvents] = useState<string[]>(app.events || []);
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -426,7 +489,7 @@ function EventSubscriptionsSection({ app, onUpdate }: { app: any; onUpdate: () =
   async function handleSave() {
     setSaving(true);
     try {
-      await api.updateApp(app.id, { request_url: requestUrl, events });
+      await api.updateApp(app.id, { webhook_url: webhookUrl, events });
       toast({ title: "已保存" });
       onUpdate();
     } catch (e: any) {
@@ -438,8 +501,8 @@ function EventSubscriptionsSection({ app, onUpdate }: { app: any; onUpdate: () =
   async function handleVerify() {
     setVerifying(true);
     try {
-      if (requestUrl !== (app.request_url || "")) {
-        await api.updateApp(app.id, { request_url: requestUrl });
+      if (webhookUrl !== (app.webhook_url || "")) {
+        await api.updateApp(app.id, { webhook_url: webhookUrl });
       }
       await api.verifyAppUrl(app.id);
       toast({ title: "URL 验证成功" });
@@ -463,11 +526,11 @@ function EventSubscriptionsSection({ app, onUpdate }: { app: any; onUpdate: () =
         <div className="flex gap-2">
           <Input
             placeholder="https://your-app.example.com/webhook"
-            value={requestUrl}
-            onChange={(e) => setRequestUrl(e.target.value)}
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
             className="h-8 text-xs font-mono flex-1"
           />
-          <Button size="sm" variant="outline" onClick={handleVerify} disabled={verifying || !requestUrl.trim()} className="h-8">
+          <Button size="sm" variant="outline" onClick={handleVerify} disabled={verifying || !webhookUrl.trim()} className="h-8">
             {verifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3 mr-1" />}
             验证
           </Button>
