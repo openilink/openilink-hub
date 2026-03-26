@@ -48,7 +48,9 @@ func (s *Server) handleCreateRegistry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh registry client sources
-	s.refreshRegistrySources()
+	if err := s.refreshRegistrySources(); err != nil {
+		slog.Warn("registry created but failed to refresh sources", "err", err)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -77,7 +79,9 @@ func (s *Server) handleUpdateRegistry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh registry client sources
-	s.refreshRegistrySources()
+	if err := s.refreshRegistrySources(); err != nil {
+		slog.Warn("registry updated but failed to refresh sources", "err", err)
+	}
 
 	jsonOK(w)
 }
@@ -92,7 +96,9 @@ func (s *Server) handleDeleteRegistry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh registry client sources
-	s.refreshRegistrySources()
+	if err := s.refreshRegistrySources(); err != nil {
+		slog.Warn("registry updated but failed to refresh sources", "err", err)
+	}
 
 	jsonOK(w)
 }
