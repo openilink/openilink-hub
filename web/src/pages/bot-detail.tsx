@@ -398,20 +398,11 @@ export function BotDetailPage() {
         )}
 
         {/* Marketplace Apps (from remote registries) */}
+        {!marketplaceLoading && marketplaceApps.length > 0 && (
         <div className="space-y-3">
-          <h4 className="text-xs font-medium text-muted-foreground">应用市场</h4>
-          {marketplaceLoading ? (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3].map(i => <Card key={i} className="h-48 animate-pulse bg-muted/20 rounded-3xl" />)}
-            </div>
-          ) : marketplaceApps.length === 0 ? (
-            <div className="text-center py-12 space-y-3 border-2 border-dashed rounded-2xl">
-              <Blocks className="w-10 h-10 mx-auto text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">暂无远程市场应用</p>
-            </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {marketplaceApps.map((app) => (
+          <h4 className="text-xs font-medium text-muted-foreground">远程市场</h4>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {marketplaceApps.map((app) => (
                 <Card key={app.slug || app.id} className="group relative overflow-hidden rounded-[2rem] border-border/50 bg-card/50 transition-all hover:shadow-2xl hover:-translate-y-1">
                   <CardHeader className="pb-4">
                     <div className="flex items-start gap-4">
@@ -460,9 +451,9 @@ export function BotDetailPage() {
                   </CardFooter>
                 </Card>
               ))}
-            </div>
-          )}
+          </div>
         </div>
+        )}
       </div>
 
       </>}
