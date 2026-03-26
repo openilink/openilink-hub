@@ -91,12 +91,12 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(app)
 }
 
-// GET /api/apps?listed=true — public marketplace; otherwise my apps
+// GET /api/apps?listing=listed — public marketplace; otherwise my apps
 func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	var apps []store.App
 	var err error
 
-	if r.URL.Query().Get("listed") == "true" {
+	if r.URL.Query().Get("listing") == "listed" {
 		apps, err = s.Store.ListListedApps()
 	} else {
 		userID := auth.UserIDFromContext(r.Context())

@@ -64,7 +64,7 @@ function MarketplaceContent() {
 
   useEffect(() => {
     setLoading(true);
-    api.listApps({ listed: true }).then(l => setMarketplaceApps(l || [])).catch(() => setMarketplaceApps([])).finally(() => setLoading(false));
+    api.listApps({ listing: "listed" }).then(l => setMarketplaceApps(l || [])).catch(() => setMarketplaceApps([])).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {

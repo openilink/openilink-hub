@@ -126,8 +126,8 @@ export const api = {
   // Apps
   createApp: (data: any) =>
     request<any>("/api/apps", { method: "POST", body: JSON.stringify(data) }),
-  listApps: (opts?: { listed?: boolean }) =>
-    request<any[]>(`/api/apps${opts?.listed ? "?listed=true" : ""}`),
+  listApps: (opts?: { listing?: string }) =>
+    request<any[]>(`/api/apps${opts?.listing ? `?listing=${opts.listing}` : ""}`),
   getApp: (id: string) => request<any>(`/api/apps/${id}`),
   updateApp: (id: string, data: any) =>
     request<any>(`/api/apps/${id}`, { method: "PUT", body: JSON.stringify(data) }),
