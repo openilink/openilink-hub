@@ -304,7 +304,7 @@ function InstallFlowDialog({ target, onClose }: { target: InstallTarget; onClose
         setResult({
           appId: created.id,
           appName: target.template.name,
-          token: installation.token,
+          token: installation.app_token,
           kind: "integration",
           templateId: target.template.id,
           guide: target.template.guide,
@@ -326,7 +326,7 @@ function InstallFlowDialog({ target, onClose }: { target: InstallTarget; onClose
         setResult({
           appId: appId,
           appName: app.name,
-          token: installation.token,
+          token: installation.app_token,
           kind: app.kind,
         });
       }
