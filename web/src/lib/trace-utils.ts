@@ -1,6 +1,7 @@
 import { CheckCircle2, XCircle, MinusCircle } from "lucide-react";
 import { createElement } from "react";
 
+/** All timestamps are Unix epoch in milliseconds (backend-normalized). */
 export interface TraceSpan {
   id: number;
   trace_id: string;
@@ -10,11 +11,14 @@ export interface TraceSpan {
   kind: string;
   status_code: string;
   status_message: string;
+  /** Unix epoch ms */
   start_time: number;
+  /** Unix epoch ms */
   end_time: number;
   attributes: Record<string, any> | null;
   events: {
     name: string;
+    /** Unix epoch ms */
     timestamp: number;
     attributes?: Record<string, any>;
   }[] | null;

@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import {
   TraceSpan,
   kindColors,
@@ -18,19 +17,7 @@ interface TimelineViewProps {
   onSelectSpan: (spanId: string) => void;
 }
 
-function TimelineTicks({ count }: { count: number }) {
-  return (
-    <div className="absolute inset-0 flex">
-      {Array.from({ length: count + 1 }).map((_, i) => (
-        <div
-          key={i}
-          className="absolute top-0 bottom-0 border-l border-dashed border-border/40"
-          style={{ left: `${(i / count) * 100}%` }}
-        />
-      ))}
-    </div>
-  );
-}
+const TICK_COUNT = 4;
 
 export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineViewProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -47,7 +34,6 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
     [spans],
   );
   const traceDuration = traceEnd - traceStart || 1;
-  const tickCount = 4;
 
   function toggleCollapse(spanId: string) {
     setCollapsed((prev) => {
@@ -66,13 +52,13 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
           Span
         </div>
         <div className="flex-1 relative h-5">
-          {Array.from({ length: tickCount + 1 }).map((_, i) => {
-            const ms = (traceDuration * i) / tickCount;
+          {Array.from({ length: TICK_COUNT + 1 }).map((_, i) => {
+            const ms = (traceDuration * i) / TICK_COUNT;
             return (
               <span
                 key={i}
                 className="absolute text-[9px] text-muted-foreground font-mono -translate-x-1/2"
-                style={{ left: `${(i / tickCount) * 100}%` }}
+                style={{ left: `${(i / TICK_COUNT) * 100}%` }}
               >
                 {formatDuration(ms)}
               </span>
@@ -81,31 +67,27 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
         </div>
       </div>
 
-      {/* Span rows */}
-      <div className="space-y-0">
-        {rows.map(({ span, depth }) => {
-          const children = tree.get(span.span_id) || [];
-          const hasChildren = children.length > 0;
-          const isCollapsed = collapsed.has(span.span_id);
-          const dur = durationMs(span);
-          const barLeft = ((span.start_time - traceStart) / traceDuration) * 100;
-          const barWidth = Math.max((dur / traceDuration) * 100, 0.5);
-          const isSelected = selectedSpanId === span.span_id;
+      {/* Span rows with column-level tick overlay */}
+      <div className="flex">
+        {/* Label column */}
+        <div className="w-[220px] shrink-0">
+          {rows.map(({ span, depth }) => {
+            const children = tree.get(span.span_id) || [];
+            const hasChildren = children.length > 0;
+            const isCollapsed = collapsed.has(span.span_id);
+            const isSelected = selectedSpanId === span.span_id;
 
-          return (
-            <div
-              key={span.span_id}
-              className={`flex items-center h-8 cursor-pointer transition-colors group ${
-                isSelected
-                  ? "bg-primary/10 hover:bg-primary/15"
-                  : "hover:bg-muted/50"
-              }`}
-              onClick={() => onSelectSpan(span.span_id)}
-            >
-              {/* Label column */}
+            return (
               <div
-                className="w-[220px] shrink-0 flex items-center gap-1 px-2 overflow-hidden"
+                key={span.span_id}
+                role="button"
+                tabIndex={0}
+                className={`flex items-center h-8 cursor-pointer transition-colors ${
+                  isSelected ? "bg-primary/10" : "hover:bg-muted/50"
+                }`}
                 style={{ paddingLeft: `${8 + depth * 16}px` }}
+                onClick={() => onSelectSpan(span.span_id)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectSpan(span.span_id); } }}
               >
                 <button
                   className="w-4 h-4 flex items-center justify-center shrink-0"
@@ -122,19 +104,46 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
                     ))}
                 </button>
                 <StatusIcon code={span.status_code} size="w-3 h-3" />
-                <span className="text-[11px] font-mono truncate">{span.name}</span>
+                <span className="text-[11px] font-mono truncate ml-1">{span.name}</span>
               </div>
+            );
+          })}
+        </div>
 
-              {/* Bar column */}
-              <div className="flex-1 relative h-full flex items-center">
-                <TimelineTicks count={tickCount} />
+        {/* Bar column with single tick overlay */}
+        <div className="flex-1 relative">
+          {/* Tick lines rendered once, spanning entire column */}
+          {Array.from({ length: TICK_COUNT + 1 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute top-0 bottom-0 border-l border-dashed border-border/40"
+              style={{ left: `${(i / TICK_COUNT) * 100}%` }}
+            />
+          ))}
+
+          {/* Span bars */}
+          {rows.map(({ span }) => {
+            const dur = durationMs(span);
+            const barLeft = ((span.start_time - traceStart) / traceDuration) * 100;
+            const barWidth = Math.max((dur / traceDuration) * 100, 0.5);
+            const isSelected = selectedSpanId === span.span_id;
+
+            return (
+              <div
+                key={span.span_id}
+                role="button"
+                tabIndex={0}
+                className={`relative h-8 flex items-center cursor-pointer transition-colors ${
+                  isSelected ? "bg-primary/10" : "hover:bg-muted/50"
+                }`}
+                onClick={() => onSelectSpan(span.span_id)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectSpan(span.span_id); } }}
+              >
                 <div
                   className={`absolute h-5 rounded-sm flex items-center px-1.5 ${
                     kindBgLight[span.kind] || "bg-gray-500/15"
                   } border ${
-                    isSelected
-                      ? "border-primary/50"
-                      : `border-transparent`
+                    isSelected ? "border-primary/50" : "border-transparent"
                   }`}
                   style={{
                     left: `${barLeft}%`,
@@ -155,9 +164,9 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
                   )}
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

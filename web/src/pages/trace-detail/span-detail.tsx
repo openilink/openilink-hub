@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -35,29 +36,33 @@ function Section({ title, icon, children }: { title: string; icon: React.ReactNo
 }
 
 export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
-  if (!span) return null;
+  // Keep last span so the Sheet close animation can still render content
+  const lastSpanRef = useRef<TraceSpan | null>(null);
+  if (span) lastSpanRef.current = span;
+  const displaySpan = span ?? lastSpanRef.current;
+  if (!displaySpan) return null;
 
-  const dur = durationMs(span);
-  const attrs = span.attributes ? Object.entries(span.attributes) : [];
-  const events = span.events || [];
+  const dur = durationMs(displaySpan);
+  const attrs = displaySpan.attributes ? Object.entries(displaySpan.attributes) : [];
+  const events = displaySpan.events || [];
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent side="right" className="w-[400px] sm:max-w-[400px] p-0">
         <SheetHeader className="p-4 pb-3 border-b">
           <div className="flex items-center gap-2 mb-1">
-            <StatusIcon code={span.status_code} size="w-4 h-4" />
+            <StatusIcon code={displaySpan.status_code} size="w-4 h-4" />
             <Badge
               variant="outline"
-              className={`text-[9px] h-4 px-1.5 leading-none text-white ${kindColors[span.kind] || "bg-gray-400"}`}
+              className={`text-[9px] h-4 px-1.5 leading-none text-white ${kindColors[displaySpan.kind] || "bg-gray-400"}`}
             >
-              {span.kind}
+              {displaySpan.kind}
             </Badge>
             <span className="text-[10px] font-mono text-muted-foreground">{formatDuration(dur)}</span>
           </div>
-          <SheetTitle className="font-mono text-sm truncate">{span.name}</SheetTitle>
-          {span.status_message && (
-            <SheetDescription className="text-destructive text-xs">{span.status_message}</SheetDescription>
+          <SheetTitle className="font-mono text-sm truncate">{displaySpan.name}</SheetTitle>
+          {displaySpan.status_message && (
+            <SheetDescription className="text-destructive text-xs">{displaySpan.status_message}</SheetDescription>
           )}
         </SheetHeader>
 
@@ -69,7 +74,7 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
                 <div className="space-y-0.5">
                   <div className="text-muted-foreground">Start</div>
                   <div className="font-mono">
-                    {new Date(span.start_time).toLocaleTimeString([], {
+                    {new Date(displaySpan.start_time).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
                       second: "2-digit",
@@ -79,8 +84,8 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
                 <div className="space-y-0.5">
                   <div className="text-muted-foreground">End</div>
                   <div className="font-mono">
-                    {span.end_time
-                      ? new Date(span.end_time).toLocaleTimeString([], {
+                    {displaySpan.end_time
+                      ? new Date(displaySpan.end_time).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
                           second: "2-digit",
@@ -94,7 +99,7 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
                 </div>
                 <div className="space-y-0.5">
                   <div className="text-muted-foreground">Span ID</div>
-                  <div className="font-mono text-[10px] truncate">{span.span_id}</div>
+                  <div className="font-mono text-[10px] truncate">{displaySpan.span_id}</div>
                 </div>
               </div>
             </Section>
