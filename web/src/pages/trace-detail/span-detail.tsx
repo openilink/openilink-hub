@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -21,6 +21,23 @@ interface SpanDetailProps {
   span: TraceSpan | null;
   open: boolean;
   onClose: () => void;
+}
+
+function MediaPreview({ mediaKey, attrs }: { mediaKey: string; attrs: Record<string, any> }) {
+  const [error, setError] = useState(false);
+  const src = `/api/v1/media/${mediaKey}`;
+  const replyType = String(attrs["reply.type"] || "");
+  const isImage = replyType === "image" || /\.(jpg|jpeg|png|gif|webp)$/i.test(mediaKey);
+
+  if (error) {
+    return <a href={src} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{mediaKey}</a>;
+  }
+
+  if (isImage) {
+    return <img src={src} alt={mediaKey} className="max-w-[240px] max-h-[240px] rounded-md border mt-1" loading="lazy" onError={() => setError(true)} />;
+  }
+
+  return <a href={src} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{mediaKey}</a>;
 }
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
@@ -118,12 +135,7 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
                       <span className="text-blue-500 font-semibold shrink-0 min-w-[100px]">{key}</span>
                       <span className="text-foreground/80 break-all">
                         {key === "reply.media_key" ? (
-                          <img
-                            src={`/api/v1/media/${value}`}
-                            alt="media preview"
-                            className="max-w-[240px] max-h-[240px] rounded-md border mt-1"
-                            loading="lazy"
-                          />
+                          <MediaPreview mediaKey={String(value)} attrs={Object.fromEntries(attrs)} />
                         ) : (
                           String(value)
                         )}

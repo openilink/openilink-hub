@@ -469,12 +469,15 @@ func (m *Manager) sendAppMedia(ctx context.Context, inst *Instance, to, contextT
 	if len(data) > 0 && m.storage != nil {
 		ct := detectOutboundContentType(result.ReplyType)
 		ext := detectOutboundExt(fileName, result.ReplyType)
-		key := fmt.Sprintf("%s/%s/out_%d%s", inst.DBID,
-			time.Now().Format("2006/01/02"), time.Now().UnixMilli(), ext)
+		now := time.Now()
+		key := fmt.Sprintf("%s/%s/out_%d_%x%s", inst.DBID,
+			now.Format("2006/01/02"), now.UnixMilli(), now.UnixNano()%0xFFFF, ext)
 		if _, err := m.storage.Put(ctx, key, ct, data); err == nil {
 			mediaStatus = "ready"
 			mediaKeys, _ = json.Marshal(map[string]string{"0": key})
 			storageKey = key
+		} else {
+			slog.Warn("app media: objectstore put failed", "key", key, "err", err)
 		}
 	}
 
@@ -550,6 +553,8 @@ func detectOutboundContentType(msgType string) string {
 		return "image/jpeg"
 	case "video":
 		return "video/mp4"
+	case "voice":
+		return "audio/wav"
 	default:
 		return "application/octet-stream"
 	}
@@ -564,6 +569,8 @@ func detectOutboundExt(filename, msgType string) string {
 		return ".jpg"
 	case "video":
 		return ".mp4"
+	case "voice":
+		return ".wav"
 	default:
 		return ""
 	}

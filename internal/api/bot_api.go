@@ -164,12 +164,15 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 	if len(outMsg.Data) > 0 && s.ObjectStore != nil {
 		ct := detectContentType(itemType)
 		ext := detectExt(outMsg.FileName, itemType)
-		key := fmt.Sprintf("%s/%s/out_%d%s", inst.BotID,
-			time.Now().Format("2006/01/02"), time.Now().UnixMilli(), ext)
+		now := time.Now()
+		key := fmt.Sprintf("%s/%s/out_%d_%x%s", inst.BotID,
+			now.Format("2006/01/02"), now.UnixMilli(), now.UnixNano()%0xFFFF, ext)
 		if _, err := s.ObjectStore.Put(r.Context(), key, ct, outMsg.Data); err == nil {
 			mediaStatus = "ready"
 			mediaKeys, _ = json.Marshal(map[string]string{"0": key})
 			mediaKey = key
+		} else {
+			slog.Warn("bot api: objectstore put failed", "key", key, "err", err)
 		}
 	}
 
