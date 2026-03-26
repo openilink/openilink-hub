@@ -43,16 +43,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppIcon } from "../components/app-icon";
-import { APP_TEMPLATES, SCOPE_DESCRIPTIONS } from "../lib/constants";
-
-function randomSuffix(): string {
-  return Math.random().toString(36).slice(2, 8);
-}
+import { SCOPE_DESCRIPTIONS } from "../lib/constants";
 
 // ==================== Install Flow Types ====================
 
 type InstallTarget =
-  | { type: "template"; template: (typeof APP_TEMPLATES)[number] }
   | { type: "marketplace"; app: any }
   | { type: "builtin"; app: any };
 
@@ -61,7 +56,6 @@ type InstallResult = {
   appName: string;
   token?: string;
   registry?: string;
-  templateId?: string;
   guide?: string;
 };
 
@@ -321,33 +315,6 @@ export function BotDetailPage() {
       <div ref={marketplaceRef} className="space-y-6">
         <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">应用市场</h3>
 
-        {/* Quick Create Templates */}
-        <div className="space-y-3">
-          <h4 className="text-xs font-medium text-muted-foreground">快速创建</h4>
-          <div className="grid gap-4 md:grid-cols-3">
-            {APP_TEMPLATES.map((tpl) => (
-              <Card key={tpl.id} className="group relative overflow-hidden rounded-2xl border-border/50 bg-card/50 transition-all hover:shadow-xl hover:-translate-y-0.5">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center text-xl border">
-                      {tpl.emoji}
-                    </div>
-                    <CardTitle className="text-base font-bold group-hover:text-primary transition-colors">{tpl.name}</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <p className="text-xs text-muted-foreground leading-relaxed">{tpl.description}</p>
-                </CardContent>
-                <CardFooter className="bg-muted/30 pt-3 flex justify-end px-6">
-                  <Button size="sm" variant="outline" onClick={() => setInstallTarget({ type: "template", template: tpl })} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs">
-                    安装 <Download className="h-3 w-3" />
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        </div>
-
         {/* Builtin Apps */}
         {!marketplaceLoading && builtinApps.length > 0 && (
           <div className="space-y-3">
@@ -465,26 +432,20 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
   const [result, setResult] = useState<InstallResult | null>(null);
   const { toast } = useToast();
 
-  const isTemplate = target.type === "template";
   const isBuiltin = target.type === "builtin";
-  const appName = isTemplate ? target.template.name : target.app.name;
-  const appDescription = isTemplate ? target.template.description : target.app.description;
-  const appEmoji = isTemplate ? target.template.emoji : undefined;
-  const appIcon = isTemplate ? undefined : target.app.icon;
-  const appIconUrl = isTemplate ? undefined : target.app.icon_url;
-  const scopes = isTemplate ? target.template.scopes : (target.app.scopes || []);
-  const events = isTemplate ? target.template.events : (target.app.events || []);
+  const appName = target.app.name;
+  const appDescription = target.app.description;
+  const appIcon = target.app.icon;
+  const appIconUrl = target.app.icon_url;
+  const scopes = target.app.scopes || [];
+  const events = target.app.events || [];
   const configSchema = isBuiltin ? target.app.config_schema : null;
   const [configForm, setConfigForm] = useState<Record<string, string>>({});
   const readScopes = scopes.filter((s: string) => s.includes("read"));
   const writeScopes = scopes.filter((s: string) => !s.includes("read"));
 
   useEffect(() => {
-    if (isTemplate) {
-      setHandle(target.template.id);
-    } else {
-      setHandle(target.app.slug || "");
-    }
+    setHandle(target.app.slug || "");
     // Pre-fill config form from schema defaults
     if (isBuiltin && configSchema) {
       try {
@@ -496,7 +457,7 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
         setConfigForm(defaults);
       } catch {}
     }
-  }, [target, isTemplate, isBuiltin, configSchema]);
+  }, [target, isBuiltin, configSchema]);
 
   async function handleInstall() {
     setSaving(true);
@@ -522,26 +483,6 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
           token: installation.app_token,
           registry: "builtin",
           guide: app.guide,
-        });
-      } else if (isTemplate) {
-        const installation = await api.unifiedInstall(botId, {
-          template_slug: target.template.id,
-          name: target.template.name,
-          description: target.template.description,
-          icon: target.template.emoji,
-          scopes: target.template.scopes,
-          events: target.template.events,
-          readme: target.template.readme,
-          guide: target.template.guide,
-          handle: handle.trim() || undefined,
-        });
-        setResult({
-          appId: installation.app_id,
-          appName: target.template.name,
-          token: installation.app_token,
-          registry: "builtin",
-          templateId: target.template.id,
-          guide: target.template.guide,
         });
       } else {
         const app = target.app;
@@ -585,14 +526,10 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
         {/* Left: App identity */}
         <div className="sm:w-2/5 space-y-4 sm:border-r sm:pr-6">
           <div className="flex items-center gap-3">
-            {appEmoji ? (
-              <div className="h-14 w-14 rounded-xl bg-muted flex items-center justify-center text-2xl border">{appEmoji}</div>
-            ) : (
-              <AppIcon icon={appIcon} iconUrl={appIconUrl} size="h-14 w-14" />
-            )}
+            <AppIcon icon={appIcon} iconUrl={appIconUrl} size="h-14 w-14" />
             <div>
               <h3 className="text-lg font-bold">{appName}</h3>
-              {!isTemplate && target.app.slug && (
+              {target.app.slug && (
                 <p className="text-xs text-muted-foreground font-mono">{target.app.slug}</p>
               )}
             </div>
@@ -600,7 +537,7 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
           {appDescription && (
             <p className="text-sm text-muted-foreground leading-relaxed">{appDescription}</p>
           )}
-          {!isTemplate && target.app.homepage && (
+          {target.app.homepage && (
             <a href={target.app.homepage} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
               <ExternalLink className="h-3 w-3" /> 应用主页
             </a>
@@ -751,15 +688,13 @@ function InstallResultScreen({ result, onClose }: { result: InstallResult; onClo
   -d '{"content":"hello"}'`}</pre>
             </details>
 
-            {(result.templateId === "custom-integration") && (
-              <details className="group">
-                <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none">
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-                  WebSocket 连接
-                </summary>
-                <pre className="mt-2 p-3 rounded-lg bg-muted/30 border text-xs font-mono overflow-x-auto whitespace-pre-wrap">{`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token=${result.token}`}</pre>
-              </details>
-            )}
+            <details className="group">
+              <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none">
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                WebSocket 连接
+              </summary>
+              <pre className="mt-2 p-3 rounded-lg bg-muted/30 border text-xs font-mono overflow-x-auto whitespace-pre-wrap">{`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token=${result.token}`}</pre>
+            </details>
           </div>
         </div>
       )}

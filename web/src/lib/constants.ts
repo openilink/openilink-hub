@@ -23,31 +23,3 @@ export const EVENT_TYPES = [
   { key: "group.join", label: "入群", description: "有人加入群组事件" },
   { key: "group.leave", label: "退群", description: "有人退出群组事件" },
 ];
-
-export const APP_TEMPLATES = [
-  {
-    id: "custom-integration",
-    emoji: "⚡",
-    name: "自定义集成",
-    description: "创建自定义 App，通过 Token 调用 Bot API",
-    scopes: ["message:write", "message:read", "contact:read", "bot:read"],
-    events: ["message"],
-    readme: "自定义集成，通过 Token 调用 Bot API 实现任意功能。",
-    guide: `## 自定义集成
-
-### WebSocket 连接
-
-\`\`\`
-wss://{hub_url}/bot/v1/ws?token={your_token}
-\`\`\`
-
-### HTTP 发消息
-
-\`\`\`bash
-curl -X POST {hub_url}/bot/v1/message/send \\
-  -H "Authorization: Bearer {your_token}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"content":"hello"}'
-\`\`\``,
-  },
-];
