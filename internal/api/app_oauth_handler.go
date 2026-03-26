@@ -196,11 +196,13 @@ func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Requ
 		jsonError(w, "app has invalid oauth_setup_url", http.StatusInternalServerError)
 		return
 	}
+	returnURL := hubURL + "/dashboard/accounts/" + botID
 	q := setupURL.Query()
 	q.Set("hub", hubURL)
 	q.Set("app_id", appID)
 	q.Set("bot_id", botID)
 	q.Set("state", state)
+	q.Set("return_url", returnURL)
 	setupURL.RawQuery = q.Encode()
 	http.Redirect(w, r, setupURL.String(), http.StatusFound)
 }
