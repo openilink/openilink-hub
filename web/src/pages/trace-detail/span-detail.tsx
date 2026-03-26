@@ -116,7 +116,18 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
                       }`}
                     >
                       <span className="text-blue-500 font-semibold shrink-0 min-w-[100px]">{key}</span>
-                      <span className="text-foreground/80 break-all">{String(value)}</span>
+                      <span className="text-foreground/80 break-all">
+                        {key === "reply.media_key" ? (
+                          <img
+                            src={`/api/v1/media/${value}`}
+                            alt="media preview"
+                            className="max-w-[240px] max-h-[240px] rounded-md border mt-1"
+                            loading="lazy"
+                          />
+                        ) : (
+                          String(value)
+                        )}
+                      </span>
                     </div>
                   ))}
                 </div>
