@@ -104,6 +104,36 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("CreateAppWithConfigSchema", func(t *testing.T) {
+		configSchema := json.RawMessage(`{"type":"object","properties":{"forward_url":{"type":"string"}}}`)
+		app, err := s.CreateApp(&store.App{
+			OwnerID:      u.ID,
+			Name:         "Config Schema App",
+			Slug:         "config-schema-app",
+			Description:  "app with config_schema",
+			ConfigSchema: configSchema,
+		})
+		if err != nil {
+			t.Fatalf("CreateApp: %v", err)
+		}
+		got, err := s.GetApp(app.ID)
+		if err != nil {
+			t.Fatalf("GetApp: %v", err)
+		}
+		if string(got.ConfigSchema) == "" || string(got.ConfigSchema) == "{}" {
+			t.Errorf("config_schema should be set, got %q", string(got.ConfigSchema))
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal(got.ConfigSchema, &parsed); err != nil {
+			t.Fatalf("unmarshal config_schema: %v", err)
+		}
+		if parsed["type"] != "object" {
+			t.Errorf("config_schema.type = %v, want 'object'", parsed["type"])
+		}
+		// Clean up
+		s.DeleteApp(app.ID)
+	})
+
 	t.Run("CreateBuiltinApp", func(t *testing.T) {
 		app, err := s.CreateApp(&store.App{
 			OwnerID:     u.ID,

@@ -33,17 +33,20 @@ func (db *DB) CreateApp(app *store.App) (*store.App, error) {
 	if app.Listing == "" {
 		app.Listing = "unlisted"
 	}
+	if app.ConfigSchema == nil {
+		app.ConfigSchema = json.RawMessage("{}")
+	}
 	err := db.QueryRow(`INSERT INTO apps (id, owner_id, name, slug, description, icon, icon_url, homepage,
 		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
 		webhook_url, webhook_secret, webhook_verified,
-		registry, version, readme, guide,
+		registry, version, readme, guide, config_schema,
 		listing, listing_reject_reason)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
 		RETURNING EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT`,
 		app.ID, app.OwnerID, app.Name, app.Slug, app.Description, app.Icon, app.IconURL, app.Homepage,
 		app.Tools, app.Events, app.Scopes, app.OAuthSetupURL, app.OAuthRedirectURL,
 		app.WebhookURL, app.WebhookSecret, app.WebhookVerified,
-		app.Registry, app.Version, app.Readme, app.Guide,
+		app.Registry, app.Version, app.Readme, app.Guide, app.ConfigSchema,
 		app.Listing, app.ListingRejectReason,
 	).Scan(&app.CreatedAt, &app.UpdatedAt)
 	app.Status = "active"
@@ -55,7 +58,7 @@ func (db *DB) GetApp(id string) (*store.App, error) {
 	err := db.QueryRow(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
 		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
 		a.webhook_url, a.webhook_secret, a.webhook_verified,
-		a.registry, a.version, a.readme, a.guide,
+		a.registry, a.version, a.readme, a.guide, a.config_schema,
 		a.listing, a.listing_reject_reason, a.status,
 		EXTRACT(EPOCH FROM a.created_at)::BIGINT, EXTRACT(EPOCH FROM a.updated_at)::BIGINT,
 		COALESCE(u.username, '')
@@ -64,7 +67,7 @@ func (db *DB) GetApp(id string) (*store.App, error) {
 		&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 		&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 		&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-		&a.Registry, &a.Version, &a.Readme, &a.Guide,
+		&a.Registry, &a.Version, &a.Readme, &a.Guide, &a.ConfigSchema,
 		&a.Listing, &a.ListingRejectReason, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt, &a.OwnerName)
 	if err != nil {
@@ -78,14 +81,14 @@ func (db *DB) GetAppBySlug(slug, registry string) (*store.App, error) {
 	err := db.QueryRow(`SELECT id, owner_id, name, slug, description, icon, icon_url, homepage,
 		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
 		webhook_url, webhook_secret, webhook_verified,
-		registry, version, readme, guide,
+		registry, version, readme, guide, config_schema,
 		listing, listing_reject_reason, status,
 		EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT
 		FROM apps WHERE slug = $1 AND registry = $2`, slug, registry).Scan(
 		&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 		&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 		&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-		&a.Registry, &a.Version, &a.Readme, &a.Guide,
+		&a.Registry, &a.Version, &a.Readme, &a.Guide, &a.ConfigSchema,
 		&a.Listing, &a.ListingRejectReason, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
@@ -98,7 +101,7 @@ func (db *DB) ListAppsByOwner(ownerID string) ([]store.App, error) {
 	rows, err := db.Query(`SELECT id, owner_id, name, slug, description, icon, icon_url, homepage,
 		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
 		webhook_url, webhook_secret, webhook_verified,
-		registry, version, readme, guide,
+		registry, version, readme, guide, config_schema,
 		listing, listing_reject_reason, status,
 		EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT
 		FROM apps WHERE owner_id = $1 ORDER BY created_at DESC`, ownerID)
@@ -112,7 +115,7 @@ func (db *DB) ListAppsByOwner(ownerID string) ([]store.App, error) {
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-			&a.Registry, &a.Version, &a.Readme, &a.Guide,
+			&a.Registry, &a.Version, &a.Readme, &a.Guide, &a.ConfigSchema,
 			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
@@ -126,7 +129,7 @@ func (db *DB) ListListedApps() ([]store.App, error) {
 	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
 		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
 		a.webhook_url, '', a.webhook_verified,
-		a.registry, a.version, a.readme, a.guide,
+		a.registry, a.version, a.readme, a.guide, a.config_schema,
 		a.listing, a.listing_reject_reason, a.status,
 		EXTRACT(EPOCH FROM a.created_at)::BIGINT, EXTRACT(EPOCH FROM a.updated_at)::BIGINT,
 		COALESCE(u.username, '')
@@ -142,7 +145,7 @@ func (db *DB) ListListedApps() ([]store.App, error) {
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-			&a.Registry, &a.Version, &a.Readme, &a.Guide,
+			&a.Registry, &a.Version, &a.Readme, &a.Guide, &a.ConfigSchema,
 			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
 			return nil, err
@@ -156,7 +159,7 @@ func (db *DB) ListAllApps() ([]store.App, error) {
 	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
 		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
 		a.webhook_url, '', a.webhook_verified,
-		a.registry, a.version, a.readme, a.guide,
+		a.registry, a.version, a.readme, a.guide, a.config_schema,
 		a.listing, a.listing_reject_reason, a.status,
 		EXTRACT(EPOCH FROM a.created_at)::BIGINT, EXTRACT(EPOCH FROM a.updated_at)::BIGINT,
 		COALESCE(u.username, '')
@@ -172,7 +175,7 @@ func (db *DB) ListAllApps() ([]store.App, error) {
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-			&a.Registry, &a.Version, &a.Readme, &a.Guide,
+			&a.Registry, &a.Version, &a.Readme, &a.Guide, &a.ConfigSchema,
 			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
 			return nil, err
@@ -186,7 +189,7 @@ func (db *DB) ListMarketplaceApps() ([]store.App, error) {
 	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
 		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
 		a.webhook_url, '', a.webhook_verified,
-		a.registry, a.version, a.readme, a.guide,
+		a.registry, a.version, a.readme, a.guide, a.config_schema,
 		a.listing, a.listing_reject_reason, a.status,
 		EXTRACT(EPOCH FROM a.created_at)::BIGINT, EXTRACT(EPOCH FROM a.updated_at)::BIGINT,
 		COALESCE(u.username, '')
@@ -202,7 +205,7 @@ func (db *DB) ListMarketplaceApps() ([]store.App, error) {
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-			&a.Registry, &a.Version, &a.Readme, &a.Guide,
+			&a.Registry, &a.Version, &a.Readme, &a.Guide, &a.ConfigSchema,
 			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
 			return nil, err

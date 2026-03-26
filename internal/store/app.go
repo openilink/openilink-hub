@@ -23,6 +23,7 @@ type App struct {
 	Version             string          `json:"version,omitempty"`
 	Readme              string          `json:"readme,omitempty"`
 	Guide               string          `json:"guide,omitempty"`
+	ConfigSchema        json.RawMessage `json:"config_schema,omitempty"`
 	Listing             string          `json:"listing"`
 	ListingRejectReason string          `json:"listing_reject_reason,omitempty"`
 	Status              string          `json:"status"`

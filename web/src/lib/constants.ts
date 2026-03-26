@@ -26,87 +26,28 @@ export const EVENT_TYPES = [
 
 export const APP_TEMPLATES = [
   {
-    id: "websocket-app",
-    emoji: "📡",
-    name: "WebSocket App",
-    description: "通过 WebSocket 实时收发 Bot 消息",
+    id: "custom-integration",
+    emoji: "⚡",
+    name: "自定义集成",
+    description: "创建自定义 App，通过 Token 调用 Bot API",
     scopes: ["message:write", "message:read", "contact:read", "bot:read"],
     events: ["message"],
-    readme: "通过 WebSocket 实时收发 Bot 消息，支持双向通信和事件订阅。",
-    guide: `## WebSocket App
+    readme: "自定义集成，通过 Token 调用 Bot API 实现任意功能。",
+    guide: `## 自定义集成
 
-连接 WebSocket 实时收发消息。
-
-### 连接方式
+### WebSocket 连接
 
 \`\`\`
 wss://{hub_url}/bot/v1/ws?token={your_token}
 \`\`\`
 
-### 发送消息
-
-通过 WebSocket 发送：
-\`\`\`json
-{"type":"send","content":"hello"}
-\`\`\`
-
-或通过 HTTP：
-\`\`\`bash
-curl -X POST {hub_url}/bot/v1/message/send \\
-  -H "Authorization: Bearer {your_token}" \\
-  -d '{"content":"hello"}'
-\`\`\``,
-  },
-  {
-    id: "webhook-app",
-    emoji: "🔗",
-    name: "Webhook App",
-    description: "通过 HTTP API 向 Bot 发送消息",
-    scopes: ["message:write"],
-    events: [],
-    readme: "通过 HTTP API 向 Bot 发送消息，适合 CI/CD、监控告警等场景。",
-    guide: `## Webhook App
-
-通过 HTTP API 发送消息。
-
-### 发送消息
+### HTTP 发消息
 
 \`\`\`bash
 curl -X POST {hub_url}/bot/v1/message/send \\
   -H "Authorization: Bearer {your_token}" \\
   -H "Content-Type: application/json" \\
   -d '{"content":"hello"}'
-\`\`\`
-
-### 发送图片
-
-\`\`\`bash
-curl -X POST {hub_url}/bot/v1/message/send \\
-  -H "Authorization: Bearer {your_token}" \\
-  -d '{"type":"image","url":"https://example.com/img.png"}'
 \`\`\``,
-  },
-  {
-    id: "openclaw-channel",
-    emoji: "🦞",
-    name: "OpenClaw Channel",
-    description: "通过 OpenClaw 协议接入 Bot",
-    scopes: ["message:write", "message:read", "contact:read", "bot:read"],
-    events: ["message"],
-    readme: "通过 OpenClaw 协议接入 Bot，实现跨平台消息互通。",
-    guide: `## OpenClaw Channel
-
-通过 OpenClaw Channel Plugin 接入 Bot。
-
-### 安装 Plugin
-
-请参考 [OpenClaw Channel Plugin 文档](https://github.com/nicepkg/openclaw) 安装和配置。
-
-### 配置
-
-在 OpenClaw 配置中填入以下信息：
-
-- **Hub URL**: \`{hub_url}\`
-- **Token**: \`{your_token}\``,
   },
 ];

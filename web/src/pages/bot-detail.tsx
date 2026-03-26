@@ -53,7 +53,8 @@ function randomSuffix(): string {
 
 type InstallTarget =
   | { type: "template"; template: (typeof APP_TEMPLATES)[number] }
-  | { type: "marketplace"; app: any };
+  | { type: "marketplace"; app: any }
+  | { type: "builtin"; app: any };
 
 type InstallResult = {
   appId: string;
@@ -343,6 +344,33 @@ export function BotDetailPage() {
           </div>
         </div>
 
+        {/* Builtin Apps */}
+        {!marketplaceLoading && marketplaceApps.filter((a: any) => a.registry === "builtin").length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-xs font-medium text-muted-foreground">内置应用</h4>
+            <div className="grid gap-4 md:grid-cols-3">
+              {marketplaceApps.filter((a: any) => a.registry === "builtin").map((app: any) => (
+                <Card key={app.slug || app.id} className="group relative overflow-hidden rounded-2xl border-border/50 bg-card/50 transition-all hover:shadow-xl hover:-translate-y-0.5">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-3">
+                      <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-10 w-10" />
+                      <CardTitle className="text-base font-bold group-hover:text-primary transition-colors">{app.name}</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pb-4">
+                    <p className="text-xs text-muted-foreground leading-relaxed">{app.description}</p>
+                  </CardContent>
+                  <CardFooter className="bg-muted/30 pt-3 flex justify-end px-6">
+                    <Button size="sm" onClick={() => setInstallTarget({ type: "builtin", app })} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs shadow-lg shadow-primary/10">
+                      安装 <Download className="h-3 w-3" />
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Marketplace Apps */}
         <div className="space-y-3">
           <h4 className="text-xs font-medium text-muted-foreground">应用市场</h4>
@@ -350,14 +378,14 @@ export function BotDetailPage() {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {[1, 2, 3].map(i => <Card key={i} className="h-48 animate-pulse bg-muted/20 rounded-3xl" />)}
             </div>
-          ) : marketplaceApps.length === 0 ? (
+          ) : marketplaceApps.filter((a: any) => a.registry !== "builtin").length === 0 ? (
             <div className="text-center py-12 space-y-3 border-2 border-dashed rounded-2xl">
               <Blocks className="w-10 h-10 mx-auto text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">市场暂无应用</p>
             </div>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {marketplaceApps.map((app) => (
+              {marketplaceApps.filter((a: any) => a.registry !== "builtin").map((app) => (
                 <Card key={app.slug || app.id} className="group relative overflow-hidden rounded-[2rem] border-border/50 bg-card/50 transition-all hover:shadow-2xl hover:-translate-y-1">
                   <CardHeader className="pb-4">
                     <div className="flex items-start gap-4">
@@ -434,6 +462,7 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
   const { toast } = useToast();
 
   const isTemplate = target.type === "template";
+  const isBuiltin = target.type === "builtin";
   const appName = isTemplate ? target.template.name : target.app.name;
   const appDescription = isTemplate ? target.template.description : target.app.description;
   const appEmoji = isTemplate ? target.template.emoji : undefined;
@@ -441,6 +470,8 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
   const appIconUrl = isTemplate ? undefined : target.app.icon_url;
   const scopes = isTemplate ? target.template.scopes : (target.app.scopes || []);
   const events = isTemplate ? target.template.events : (target.app.events || []);
+  const configSchema = isBuiltin ? target.app.config_schema : null;
+  const [configForm, setConfigForm] = useState<Record<string, string>>({});
   const readScopes = scopes.filter((s: string) => s.includes("read"));
   const writeScopes = scopes.filter((s: string) => !s.includes("read"));
 
@@ -450,12 +481,45 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
     } else {
       setHandle(target.app.slug || "");
     }
-  }, [target, isTemplate]);
+    // Pre-fill config form from schema defaults
+    if (isBuiltin && configSchema) {
+      try {
+        const parsed = typeof configSchema === "string" ? JSON.parse(configSchema) : configSchema;
+        const defaults: Record<string, string> = {};
+        for (const [key, prop] of Object.entries(parsed.properties || {})) {
+          if ((prop as any).default) defaults[key] = (prop as any).default;
+        }
+        setConfigForm(defaults);
+      } catch {}
+    }
+  }, [target, isTemplate, isBuiltin, configSchema]);
 
   async function handleInstall() {
     setSaving(true);
     try {
-      if (isTemplate) {
+      if (isBuiltin) {
+        // Install from builtin app (already in DB)
+        const app = target.app;
+        const installData: any = {
+          app_id: app.id,
+          handle: handle.trim() || undefined,
+          scopes: app.scopes,
+        };
+        const installation = await api.unifiedInstall(botId, installData);
+        // Set config if provided
+        if (Object.keys(configForm).length > 0) {
+          await api.updateInstallation(app.id, installation.id, {
+            config: JSON.stringify(configForm),
+          });
+        }
+        setResult({
+          appId: installation.app_id,
+          appName: app.name,
+          token: installation.app_token,
+          registry: "builtin",
+          guide: app.guide,
+        });
+      } else if (isTemplate) {
         const installation = await api.unifiedInstall(botId, {
           template_slug: target.template.id,
           name: target.template.name,
@@ -590,6 +654,34 @@ function InstallFlowDialog({ target, botId, onClose }: { target: InstallTarget; 
               <Input id="bd-install-handle" value={handle} onChange={e => setHandle(e.target.value)} className="h-9 font-mono" placeholder="如 notify-prod" />
               <p className="text-[10px] text-muted-foreground">用户发送 @{handle || "handle"} 触发此应用</p>
             </div>
+
+            {/* Config Schema Form */}
+            {configSchema && (() => {
+              try {
+                const parsed = typeof configSchema === "string" ? JSON.parse(configSchema) : configSchema;
+                const properties = parsed.properties || {};
+                if (Object.keys(properties).length === 0) return null;
+                return (
+                  <div className="space-y-3 pt-2 border-t">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">应用配置</p>
+                    {Object.entries(properties).map(([key, prop]: [string, any]) => (
+                      <div key={key} className="space-y-1.5">
+                        <label className="text-xs font-medium">{prop.title || key}</label>
+                        <Input
+                          value={configForm[key] || ""}
+                          onChange={e => setConfigForm({ ...configForm, [key]: e.target.value })}
+                          className="h-9 font-mono"
+                          placeholder={prop.description || ""}
+                        />
+                        {prop.description && (
+                          <p className="text-[10px] text-muted-foreground">{prop.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              } catch { return null; }
+            })()}
           </div>
         </div>
       </div>
@@ -655,7 +747,7 @@ function InstallResultScreen({ result, onClose }: { result: InstallResult; onClo
   -d '{"content":"hello"}'`}</pre>
             </details>
 
-            {(result.templateId === "websocket-app" || result.templateId === "openclaw-channel") && (
+            {(result.templateId === "custom-integration") && (
               <details className="group">
                 <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none">
                   <ArrowRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />

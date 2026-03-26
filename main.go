@@ -15,6 +15,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/api"
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
+	"github.com/openilink/openilink-hub/internal/builtin"
 	"github.com/openilink/openilink-hub/internal/config"
 	"github.com/openilink/openilink-hub/internal/daemon"
 	"github.com/openilink/openilink-hub/internal/relay"
@@ -27,6 +28,10 @@ import (
 
 	// Register providers
 	_ "github.com/openilink/openilink-hub/internal/provider/ilink"
+
+	// Register builtin apps
+	_ "github.com/openilink/openilink-hub/internal/builtin/bridge"
+	_ "github.com/openilink/openilink-hub/internal/builtin/openclaw"
 )
 
 // Set by goreleaser ldflags.
@@ -85,6 +90,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer s.Close()
+
+	// Seed builtin apps
+	if err := builtin.SeedApps(s); err != nil {
+		slog.Error("seed builtin apps failed", "err", err)
+	}
 
 	// WebAuthn
 	wa, err := webauthn.New(&webauthn.Config{

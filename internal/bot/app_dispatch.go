@@ -12,6 +12,7 @@ import (
 	"time"
 
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
+	"github.com/openilink/openilink-hub/internal/builtin"
 	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/store"
 )
@@ -60,6 +61,24 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
+		// Builtin apps: route to internal handler instead of webhook delivery
+		if installations[i].AppRegistry == "builtin" {
+			span := tracer.StartChild(rootSpan, "builtin:"+installations[i].AppSlug, store.SpanKindInternal, map[string]any{
+				"app.name": installations[i].AppName,
+				"app.slug": installations[i].AppSlug,
+			})
+			if h := builtin.Get(installations[i].AppSlug); h != nil {
+				if err := h.HandleEvent(&installations[i], event); err != nil {
+					span.EndWithError(err.Error())
+				} else {
+					span.End()
+				}
+			} else {
+				span.EndWithError("no handler (WIP)")
+			}
+			continue
+		}
+
 		// TODO: For WS-only apps (no webhook_url), events should still be
 		// deliverable if a WebSocket connection exists in the WSHub. Currently
 		// DeliverWithRetry requires a webhook_url. This will be addressed when
@@ -124,6 +143,13 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 			"group": groupInfo(msg), "handle": handle,
 		})
 		event.TraceID = tracer.TraceID()
+
+		// Builtin apps: route to internal handler
+		if installation.AppRegistry == "builtin" {
+			m.deliverBuiltinMention(inst, installation, event, msg.Sender, tracer, rootSpan)
+			return true
+		}
+
 		span := tracer.StartChild(rootSpan, "POST "+installation.AppWebhookURL, store.SpanKindClient, map[string]any{
 			"app.name":    installation.AppName,
 			"app.slug":    installation.AppSlug,
@@ -147,6 +173,13 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		"group": groupInfo(msg), "content": text, "handle": handle,
 	})
 	event.TraceID = tracer.TraceID()
+
+	// Builtin apps: route to internal handler
+	if installation.AppRegistry == "builtin" {
+		m.deliverBuiltinMention(inst, installation, event, msg.Sender, tracer, rootSpan)
+		return true
+	}
+
 	span := tracer.StartChild(rootSpan, "POST "+installation.AppWebhookURL, store.SpanKindClient, map[string]any{
 		"app.name":    installation.AppName,
 		"app.slug":    installation.AppSlug,
@@ -163,6 +196,23 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 	}
 	m.sendAppResult(inst, msg.Sender, result, tracer, rootSpan)
 	return true
+}
+
+// deliverBuiltinMention handles event delivery for builtin apps via mention.
+func (m *Manager) deliverBuiltinMention(inst *Instance, installation *store.AppInstallation, event *appdelivery.Event, sender string, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
+	span := tracer.StartChild(rootSpan, "builtin:"+installation.AppSlug, store.SpanKindInternal, map[string]any{
+		"app.name": installation.AppName,
+		"app.slug": installation.AppSlug,
+	})
+	if h := builtin.Get(installation.AppSlug); h != nil {
+		if err := h.HandleEvent(installation, event); err != nil {
+			span.EndWithError(err.Error())
+		} else {
+			span.End()
+		}
+	} else {
+		span.EndWithError("no handler (WIP)")
+	}
 }
 
 // tryDeliverCommand checks if the message is a /command and delivers it.
@@ -190,6 +240,24 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
+		// Builtin apps: route to internal handler instead of webhook delivery
+		if installations[i].AppRegistry == "builtin" {
+			span := tracer.StartChild(rootSpan, "builtin:"+installations[i].AppSlug, store.SpanKindInternal, map[string]any{
+				"app.name": installations[i].AppName,
+				"app.slug": installations[i].AppSlug,
+			})
+			if h := builtin.Get(installations[i].AppSlug); h != nil {
+				if err := h.HandleEvent(&installations[i], event); err != nil {
+					span.EndWithError(err.Error())
+				} else {
+					span.End()
+				}
+			} else {
+				span.EndWithError("no handler (WIP)")
+			}
+			continue
+		}
+
 		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppWebhookURL, store.SpanKindClient, map[string]any{
 			"app.name":    installations[i].AppName,
 			"app.slug":    installations[i].AppSlug,

@@ -143,6 +143,9 @@ export function InstallationDetailPage() {
       {/* Token & Usage */}
       <TokenSection app={app} inst={inst} />
 
+      {/* App Config (config_schema) */}
+      {app.config_schema && <AppConfigForm app={app} inst={inst} onUpdate={loadData} />}
+
       {/* Config */}
       <ConfigSection
         app={app}
@@ -263,6 +266,73 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
           事件将推送到 <code className="font-mono">{app.webhook_url}</code>
         </p>
       )}
+    </Card>
+  );
+}
+
+// ==================== App Config Form (config_schema) ====================
+
+function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate: () => void }) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+
+  let parsed: any = {};
+  try {
+    parsed = typeof app.config_schema === "string"
+      ? JSON.parse(app.config_schema || "{}")
+      : (app.config_schema || {});
+  } catch {
+    return null;
+  }
+  const properties = parsed.properties || {};
+  if (Object.keys(properties).length === 0) return null;
+
+  let currentConfig: Record<string, string> = {};
+  try {
+    currentConfig = typeof inst.config === "string"
+      ? JSON.parse(inst.config || "{}")
+      : (inst.config || {});
+  } catch {}
+
+  const [form, setForm] = useState<Record<string, string>>(currentConfig);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await api.updateInstallation(inst.app_id, inst.id, {
+        config: JSON.stringify(form),
+      });
+      toast({ title: "配置已保存" });
+      onUpdate();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "保存失败", description: e.message });
+    }
+    setSaving(false);
+  }
+
+  return (
+    <Card className="space-y-4">
+      <h3 className="text-sm font-medium">应用配置</h3>
+      {Object.entries(properties).map(([key, prop]: [string, any]) => (
+        <div key={key} className="space-y-1.5">
+          <label className="text-xs text-muted-foreground">{prop.title || key}</label>
+          <Input
+            value={form[key] || ""}
+            onChange={e => setForm({ ...form, [key]: e.target.value })}
+            className="h-8 text-xs font-mono"
+            placeholder={prop.description || ""}
+          />
+          {prop.description && (
+            <p className="text-[10px] text-muted-foreground">{prop.description}</p>
+          )}
+        </div>
+      ))}
+      <div className="flex items-center gap-2 pt-2 border-t">
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+          保存配置
+        </Button>
+      </div>
     </Card>
   );
 }
