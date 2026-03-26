@@ -20,6 +20,7 @@ type Bot struct {
 	LastRemindedAt *int64          `json:"last_reminded_at,omitempty"`
 	CreatedAt      int64           `json:"created_at"`
 	UpdatedAt      int64           `json:"updated_at"`
+	AIEnabled      bool            `json:"ai_enabled"`
 }
 
 type BotStats struct {
@@ -69,5 +70,6 @@ type BotStore interface {
 	GetAdminStats() (*AdminStats, error)
 	GetBotStats(userID string) (*BotStats, error)
 	ListRecentContacts(botID string, limit int) ([]RecentContact, error)
+	UpdateBotAIEnabled(id string, enabled bool) error
 	LastActivityAt(userID string) *time.Time
 }

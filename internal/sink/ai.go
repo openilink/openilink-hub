@@ -23,16 +23,16 @@ type AI struct {
 func (s *AI) Name() string { return "ai" }
 
 func (s *AI) Handle(d Delivery) {
-	if !d.Channel.AIConfig.Enabled || d.MsgType != "text" || d.Content == "" {
+	if !d.AIEnabled || d.MsgType != "text" || d.Content == "" {
 		return
 	}
 	s.reply(d)
 }
 
 func (s *AI) reply(d Delivery) {
-	cfg := s.resolveConfig(d.Channel.AIConfig)
+	cfg := s.resolveGlobalConfig()
 	if cfg.APIKey == "" {
-		slog.Warn("ai reply skipped: no api key", "channel", d.Channel.ID, "source", d.Channel.AIConfig.Source)
+		slog.Warn("ai reply skipped: no api key", "bot", d.BotDBID)
 		return
 	}
 
@@ -83,6 +83,23 @@ func (s *AI) reply(d Delivery) {
 		MessageType: 2, // BOT
 		ItemList:    itemList,
 	})
+}
+
+func (s *AI) resolveGlobalConfig() store.AIConfig {
+	global, _ := s.Store.ListConfigByPrefix("ai.")
+	if global["ai.api_key"] == "" {
+		return store.AIConfig{}
+	}
+	var cfg store.AIConfig
+	cfg.Source = "builtin"
+	cfg.BaseURL = global["ai.base_url"]
+	cfg.APIKey = global["ai.api_key"]
+	cfg.Model = global["ai.model"]
+	cfg.SystemPrompt = global["ai.system_prompt"]
+	if v := global["ai.max_history"]; v != "" {
+		fmt.Sscanf(v, "%d", &cfg.MaxHistory)
+	}
+	return cfg
 }
 
 func (s *AI) resolveConfig(cfg store.AIConfig) store.AIConfig {

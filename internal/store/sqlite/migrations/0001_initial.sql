@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS bots (
     last_msg_at     INTEGER,
     reminder_hours  INTEGER NOT NULL DEFAULT 0,
     last_reminded_at INTEGER,
+    ai_enabled      INTEGER NOT NULL DEFAULT 0,
     created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );

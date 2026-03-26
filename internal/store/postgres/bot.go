@@ -13,14 +13,15 @@ import (
 const botSelectCols = `id, user_id, name, provider, provider_id, status, credentials, sync_state,
 	msg_count, EXTRACT(EPOCH FROM last_msg_at)::BIGINT,
 	reminder_hours, EXTRACT(EPOCH FROM last_reminded_at)::BIGINT,
-	EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT`
+	EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT,
+	ai_enabled`
 
 func scanBot(scanner interface{ Scan(...any) error }) (*store.Bot, error) {
 	b := &store.Bot{}
 	err := scanner.Scan(&b.ID, &b.UserID, &b.Name, &b.Provider, &b.ProviderID, &b.Status,
 		&b.Credentials, &b.SyncState, &b.MsgCount, &b.LastMsgAt,
 		&b.ReminderHours, &b.LastRemindedAt,
-		&b.CreatedAt, &b.UpdatedAt)
+		&b.CreatedAt, &b.UpdatedAt, &b.AIEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +159,11 @@ func (db *DB) GetBotsNeedingReminder() ([]store.Bot, error) {
 		bots = append(bots, *b)
 	}
 	return bots, rows.Err()
+}
+
+func (db *DB) UpdateBotAIEnabled(id string, enabled bool) error {
+	_, err := db.Exec("UPDATE bots SET ai_enabled = $1, updated_at = NOW() WHERE id = $2", enabled, id)
+	return err
 }
 
 func (db *DB) DeleteBot(id string) error {

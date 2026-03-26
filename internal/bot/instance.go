@@ -8,9 +8,10 @@ import (
 
 // Instance wraps a provider with its lifecycle.
 type Instance struct {
-	DBID     string
-	Provider provider.Provider
-	cancel   context.CancelFunc
+	DBID      string
+	Provider  provider.Provider
+	AIEnabled bool
+	cancel    context.CancelFunc
 }
 
 func NewInstance(dbID string, p provider.Provider) *Instance {

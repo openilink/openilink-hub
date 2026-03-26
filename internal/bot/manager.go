@@ -108,6 +108,7 @@ func (m *Manager) StartBot(ctx context.Context, bot *store.Bot) error {
 
 	p := factory()
 	inst := NewInstance(bot.ID, p)
+	inst.AIEnabled = bot.AIEnabled
 
 	err := p.Start(ctx, provider.StartOptions{
 		Credentials: bot.Credentials,
@@ -690,6 +691,7 @@ func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage,
 			BotDBID: inst.DBID, Provider: inst.Provider, Channel: ch,
 			Message: msg, Envelope: env, SeqID: msgID,
 			MsgType: p.msgType, Content: deliveryContent,
+			AIEnabled: inst.AIEnabled,
 		}
 		for _, s := range m.sinks {
 			wg.Add(1)

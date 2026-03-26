@@ -16,6 +16,7 @@ type Delivery struct {
 	SeqID        int64
 	MsgType      string
 	Content      string
+	AIEnabled    bool
 }
 
 // Sink processes messages delivered to a channel.

@@ -517,8 +517,8 @@ func parseSendRequest(r *http.Request) (provider.OutboundMessage, string, error)
 	}, "text", nil
 }
 
-// PUT /api/bots/{id}/default-channel-ai
-func (s *Server) handleSetDefaultChannelAI(w http.ResponseWriter, r *http.Request) {
+// PUT /api/bots/{id}/ai
+func (s *Server) handleSetBotAI(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())
 
@@ -536,29 +536,7 @@ func (s *Server) handleSetDefaultChannelAI(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	channels, err := s.Store.ListChannelsByBot(botID)
-	if err != nil || len(channels) == 0 {
-		jsonError(w, "no channels found", http.StatusNotFound)
-		return
-	}
-
-	// Find the default channel (named "默认"), fall back to first.
-	var ch *store.Channel
-	for i := range channels {
-		if channels[i].Name == "默认" {
-			ch = &channels[i]
-			break
-		}
-	}
-	if ch == nil {
-		ch = &channels[0]
-	}
-
-	ai := &store.AIConfig{Enabled: req.Enabled}
-	if req.Enabled {
-		ai.Source = "builtin"
-	}
-	if err := s.Store.UpdateChannel(ch.ID, ch.Name, ch.Handle, &ch.FilterRule, ai, &ch.WebhookConfig, ch.Enabled); err != nil {
+	if err := s.Store.UpdateBotAIEnabled(botID, req.Enabled); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
