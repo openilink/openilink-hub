@@ -64,7 +64,7 @@ function MarketplaceContent() {
 
   useEffect(() => {
     setLoading(true);
-    api.getMarketplaceApps().then(l => setMarketplaceApps(l || [])).catch(() => setMarketplaceApps([])).finally(() => setLoading(false));
+    api.listApps({ listed: true }).then(l => setMarketplaceApps(l || [])).catch(() => setMarketplaceApps([])).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -77,14 +77,17 @@ function MarketplaceContent() {
 
   async function handleInstallConfirm() {
     if (!pendingApp || !selectedBotId) return;
+    const appId = pendingApp.id || pendingApp.local_id;
+    if (appId) {
+      navigate(`/dashboard/accounts/${selectedBotId}/install/${appId}`);
+      setPendingApp(null);
+      return;
+    }
+    // Marketplace app without local record — sync first
     setSyncing(true);
     try {
-      if (pendingApp.local_id) {
-        navigate(`/dashboard/accounts/${selectedBotId}/install/${pendingApp.local_id}`);
-      } else {
-        const synced = await api.syncMarketplaceApp(pendingApp.slug);
-        navigate(`/dashboard/accounts/${selectedBotId}/install/${synced.id}`);
-      }
+      const synced = await api.syncMarketplaceApp(pendingApp.slug);
+      navigate(`/dashboard/accounts/${selectedBotId}/install/${synced.id}`);
       setPendingApp(null);
     } catch (e: any) {
       toast({ variant: "destructive", title: "同步失败", description: e.message });
