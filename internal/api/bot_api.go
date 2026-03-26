@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -156,6 +157,22 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Store media to ObjectStore if available
+	mediaStatus := ""
+	mediaKeys := json.RawMessage(`{}`)
+	mediaKey := ""
+	if len(outMsg.Data) > 0 && s.ObjectStore != nil {
+		ct := detectContentType(itemType)
+		ext := detectExt(outMsg.FileName, itemType)
+		key := fmt.Sprintf("%s/%s/out_%d%s", inst.BotID,
+			time.Now().Format("2006/01/02"), time.Now().UnixMilli(), ext)
+		if _, err := s.ObjectStore.Put(r.Context(), key, ct, outMsg.Data); err == nil {
+			mediaStatus = "ready"
+			mediaKeys, _ = json.Marshal(map[string]string{"0": key})
+			mediaKey = key
+		}
+	}
+
 	// Save outbound message to DB
 	item := map[string]any{"type": itemType}
 	if outMsg.Text != "" {
@@ -171,6 +188,8 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		ToUserID:    req.To,
 		MessageType: 2,
 		ItemList:    itemList,
+		MediaStatus: mediaStatus,
+		MediaKeys:   mediaKeys,
 	})
 
 	// Append span to message trace if trace_id links to an existing trace
@@ -179,12 +198,16 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		if req.Type != "text" {
 			replyContent = "[" + req.Type + "] " + outMsg.FileName
 		}
-		_ = s.Store.AppendSpan(traceID, inst.BotID, "Bot API send_reply", store.SpanKindServer, store.StatusOK, "", map[string]any{
+		spanAttrs := map[string]any{
 			"app.name":      inst.AppName,
 			"reply.type":    req.Type,
 			"reply.to":      req.To,
 			"reply.content": replyContent,
-		})
+		}
+		if mediaKey != "" {
+			spanAttrs["reply.media_key"] = mediaKey
+		}
+		_ = s.Store.AppendSpan(traceID, inst.BotID, "Bot API send_reply", store.SpanKindServer, store.StatusOK, "", spanAttrs)
 	}
 
 	// Respond
