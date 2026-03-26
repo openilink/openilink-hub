@@ -22,6 +22,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { Toaster } from "./components/ui/toaster";
 import { OnboardingPage } from "./pages/onboarding";
 import { InstallationDetailPage } from "./pages/installation-detail";
+import { InstallAppPage } from "./pages/install-app";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -46,6 +47,7 @@ createRoot(document.getElementById("root")!).render(
                 <Route index element={null} />
               </Route>
               <Route path="accounts/:id/apps/:iid" element={<InstallationDetailPage />} />
+              <Route path="accounts/:id/install/:appId" element={<InstallAppPage />} />
               <Route path="accounts/:id/traces" element={<TracesPage />} />
               <Route path="accounts/:id/console" element={<ConsolePage />} />
               <Route path="accounts/:id/channel/:cid" element={<ChannelDetailPage />}>
