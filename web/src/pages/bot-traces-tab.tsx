@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -19,21 +19,26 @@ export function BotTracesTab({ botId }: { botId: string }) {
   const navigate = useNavigate();
   const [rootSpans, setRootSpans] = useState<TraceSpan[]>([]);
   const [loading, setLoading] = useState(true);
+  const fetchIdRef = useRef(0);
 
-  async function load() {
+  const load = useCallback(async () => {
+    const id = ++fetchIdRef.current;
     setLoading(true);
     try {
       const data = await api.listTraces(botId, 100);
+      if (fetchIdRef.current !== id) return;
       setRootSpans(data || []);
     } catch (e) {
       console.error("Failed to load traces:", e);
+      if (fetchIdRef.current !== id) return;
+    } finally {
+      if (fetchIdRef.current === id) setLoading(false);
     }
-    setLoading(false);
-  }
+  }, [botId]);
 
   useEffect(() => {
     load();
-  }, [botId]);
+  }, [load]);
 
   return (
     <div className="space-y-4">
