@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useEffect } from "react";
 import {
   ReactFlow,
   Background,
@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   TraceSpan,
   kindColors,
-  kindBgLight,
   kindBorderColors,
   durationMs,
   formatDuration,
@@ -97,7 +96,7 @@ const nodeTypes: NodeTypes = {
 };
 
 export function FlowView({ spans, selectedSpanId, onSelectSpan }: FlowViewProps) {
-  const { initialNodes, initialEdges } = useMemo(() => {
+  const { layoutNodes, layoutEdges } = useMemo(() => {
     const nodes: Node[] = spans.map((span) => ({
       id: span.span_id,
       type: "spanNode",
@@ -116,11 +115,17 @@ export function FlowView({ spans, selectedSpanId, onSelectSpan }: FlowViewProps)
       }));
 
     const laid = layoutGraph(nodes, edges);
-    return { initialNodes: laid, initialEdges: edges };
+    return { layoutNodes: laid, layoutEdges: edges };
   }, [spans, selectedSpanId]);
 
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
+
+  // Sync nodes/edges when layout changes (e.g. selectedSpanId updates)
+  useEffect(() => {
+    setNodes(layoutNodes);
+    setEdges(layoutEdges);
+  }, [layoutNodes, layoutEdges, setNodes, setEdges]);
 
   const onNodeClick = useCallback(
     (_: any, node: Node) => {
@@ -142,7 +147,6 @@ export function FlowView({ spans, selectedSpanId, onSelectSpan }: FlowViewProps)
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.3}
         maxZoom={1.5}
-        proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} className="!bg-transparent" />
         <Controls className="!bg-card !border-border !shadow-sm" />

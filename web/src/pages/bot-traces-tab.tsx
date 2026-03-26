@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -19,19 +19,19 @@ export function BotTracesTab({ botId }: { botId: string }) {
   const navigate = useNavigate();
   const [rootSpans, setRootSpans] = useState<TraceSpan[]>([]);
   const [loading, setLoading] = useState(true);
-  const fetchIdRef = useRef(0);
 
   async function load() {
     setLoading(true);
     try {
       const data = await api.listTraces(botId, 100);
       setRootSpans(data || []);
-    } catch {}
+    } catch (e) {
+      console.error("Failed to load traces:", e);
+    }
     setLoading(false);
   }
 
   useEffect(() => {
-    ++fetchIdRef.current;
     load();
   }, [botId]);
 

@@ -81,9 +81,11 @@ export function flattenSpans(
 ): { span: TraceSpan; depth: number }[] {
   const roots = spans.filter((s) => !s.parent_span_id);
   const result: { span: TraceSpan; depth: number }[] = [];
+  const spanMap = new Map<string, TraceSpan>();
+  for (const s of spans) spanMap.set(s.span_id, s);
 
   function walk(spanId: string, depth: number) {
-    const span = spans.find((s) => s.span_id === spanId);
+    const span = spanMap.get(spanId);
     if (!span) return;
     result.push({ span, depth });
     if (collapsed.has(spanId)) return;
