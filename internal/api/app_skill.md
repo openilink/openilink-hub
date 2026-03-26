@@ -564,7 +564,7 @@ PUT /api/admin/config/registry
 |---|---|---|
 | POST | `/api/apps` | Create App |
 | GET | `/api/apps` | List my Apps |
-| GET | `/api/apps?listed=true` | List publicly listed Apps |
+| GET | `/api/apps?listing=listed` | List publicly listed Apps |
 | GET | `/api/apps/{id}` | Get App detail |
 | PUT | `/api/apps/{id}` | Update App |
 | DELETE | `/api/apps/{id}` | Delete App |
