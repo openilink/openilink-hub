@@ -67,7 +67,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	if req.Scopes != nil {
 		scopes = req.Scopes
 	}
-	if err := s.Store.UpdateInstallation(inst.ID, handle, inst.Config, inst.Enabled); err != nil {
+	if err := s.Store.UpdateInstallation(inst.ID, handle, inst.Config, scopes, inst.Enabled); err != nil {
 		slog.Error("install: set handle failed", "inst", inst.ID, "err", err)
 	}
 	inst.Handle = handle
@@ -169,7 +169,7 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 		enabled = *req.Enabled
 	}
 
-	if err := s.Store.UpdateInstallation(inst.ID, handle, cfg, enabled); err != nil {
+	if err := s.Store.UpdateInstallation(inst.ID, handle, cfg, inst.Scopes, enabled); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}

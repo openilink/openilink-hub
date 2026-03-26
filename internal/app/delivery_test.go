@@ -327,10 +327,10 @@ func TestDeliverEvent_NoRequestURL(t *testing.T) {
 
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
 	if err == nil {
-		t.Fatal("expected error for empty request_url")
+		t.Fatal("expected error for empty webhook_url")
 	}
-	if !strings.Contains(err.Error(), "no request_url") {
-		t.Errorf("error = %q, expected 'no request_url'", err.Error())
+	if !strings.Contains(err.Error(), "no webhook_url") {
+		t.Errorf("error = %q, expected 'no webhook_url'", err.Error())
 	}
 }
 

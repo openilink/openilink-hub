@@ -337,12 +337,13 @@ func TestMatchEvent_Success(t *testing.T) {
 
 func TestMatchEvent_NoSubscription(t *testing.T) {
 	events, _ := json.Marshal([]string{"reaction.added"})
+	scopes, _ := json.Marshal([]string{"message:read"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
 			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com"},
 		},
 		apps: map[string]*store.App{
-			"a1": {ID: "a1", Events: events},
+			"a1": {ID: "a1", Events: events, Scopes: scopes},
 		},
 	}
 

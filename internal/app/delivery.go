@@ -128,7 +128,7 @@ func (d *Dispatcher) store() appStore {
 // and logs the delivery attempt. Returns the delivery result or an error.
 func (d *Dispatcher) DeliverEvent(inst *store.AppInstallation, event *Event) (*DeliveryResult, error) {
 	if inst.AppWebhookURL == "" {
-		return nil, fmt.Errorf("installation %s has no request_url configured", inst.ID)
+		return nil, fmt.Errorf("installation %s has no webhook_url configured", inst.ID)
 	}
 
 	traceID := event.TraceID

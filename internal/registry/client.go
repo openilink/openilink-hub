@@ -36,6 +36,7 @@ type Manifest struct {
 type Source struct {
 	URL       string
 	Name      string
+	mu        sync.Mutex
 	cache     *Manifest
 	cacheTime time.Time
 }
@@ -112,6 +113,9 @@ func (c *Client) GetApp(slug string) (*AppWithSource, error) {
 }
 
 func (c *Client) fetchSource(src *Source) ([]App, error) {
+	src.mu.Lock()
+	defer src.mu.Unlock()
+
 	if src.cache != nil && time.Since(src.cacheTime) < c.ttl {
 		return src.cache.Apps, nil
 	}

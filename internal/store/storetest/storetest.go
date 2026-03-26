@@ -1209,7 +1209,8 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 
 	t.Run("UpdateInstallation", func(t *testing.T) {
 		cfg := json.RawMessage(`{"key":"val"}`)
-		if err := s.UpdateInstallation(instID, "myhandle", cfg, false); err != nil {
+		scopes := json.RawMessage(`["message:read"]`)
+		if err := s.UpdateInstallation(instID, "myhandle", cfg, scopes, false); err != nil {
 			t.Fatalf("UpdateInstallation: %v", err)
 		}
 		got, _ := s.GetInstallation(instID)

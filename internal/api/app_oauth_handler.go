@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/openilink/openilink-hub/internal/auth"
 )
@@ -55,8 +56,17 @@ func (s *Server) handleAppOAuthAuthorize(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Redirect to app's oauth_redirect_url with code and state
-	redirectURL := app.OAuthRedirectURL + "?code=" + code + "&state=" + state
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+	redirectURL, err := url.Parse(app.OAuthRedirectURL)
+	if err != nil {
+		slog.Error("invalid oauth_redirect_url", "app", appID, "url", app.OAuthRedirectURL, "err", err)
+		jsonError(w, "app has invalid oauth_redirect_url", http.StatusInternalServerError)
+		return
+	}
+	q := redirectURL.Query()
+	q.Set("code", code)
+	q.Set("state", state)
+	redirectURL.RawQuery = q.Encode()
+	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 }
 
 // POST /api/apps/{id}/oauth/exchange
@@ -92,22 +102,22 @@ func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// PKCE verification
-	if codeChallenge != "" {
-		if req.CodeVerifier == "" {
-			jsonError(w, "code_verifier required", http.StatusBadRequest)
-			return
-		}
-		// Verify SHA256(code_verifier) == code_challenge (S256 method)
-		h := sha256.Sum256([]byte(req.CodeVerifier))
-		computed := base64.RawURLEncoding.EncodeToString(h[:])
-		if computed != codeChallenge {
-			jsonError(w, "invalid code_verifier", http.StatusUnauthorized)
-			return
-		}
+	// PKCE verification (required for all exchanges)
+	if codeChallenge == "" {
+		jsonError(w, "code_challenge required - use PKCE for OAuth exchange", http.StatusBadRequest)
+		return
 	}
-	// If no code_challenge was set and no code_verifier provided, allow it
-	// (the code itself is single-use and expires quickly)
+	if req.CodeVerifier == "" {
+		jsonError(w, "code_verifier required", http.StatusBadRequest)
+		return
+	}
+	// Verify SHA256(code_verifier) == code_challenge (S256 method)
+	h := sha256.Sum256([]byte(req.CodeVerifier))
+	computed := base64.RawURLEncoding.EncodeToString(h[:])
+	if computed != codeChallenge {
+		jsonError(w, "invalid code_verifier", http.StatusUnauthorized)
+		return
+	}
 
 	// Create or get existing installation
 	inst, err := s.Store.InstallApp(appID, botID)
@@ -181,10 +191,17 @@ func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Requ
 	hubURL := scheme + "://" + r.Host
 
 	// Redirect to app's oauth_setup_url
-	setupURL := app.OAuthSetupURL +
-		"?hub=" + hubURL +
-		"&app_id=" + appID +
-		"&bot_id=" + botID +
-		"&state=" + state
-	http.Redirect(w, r, setupURL, http.StatusFound)
+	setupURL, err := url.Parse(app.OAuthSetupURL)
+	if err != nil {
+		slog.Error("invalid oauth_setup_url", "app", appID, "url", app.OAuthSetupURL, "err", err)
+		jsonError(w, "app has invalid oauth_setup_url", http.StatusInternalServerError)
+		return
+	}
+	q := setupURL.Query()
+	q.Set("hub", hubURL)
+	q.Set("app_id", appID)
+	q.Set("bot_id", botID)
+	q.Set("state", state)
+	setupURL.RawQuery = q.Encode()
+	http.Redirect(w, r, setupURL.String(), http.StatusFound)
 }

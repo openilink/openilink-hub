@@ -151,13 +151,13 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name             string          `json:"name"`
-		Description      string          `json:"description"`
-		Icon             string          `json:"icon"`
-		IconURL          string          `json:"icon_url"`
-		Homepage         string          `json:"homepage"`
-		OAuthSetupURL    string          `json:"oauth_setup_url"`
-		OAuthRedirectURL string          `json:"oauth_redirect_url"`
+		Name             *string         `json:"name"`
+		Description      *string         `json:"description"`
+		Icon             *string         `json:"icon"`
+		IconURL          *string         `json:"icon_url"`
+		Homepage         *string         `json:"homepage"`
+		OAuthSetupURL    *string         `json:"oauth_setup_url"`
+		OAuthRedirectURL *string         `json:"oauth_redirect_url"`
 		WebhookURL       *string         `json:"webhook_url"`
 		Tools            json.RawMessage `json:"tools"`
 		Events           json.RawMessage `json:"events"`
@@ -169,32 +169,32 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := app.Name
-	if req.Name != "" {
-		name = req.Name
+	if req.Name != nil {
+		name = *req.Name
 	}
 	description := app.Description
-	if req.Description != "" {
-		description = req.Description
+	if req.Description != nil {
+		description = *req.Description
 	}
 	icon := app.Icon
-	if req.Icon != "" {
-		icon = req.Icon
+	if req.Icon != nil {
+		icon = *req.Icon
 	}
 	iconURL := app.IconURL
-	if req.IconURL != "" {
-		iconURL = req.IconURL
+	if req.IconURL != nil {
+		iconURL = *req.IconURL
 	}
 	homepage := app.Homepage
-	if req.Homepage != "" {
-		homepage = req.Homepage
+	if req.Homepage != nil {
+		homepage = *req.Homepage
 	}
 	oauthSetupURL := app.OAuthSetupURL
-	if req.OAuthSetupURL != "" {
-		oauthSetupURL = req.OAuthSetupURL
+	if req.OAuthSetupURL != nil {
+		oauthSetupURL = *req.OAuthSetupURL
 	}
 	oauthRedirectURL := app.OAuthRedirectURL
-	if req.OAuthRedirectURL != "" {
-		oauthRedirectURL = req.OAuthRedirectURL
+	if req.OAuthRedirectURL != nil {
+		oauthRedirectURL = *req.OAuthRedirectURL
 	}
 	tools := app.Tools
 	if req.Tools != nil {
@@ -214,7 +214,9 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update webhook_url separately (resets webhook_verified)
+	// TODO: webhook_url update is non-atomic with UpdateApp above. If this fails,
+	// the DB is partially updated. Consider merging webhook_url into UpdateApp
+	// or wrapping both in a transaction.
 	if req.WebhookURL != nil && *req.WebhookURL != app.WebhookURL {
 		if err := s.Store.UpdateAppWebhookURL(appID, *req.WebhookURL); err != nil {
 			jsonError(w, "update webhook_url failed", http.StatusInternalServerError)

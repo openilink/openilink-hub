@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/openilink/openilink-hub/internal/store"
@@ -103,6 +104,7 @@ func (s *Server) refreshRegistrySources() {
 	}
 	registries, err := s.Store.ListRegistries()
 	if err != nil {
+		slog.Error("refreshRegistrySources: failed to list registries", "err", err)
 		return
 	}
 	var sources []struct{ Name, URL string }

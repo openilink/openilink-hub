@@ -101,13 +101,15 @@ func main() {
 	regClient := registry.NewClient(0)
 	registries, err := s.ListRegistries()
 	if err == nil {
+		enabledCount := 0
 		for _, reg := range registries {
 			if reg.Enabled {
 				regClient.AddSource(reg.Name, reg.URL)
+				enabledCount++
 			}
 		}
-		if len(registries) > 0 {
-			slog.Info("registry sources loaded", "count", len(registries))
+		if enabledCount > 0 {
+			slog.Info("registry sources loaded", "count", enabledCount)
 		}
 	}
 

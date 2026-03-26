@@ -113,8 +113,10 @@ func (d *Dispatcher) MatchEvent(botID string, eventType string) ([]store.AppInst
 		}
 
 		// App must have message:read scope to receive message events
-		if !appHasScope(app, "message:read") {
-			continue
+		if strings.HasPrefix(eventType, "message.") || eventType == "message" {
+			if !appHasScope(app, "message:read") {
+				continue
+			}
 		}
 
 		if appSubscribesToEvent(app, eventType) {

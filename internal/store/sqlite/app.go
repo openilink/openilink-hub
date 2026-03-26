@@ -335,9 +335,9 @@ func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation,
 	return list, rows.Err()
 }
 
-func (db *DB) UpdateInstallation(id, handle string, config json.RawMessage, enabled bool) error {
-	_, err := db.Exec(`UPDATE app_installations SET handle=?, config=?, enabled=?, updated_at=unixepoch() WHERE id=?`,
-		handle, config, enabled, id)
+func (db *DB) UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool) error {
+	_, err := db.Exec(`UPDATE app_installations SET handle=?, config=?, scopes=?, enabled=?, updated_at=unixepoch() WHERE id=?`,
+		handle, config, scopes, enabled, id)
 	return err
 }
 

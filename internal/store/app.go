@@ -78,7 +78,7 @@ type AppStore interface {
 	GetInstallationByToken(token string) (*AppInstallation, error)
 	ListInstallationsByApp(appID string) ([]AppInstallation, error)
 	ListInstallationsByBot(botID string) ([]AppInstallation, error)
-	UpdateInstallation(id, handle string, config json.RawMessage, enabled bool) error
+	UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool) error
 	SetAppWebhookVerified(id string, verified bool) error
 	UpdateAppWebhookURL(id, webhookURL string) error
 	RegenerateInstallationToken(id string) (string, error)
