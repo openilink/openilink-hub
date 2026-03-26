@@ -137,15 +137,15 @@ function ChangePasswordSection() {
         <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
           <div className="space-y-2">
             <label className="text-xs font-medium">当前密码</label>
-            <Input type="password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} placeholder="••••••••" />
+            <Input type="password" autoComplete="current-password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} placeholder="••••••••" />
           </div>
           <div className="space-y-2">
             <label className="text-xs font-medium">新密码</label>
-            <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="至少 8 位" />
+            <Input type="password" autoComplete="new-password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="至少 8 位" />
           </div>
           <div className="space-y-2">
             <label className="text-xs font-medium">确认新密码</label>
-            <Input type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="再次输入新密码" />
+            <Input type="password" autoComplete="new-password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="再次输入新密码" />
           </div>
           
           <div className="pt-2 flex flex-col gap-3">
