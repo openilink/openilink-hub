@@ -221,37 +221,21 @@ export function Layout() {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {/* 扩展 */}
+          {/* 应用市场 */}
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton isActive={isActive("/dashboard/apps")} tooltip="扩展">
-                    <Puzzle />
-                    <span>扩展</span>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive("/dashboard/apps")}
+                    tooltip="应用市场"
+                  >
+                    <Link to="/dashboard/apps">
+                      <Puzzle />
+                      <span>应用市场</span>
+                    </Link>
                   </SidebarMenuButton>
-                  <SidebarMenuSub>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        size="sm"
-                        isActive={isActive("/dashboard/apps/marketplace")}
-                      >
-                        <Link to="/dashboard/apps/marketplace">应用市场</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        size="sm"
-                        isActive={
-                          isActive("/dashboard/apps/my") || location.pathname === "/dashboard/apps"
-                        }
-                      >
-                        <Link to="/dashboard/apps/my">我的应用</Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  </SidebarMenuSub>
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>

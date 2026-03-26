@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import {
@@ -11,46 +11,25 @@ import {
 } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import {
-  Plus,
   Blocks,
   Download,
-  ArrowRight,
   Search,
-  Rocket,
   RefreshCw,
 } from "lucide-react";
 import { api } from "../lib/api";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 
-function slugify(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9一-鿿]+/g, "-").replace(/^-|-$/g, "").slice(0, 32);
-}
-
 // ==================== Page ====================
 
 export function AppsPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const activeTab = location.pathname.split("/").pop() || "my";
-  const tab = activeTab === "marketplace" ? "marketplace" : "my";
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -59,31 +38,20 @@ export function AppsPage() {
             <Blocks className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">应用</h2>
-            <p className="text-muted-foreground">管理和安装应用。</p>
+            <h2 className="text-3xl font-bold tracking-tight">应用市场</h2>
+            <p className="text-muted-foreground">浏览和安装应用。</p>
           </div>
         </div>
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => navigate(`/dashboard/apps/${v}`)}>
-        <TabsList>
-          <TabsTrigger value="my">我的应用</TabsTrigger>
-          <TabsTrigger value="marketplace">应用市场</TabsTrigger>
-        </TabsList>
-        <TabsContent value="my" className="flex flex-col gap-6 mt-6">
-          <MyAppsTab />
-        </TabsContent>
-        <TabsContent value="marketplace" className="flex flex-col gap-6 mt-6">
-          <MarketplaceTab />
-        </TabsContent>
-      </Tabs>
+      <MarketplaceContent />
     </div>
   );
 }
 
 // ==================== Marketplace (Store) ====================
 
-function MarketplaceTab() {
+function MarketplaceContent() {
   const navigate = useNavigate();
   const [marketplaceApps, setMarketplaceApps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,94 +187,3 @@ function MarketplaceTab() {
   );
 }
 
-// ==================== Studio (Development) ====================
-
-function MyAppsTab() {
-  const navigate = useNavigate();
-  const [apps, setApps] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", description: "", icon: "" });
-  const { toast } = useToast();
-
-  async function load() {
-    setLoading(true);
-    try { setApps((await api.listApps()) || []); } finally { setLoading(false); }
-  }
-  useEffect(() => { load(); }, []);
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.name.trim()) return;
-    try {
-      await api.createApp(form);
-      toast({ title: "创建成功", description: "应用已创建。" });
-      setIsCreating(false);
-      load();
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "创建失败", description: e.message });
-    }
-  }
-
-  if (loading && apps.length === 0) return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {[1, 2, 3].map(i => <Card key={i} className="h-40 animate-pulse bg-muted/20 rounded-3xl" />)}
-    </div>
-  );
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div />
-        <Dialog open={isCreating} onOpenChange={setIsCreating}>
-          <DialogTrigger asChild>
-            <Button className="rounded-full h-10 px-6 gap-2 shadow-lg shadow-primary/20">
-              <Plus className="h-4 w-4" /> 创建应用
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="rounded-[2rem]">
-            <DialogHeader><DialogTitle className="text-2xl font-bold">创建应用</DialogTitle><DialogDescription>填写基本信息。</DialogDescription></DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-5 pt-4">
-               <div className="space-y-2"><label className="text-xs font-bold uppercase text-muted-foreground">名称</label><Input placeholder="例如: 通知助手" value={form.name} onChange={e => { const n = e.target.value; setForm({...form, name: n, slug: slugify(n)}); }} /></div>
-               <div className="space-y-2"><label className="text-xs font-bold uppercase text-muted-foreground">唯一标识</label><Input value={form.slug} onChange={e => setForm({...form, slug: e.target.value})} className="font-mono" /></div>
-               <div className="space-y-2"><label className="text-xs font-bold uppercase text-muted-foreground">描述</label><Input placeholder="这个应用是用来..." value={form.description} onChange={e => setForm({...form, description: e.target.value})} /></div>
-               <DialogFooter className="pt-4"><Button type="submit" className="w-full rounded-full h-11">创建</Button></DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {apps.map((app) => (
-          <Card key={app.id} className="group cursor-pointer rounded-3xl border-border/50 bg-card/50 transition-all hover:border-primary/30 hover:shadow-xl" onClick={() => navigate(`/dashboard/apps/${app.id}`)}>
-            <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
-              <div className="flex items-center gap-4">
-                <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-10 w-10" />
-                <div className="space-y-0.5">
-                  <CardTitle className="text-base font-bold">{app.name}</CardTitle>
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{app.slug}</p>
-                </div>
-              </div>
-              <Badge variant={app.status === "active" ? "default" : "secondary"} className="h-5 rounded-full text-[9px] px-2 font-bold">{app.status === "active" ? "已发布" : "草稿"}</Badge>
-            </CardHeader>
-            <CardFooter className="bg-muted/30 pt-3 flex justify-between items-center px-6">
-               <span className="text-[10px] font-bold text-muted-foreground flex items-center gap-1.5"><Rocket className="h-3 w-3" /> {app.tools?.length || 0} 个工具已配置</span>
-               <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all" />
-            </CardFooter>
-          </Card>
-        ))}
-
-        {apps.length === 0 && (
-          <div className="col-span-full py-24 border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center text-center bg-muted/5">
-            <div className="h-20 w-20 rounded-3xl bg-background border shadow-sm flex items-center justify-center mb-6">
-              <Blocks className="h-10 w-10 text-primary/40" />
-            </div>
-            <h3 className="text-xl font-bold">还没有应用</h3>
-            <p className="text-muted-foreground mt-2 max-w-sm">创建你的第一个应用。</p>
-            <Button variant="outline" className="mt-8 h-11 px-8 rounded-full" onClick={() => setIsCreating(true)}>创建应用</Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
