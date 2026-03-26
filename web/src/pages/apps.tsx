@@ -303,11 +303,22 @@ function InstallFlowDialog({ target, onClose }: { target: InstallTarget; onClose
         });
       } else {
         const app = target.app;
-        const installation = await api.unifiedInstall(botId, {
-          marketplace_slug: app.slug,
-          handle: handle.trim() || undefined,
-          scopes: app.scopes,
-        });
+        let installation;
+        if (app.local_id) {
+          // Already synced locally, install by ID
+          installation = await api.unifiedInstall(botId, {
+            app_id: app.local_id,
+            handle: handle.trim() || undefined,
+            scopes: app.scopes,
+          });
+        } else {
+          // First install from marketplace
+          installation = await api.unifiedInstall(botId, {
+            marketplace_slug: app.slug,
+            handle: handle.trim() || undefined,
+            scopes: app.scopes,
+          });
+        }
         setResult({
           appId: installation.app_id,
           appName: app.name,

@@ -56,8 +56,8 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check slug uniqueness (only among the user's own apps)
-	if existing, _ := s.Store.GetAppBySlug(slug, ""); existing != nil && existing.OwnerID == userID {
+	// Check slug uniqueness among local apps (registry="")
+	if existing, _ := s.Store.GetAppBySlug(slug, ""); existing != nil {
 		jsonError(w, "slug already taken", http.StatusConflict)
 		return
 	}

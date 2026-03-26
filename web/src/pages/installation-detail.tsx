@@ -127,7 +127,7 @@ export function InstallationDetailPage() {
                   来自应用市场
                 </Badge>
               )}
-              {app.registry === "builtin" && !app.registry && (
+              {app.registry === "builtin" && (
                 <Badge variant="outline" className="rounded-full text-[10px] font-bold">
                   自定义集成
                 </Badge>
