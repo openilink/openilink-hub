@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,15 +16,18 @@ func DataDir() string {
 	if os.Getuid() == 0 {
 		return "/var/lib/openilink-hub"
 	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		fmt.Fprintf(os.Stderr, "warning: cannot determine home directory: %v, falling back to /var/lib/openilink-hub\n", err)
+		return "/var/lib/openilink-hub"
+	}
 	switch runtime.GOOS {
 	case "darwin":
-		home, _ := os.UserHomeDir()
 		return filepath.Join(home, "Library", "Application Support", "openilink-hub")
-	default: // linux, freebsd, etc.
+	default:
 		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
 			return filepath.Join(xdg, "openilink-hub")
 		}
-		home, _ := os.UserHomeDir()
 		return filepath.Join(home, ".local", "share", "openilink-hub")
 	}
 }
@@ -35,5 +39,5 @@ func DefaultDBPath() string {
 
 // EnsureDataDir creates the data directory if it doesn't exist.
 func EnsureDataDir() error {
-	return os.MkdirAll(DataDir(), 0755)
+	return os.MkdirAll(DataDir(), 0700)
 }

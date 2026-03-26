@@ -2,12 +2,16 @@ package daemon
 
 import (
 	"fmt"
+	"html/template"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
-	"text/template"
 )
+
+// listenRe validates listen address format: :port or host:port
+var listenRe = regexp.MustCompile(`^[a-zA-Z0-9.\-]*:[0-9]+$`)
 
 const systemdUnit = `[Unit]
 Description=OpeniLink Hub
@@ -27,11 +31,13 @@ Group={{.User}}
 # Hardening
 NoNewPrivileges=true
 ProtectSystem=strict
+{{- if ne .User ""}}
 ProtectHome=read-only
+{{- end}}
 ReadWritePaths={{.DataDir}}
 
 [Install]
-WantedBy=multi-user.target
+WantedBy={{.WantedBy}}
 `
 
 const launchdPlist = `<?xml version="1.0" encoding="UTF-8"?>
@@ -49,7 +55,10 @@ const launchdPlist = `<?xml version="1.0" encoding="UTF-8"?>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>WorkingDirectory</key>
     <string>{{.DataDir}}</string>
     <key>StandardOutPath</key>
@@ -65,20 +74,29 @@ type installConfig struct {
 	DataDir  string
 	Listen   string
 	User     string
+	WantedBy string
 }
 
 // Install installs the service for the current platform.
 func Install(listen, dataDir string) error {
+	if !listenRe.MatchString(listen) {
+		return fmt.Errorf("invalid listen address: %q (expected host:port or :port)", listen)
+	}
+
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("locate executable: %w", err)
 	}
-	execPath, err = filepath.Abs(execPath)
+	execPath, err = filepath.EvalSymlinks(execPath)
 	if err != nil {
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
+	execPath, err = filepath.Abs(execPath)
+	if err != nil {
+		return fmt.Errorf("absolute executable path: %w", err)
+	}
 
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return fmt.Errorf("create data directory: %w", err)
 	}
 
@@ -102,7 +120,12 @@ func installSystemd(cfg installConfig) error {
 	if os.Getuid() != 0 {
 		// User service
 		cfg.User = ""
-		dir := filepath.Join(os.Getenv("HOME"), ".config", "systemd", "user")
+		cfg.WantedBy = "default.target"
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("cannot determine home directory: %w", err)
+		}
+		dir := filepath.Join(home, ".config", "systemd", "user")
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
@@ -122,13 +145,16 @@ func installSystemd(cfg installConfig) error {
 	// System service (root)
 	path := "/etc/systemd/system/openilink-hub.service"
 	cfg.User = "openilink"
+	cfg.WantedBy = "multi-user.target"
 
-	// Create service user if needed
-	if _, err := exec.LookPath("useradd"); err == nil {
-		exec.Command("useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", cfg.User).Run()
+	// Create service user if needed (try useradd first, then adduser for Alpine)
+	if err := createSystemUser(cfg.User); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not create user %q: %v\n", cfg.User, err)
 	}
 	// Ensure data dir is owned by service user
-	exec.Command("chown", "-R", cfg.User+":"+cfg.User, cfg.DataDir).Run()
+	if err := exec.Command("chown", "-R", cfg.User+":"+cfg.User, cfg.DataDir).Run(); err != nil {
+		return fmt.Errorf("chown data directory to %s: %w", cfg.User, err)
+	}
 
 	if err := writeTemplate(path, systemdUnit, cfg); err != nil {
 		return err
@@ -142,12 +168,27 @@ func installSystemd(cfg installConfig) error {
 	return nil
 }
 
+func createSystemUser(name string) error {
+	// Try useradd (glibc distros)
+	if path, err := exec.LookPath("useradd"); err == nil {
+		return exec.Command(path, "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", name).Run()
+	}
+	// Try adduser (Alpine/busybox)
+	if path, err := exec.LookPath("adduser"); err == nil {
+		return exec.Command(path, "-S", "-D", "-H", "-s", "/sbin/nologin", name).Run()
+	}
+	return fmt.Errorf("neither useradd nor adduser found")
+}
+
 func installLaunchd(cfg installConfig) error {
 	var dir, path string
 	if os.Getuid() == 0 {
 		dir = "/Library/LaunchDaemons"
 	} else {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("cannot determine home directory: %w", err)
+		}
 		dir = filepath.Join(home, "Library", "LaunchAgents")
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -183,7 +224,11 @@ func Uninstall() error {
 func uninstallSystemd() error {
 	if os.Getuid() != 0 {
 		exec.Command("systemctl", "--user", "disable", "--now", "openilink-hub").Run()
-		path := filepath.Join(os.Getenv("HOME"), ".config", "systemd", "user", "openilink-hub.service")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("cannot determine home directory: %w", err)
+		}
+		path := filepath.Join(home, ".config", "systemd", "user", "openilink-hub.service")
 		os.Remove(path)
 		exec.Command("systemctl", "--user", "daemon-reload").Run()
 		fmt.Println("Service removed.")
@@ -201,7 +246,10 @@ func uninstallLaunchd() error {
 	if os.Getuid() == 0 {
 		path = "/Library/LaunchDaemons/com.openilink.hub.plist"
 	} else {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("cannot determine home directory: %w", err)
+		}
 		path = filepath.Join(home, "Library", "LaunchAgents", "com.openilink.hub.plist")
 	}
 	exec.Command("launchctl", "unload", path).Run()
@@ -211,11 +259,12 @@ func uninstallLaunchd() error {
 }
 
 func writeTemplate(path, tmpl string, data any) error {
-	f, err := os.Create(path)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", path, err)
 	}
 	defer f.Close()
+	// html/template auto-escapes XML metacharacters for plist safety
 	t, err := template.New("").Parse(tmpl)
 	if err != nil {
 		return err
