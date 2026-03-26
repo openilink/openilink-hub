@@ -67,7 +67,8 @@ export function InstallationDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [botId, iid, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botId, iid]);
 
   useEffect(() => {
     loadData();
@@ -310,8 +311,9 @@ function ConfigSection({
       onUpdate();
     } catch (e: any) {
       toast({ variant: "destructive", title: "保存失败", description: e.message });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
   async function handleUninstall() {
@@ -322,8 +324,9 @@ function ConfigSection({
       onUninstall();
     } catch (e: any) {
       toast({ variant: "destructive", title: "卸载失败", description: e.message });
+    } finally {
+      setUninstalling(false);
     }
-    setUninstalling(false);
   }
 
   return (
@@ -419,9 +422,14 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
   }, [appId, instId]);
 
   useEffect(() => {
-    loadLogs();
-    const t = setInterval(loadLogs, 10000);
-    return () => clearInterval(t);
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    async function poll() {
+      await loadLogs();
+      if (!cancelled) timer = setTimeout(poll, 10000);
+    }
+    poll();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [loadLogs]);
 
   return (
@@ -514,9 +522,14 @@ function ApiLogsSection({ appId, instId }: { appId: string; instId: string }) {
   }, [appId, instId]);
 
   useEffect(() => {
-    loadLogs();
-    const t = setInterval(loadLogs, 10000);
-    return () => clearInterval(t);
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    async function poll() {
+      await loadLogs();
+      if (!cancelled) timer = setTimeout(poll, 10000);
+    }
+    poll();
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [loadLogs]);
 
   return (
