@@ -89,20 +89,24 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
                 onClick={() => onSelectSpan(span.span_id)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectSpan(span.span_id); } }}
               >
-                <button
-                  className="w-4 h-4 flex items-center justify-center shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (hasChildren) toggleCollapse(span.span_id);
-                  }}
-                >
-                  {hasChildren &&
-                    (isCollapsed ? (
+                {hasChildren ? (
+                  <button
+                    className="w-4 h-4 flex items-center justify-center shrink-0"
+                    aria-label={isCollapsed ? "展开" : "折叠"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCollapse(span.span_id);
+                    }}
+                  >
+                    {isCollapsed ? (
                       <ChevronRight className="w-3 h-3 text-muted-foreground" />
                     ) : (
                       <ChevronDown className="w-3 h-3 text-muted-foreground" />
-                    ))}
-                </button>
+                    )}
+                  </button>
+                ) : (
+                  <div className="w-4 h-4 shrink-0" />
+                )}
                 <StatusIcon code={span.status_code} size="w-3 h-3" />
                 <span className="text-[11px] font-mono truncate ml-1">{span.name}</span>
               </div>
@@ -131,13 +135,10 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
             return (
               <div
                 key={span.span_id}
-                role="button"
-                tabIndex={0}
                 className={`relative h-8 flex items-center cursor-pointer transition-colors ${
                   isSelected ? "bg-primary/10" : "hover:bg-muted/50"
                 }`}
                 onClick={() => onSelectSpan(span.span_id)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectSpan(span.span_id); } }}
               >
                 <div
                   className={`absolute h-5 rounded-sm flex items-center px-1.5 ${
