@@ -204,7 +204,7 @@ func TestMatchCommand_Success(t *testing.T) {
 	cmds, _ := json.Marshal([]store.AppTool{{Name: "list_prs", Command: "github"}})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com"},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Tools: cmds},
@@ -231,7 +231,7 @@ func TestMatchCommand_NoMatch(t *testing.T) {
 	cmds, _ := json.Marshal([]store.AppTool{{Name: "list_prs", Command: "github"}})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com"},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Tools: cmds},
@@ -252,7 +252,7 @@ func TestMatchCommand_DisabledInstallation(t *testing.T) {
 	cmds, _ := json.Marshal([]store.AppTool{{Name: "run_cmd", Command: "cmd"}})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppRequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppWebhookURL: "http://example.com"},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Tools: cmds},
@@ -270,7 +270,7 @@ func TestMatchCommand_NoRequestURL(t *testing.T) {
 	cmds, _ := json.Marshal([]store.AppTool{{Name: "run_cmd", Command: "cmd"}})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: ""},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: ""},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Tools: cmds},
@@ -279,8 +279,8 @@ func TestMatchCommand_NoRequestURL(t *testing.T) {
 
 	d := newMatchDispatcher(store)
 	matched, _, _, _ := d.MatchCommand("b1", "/cmd")
-	if len(matched) != 0 {
-		t.Error("installation without request_url should be excluded")
+	if len(matched) != 1 {
+		t.Errorf("installation without request_url should still be included, got %d", len(matched))
 	}
 }
 
@@ -315,12 +315,13 @@ func TestMatchCommand_ListError(t *testing.T) {
 
 func TestMatchEvent_Success(t *testing.T) {
 	events, _ := json.Marshal([]string{"message"})
+	scopes, _ := json.Marshal([]string{"message:read"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com"},
 		},
 		apps: map[string]*store.App{
-			"a1": {ID: "a1", Events: events},
+			"a1": {ID: "a1", Events: events, Scopes: scopes},
 		},
 	}
 
@@ -338,7 +339,7 @@ func TestMatchEvent_NoSubscription(t *testing.T) {
 	events, _ := json.Marshal([]string{"reaction.added"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com"},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Events: events},
@@ -359,7 +360,7 @@ func TestMatchEvent_DisabledExcluded(t *testing.T) {
 	events, _ := json.Marshal([]string{"message"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppRequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppWebhookURL: "http://example.com"},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Events: events},
@@ -385,7 +386,7 @@ func TestMatchEvent_ListError(t *testing.T) {
 func TestMatchEvent_GetAppError(t *testing.T) {
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com"},
 		},
 		apps:      map[string]*store.App{},
 		getAppErr: errFake,
@@ -438,8 +439,8 @@ func TestParseMention(t *testing.T) {
 func TestMatchHandle_Success(t *testing.T) {
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppRequestURL: "http://a.com"},
-			{ID: "i2", AppID: "a1", BotID: "b1", Handle: "echo-family", Enabled: true, AppRequestURL: "http://b.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppWebhookURL: "http://a.com"},
+			{ID: "i2", AppID: "a1", BotID: "b1", Handle: "echo-family", Enabled: true, AppWebhookURL: "http://b.com"},
 		},
 		apps: map[string]*store.App{"a1": {ID: "a1"}},
 	}
@@ -457,7 +458,7 @@ func TestMatchHandle_Success(t *testing.T) {
 func TestMatchHandle_NotFound(t *testing.T) {
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppRequestURL: "http://a.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppWebhookURL: "http://a.com"},
 		},
 		apps: map[string]*store.App{"a1": {ID: "a1"}},
 	}
@@ -472,7 +473,7 @@ func TestMatchHandle_NotFound(t *testing.T) {
 func TestMatchHandle_Disabled(t *testing.T) {
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: false, AppRequestURL: "http://a.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: false, AppWebhookURL: "http://a.com"},
 		},
 		apps: map[string]*store.App{"a1": {ID: "a1"}},
 	}
@@ -487,29 +488,31 @@ func TestMatchHandle_Disabled(t *testing.T) {
 func TestMatchHandle_NoRequestURL(t *testing.T) {
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppRequestURL: ""},
+			{ID: "i1", AppID: "a1", BotID: "b1", Handle: "echo-work", Enabled: true, AppWebhookURL: ""},
 		},
 		apps: map[string]*store.App{"a1": {ID: "a1"}},
 	}
 	d := newMatchDispatcher(store)
 
 	inst, _ := d.MatchHandle("b1", "echo-work")
-	if inst != nil {
-		t.Errorf("expected nil for empty request_url, got %v", inst)
+	if inst == nil {
+		t.Error("installation without request_url should still be returned")
 	}
 }
 
 func TestMatchEvent_MultipleInstallations(t *testing.T) {
 	events1, _ := json.Marshal([]string{"message"})
+	scopes1, _ := json.Marshal([]string{"message:read"})
 	events2, _ := json.Marshal([]string{"reaction"})
+	scopes2, _ := json.Marshal([]string{"message:read"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppRequestURL: "http://a.com"},
-			{ID: "i2", AppID: "a2", BotID: "b1", Enabled: true, AppRequestURL: "http://b.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://a.com"},
+			{ID: "i2", AppID: "a2", BotID: "b1", Enabled: true, AppWebhookURL: "http://b.com"},
 		},
 		apps: map[string]*store.App{
-			"a1": {ID: "a1", Events: events1},
-			"a2": {ID: "a2", Events: events2},
+			"a1": {ID: "a1", Events: events1, Scopes: scopes1},
+			"a2": {ID: "a2", Events: events2, Scopes: scopes2},
 		},
 	}
 

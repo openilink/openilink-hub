@@ -60,10 +60,10 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
-		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppRequestURL, store.SpanKindClient, map[string]any{
+		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppWebhookURL, store.SpanKindClient, map[string]any{
 			"app.name":    installations[i].AppName,
 			"app.slug":    installations[i].AppSlug,
-			"http.url":    installations[i].AppRequestURL,
+			"http.url":    installations[i].AppWebhookURL,
 			"http.method": "POST",
 		})
 		result := m.appDisp.DeliverWithRetry(&installations[i], event)
@@ -100,7 +100,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 	}
 
 	installation, err := m.appDisp.Store.GetInstallationByHandle(inst.DBID, handle)
-	if err != nil || installation == nil || !installation.Enabled || installation.AppRequestURL == "" {
+	if err != nil || installation == nil || !installation.Enabled {
 		rootSpan.AddEvent("match_handle_miss", map[string]any{"handle": handle})
 		return false
 	}
@@ -120,10 +120,10 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 			"group": groupInfo(msg), "handle": handle,
 		})
 		event.TraceID = tracer.TraceID()
-		span := tracer.StartChild(rootSpan, "POST "+installation.AppRequestURL, store.SpanKindClient, map[string]any{
+		span := tracer.StartChild(rootSpan, "POST "+installation.AppWebhookURL, store.SpanKindClient, map[string]any{
 			"app.name":    installation.AppName,
 			"app.slug":    installation.AppSlug,
-			"http.url":    installation.AppRequestURL,
+			"http.url":    installation.AppWebhookURL,
 			"http.method": "POST",
 		})
 		result := m.appDisp.DeliverWithRetry(installation, event)
@@ -143,10 +143,10 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		"group": groupInfo(msg), "content": text, "handle": handle,
 	})
 	event.TraceID = tracer.TraceID()
-	span := tracer.StartChild(rootSpan, "POST "+installation.AppRequestURL, store.SpanKindClient, map[string]any{
+	span := tracer.StartChild(rootSpan, "POST "+installation.AppWebhookURL, store.SpanKindClient, map[string]any{
 		"app.name":    installation.AppName,
 		"app.slug":    installation.AppSlug,
-		"http.url":    installation.AppRequestURL,
+		"http.url":    installation.AppWebhookURL,
 		"http.method": "POST",
 	})
 	result := m.appDisp.DeliverWithRetry(installation, event)
@@ -186,10 +186,10 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
-		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppRequestURL, store.SpanKindClient, map[string]any{
+		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppWebhookURL, store.SpanKindClient, map[string]any{
 			"app.name":    installations[i].AppName,
 			"app.slug":    installations[i].AppSlug,
-			"http.url":    installations[i].AppRequestURL,
+			"http.url":    installations[i].AppWebhookURL,
 			"http.method": "POST",
 		})
 		result := m.appDisp.DeliverWithRetry(&installations[i], event)

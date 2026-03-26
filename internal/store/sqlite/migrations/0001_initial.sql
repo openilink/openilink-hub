@@ -193,14 +193,16 @@ CREATE TABLE IF NOT EXISTS apps (
     tools                TEXT NOT NULL DEFAULT '[]',
     events               TEXT NOT NULL DEFAULT '[]',
     scopes               TEXT NOT NULL DEFAULT '[]',
-    setup_url            TEXT NOT NULL DEFAULT '',
-    redirect_url         TEXT NOT NULL DEFAULT '',
-    client_secret        TEXT NOT NULL DEFAULT '',
-    request_url          TEXT NOT NULL DEFAULT '',
-    signing_secret       TEXT NOT NULL DEFAULT '',
-    url_verified         INTEGER NOT NULL DEFAULT 0,
-    listed               INTEGER NOT NULL DEFAULT 0,
-    listing_status       TEXT NOT NULL DEFAULT '',
+    oauth_setup_url      TEXT NOT NULL DEFAULT '',
+    oauth_redirect_url   TEXT NOT NULL DEFAULT '',
+    webhook_url          TEXT NOT NULL DEFAULT '',
+    webhook_secret       TEXT NOT NULL DEFAULT '',
+    webhook_verified     INTEGER NOT NULL DEFAULT 0,
+    kind                 TEXT NOT NULL DEFAULT 'app',
+    registry             TEXT NOT NULL DEFAULT '',
+    version              TEXT NOT NULL DEFAULT '',
+    readme               TEXT NOT NULL DEFAULT '',
+    listing              TEXT NOT NULL DEFAULT 'unlisted',
     listing_reject_reason TEXT NOT NULL DEFAULT '',
     status               TEXT NOT NULL DEFAULT 'active',
     created_at           INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -214,6 +216,7 @@ CREATE TABLE IF NOT EXISTS app_installations (
     app_token       TEXT NOT NULL UNIQUE,
     handle          TEXT NOT NULL DEFAULT '',
     config          TEXT NOT NULL DEFAULT '{}',
+    scopes          TEXT NOT NULL DEFAULT '[]',
     enabled         INTEGER NOT NULL DEFAULT 1,
     created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at      INTEGER NOT NULL DEFAULT (unixepoch())
@@ -259,8 +262,17 @@ CREATE TABLE IF NOT EXISTS app_oauth_codes (
     app_id          TEXT NOT NULL,
     bot_id          TEXT NOT NULL,
     state           TEXT NOT NULL,
+    code_challenge  TEXT NOT NULL DEFAULT '',
     created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
     expires_at      INTEGER NOT NULL DEFAULT (unixepoch() + 600)
+);
+
+CREATE TABLE IF NOT EXISTS registries (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    url             TEXT NOT NULL UNIQUE,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    created_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 CREATE TABLE IF NOT EXISTS trace_spans (

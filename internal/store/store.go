@@ -9,6 +9,7 @@ type Store interface {
 	MessageStore
 	ChannelStore
 	AppStore
+	RegistryStore
 	PluginStore
 	TraceStore
 	CredentialStore

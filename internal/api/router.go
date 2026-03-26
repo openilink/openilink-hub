@@ -7,6 +7,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
+	"github.com/openilink/openilink-hub/internal/registry"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/storage"
 	"github.com/openilink/openilink-hub/internal/store"
@@ -22,6 +23,7 @@ type Server struct {
 	Config       *config.Config
 	OAuthStates  *oauthStateStore
 	ObjectStore  *storage.Storage // optional
+	Registry     *registry.Client
 }
 
 func cors(next http.Handler) http.Handler {
@@ -85,6 +87,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/channels/config", s.handleChannelConfig)
 	mux.HandleFunc("GET /api/v1/channels/status", s.handleChannelStatus)
 	mux.HandleFunc("GET /api/v1/channels/media", s.handleChannelMedia)
+
+	// --- Registry public endpoint ---
+	mux.HandleFunc("GET /api/registry/v1/apps.json", s.handleRegistryApps)
 
 	// --- Protected routes ---
 	protected := http.NewServeMux()
@@ -170,6 +175,10 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /api/apps/{id}/oauth/setup", s.handleAppOAuthSetupRedirect)
 	protected.HandleFunc("GET /api/apps/{id}/oauth/authorize", s.handleAppOAuthAuthorize)
 
+	// --- Marketplace ---
+	protected.HandleFunc("GET /api/marketplace", s.handleMarketplace)
+	protected.HandleFunc("POST /api/marketplace/sync/{slug}", s.handleMarketplaceSync)
+
 	// --- Webhook plugins (authenticated actions) ---
 	protected.HandleFunc("POST /api/webhook-plugins/submit", s.handleSubmitPlugin)
 	protected.HandleFunc("POST /api/webhook-plugins/{id}/versions/{vid}/cancel", s.handleCancelVersion)
@@ -187,8 +196,13 @@ func (s *Server) Handler() http.Handler {
 
 	// --- Admin: apps ---
 	protected.HandleFunc("GET /api/admin/apps", s.requireAdmin(s.handleAdminListApps))
-	protected.HandleFunc("PUT /api/admin/apps/{id}/listed", s.requireAdmin(s.handleSetAppListed))
 	protected.HandleFunc("PUT /api/admin/apps/{id}/review-listing", s.requireAdmin(s.handleReviewListing))
+
+	// --- Admin: registries ---
+	protected.HandleFunc("GET /api/admin/registries", s.requireAdmin(s.handleListRegistries))
+	protected.HandleFunc("POST /api/admin/registries", s.requireAdmin(s.handleCreateRegistry))
+	protected.HandleFunc("PUT /api/admin/registries/{id}", s.requireAdmin(s.handleUpdateRegistry))
+	protected.HandleFunc("DELETE /api/admin/registries/{id}", s.requireAdmin(s.handleDeleteRegistry))
 
 	// --- Admin: system config ---
 	protected.HandleFunc("GET /api/admin/config/oauth", s.requireAdmin(s.handleGetOAuthConfig))
@@ -197,17 +211,28 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /api/admin/config/ai", s.requireAdmin(s.handleGetAIConfig))
 	protected.HandleFunc("PUT /api/admin/config/ai", s.requireAdmin(s.handleSetAIConfig))
 	protected.HandleFunc("DELETE /api/admin/config/ai", s.requireAdmin(s.handleDeleteAIConfig))
+	protected.HandleFunc("GET /api/admin/config/registry", s.requireAdmin(s.handleGetRegistryConfig))
+	protected.HandleFunc("PUT /api/admin/config/registry", s.requireAdmin(s.handleSetRegistryConfig))
 
-	// App OAuth exchange (no user auth — app uses client_secret)
+	// App OAuth exchange (no user auth — uses PKCE or single-use code)
 	mux.HandleFunc("POST /api/apps/{id}/oauth/exchange", s.handleAppOAuthExchange)
 
 	mux.Handle("/api/", auth.Middleware(s.Store)(protected))
 
 	// --- Bot API (app_token auth) ---
 	botAPI := http.NewServeMux()
+	// New paths
+	botAPI.HandleFunc("POST /bot/v1/message/send", s.handleBotAPISend)
+	botAPI.HandleFunc("GET /bot/v1/contact", s.handleBotAPIContacts)
+	botAPI.HandleFunc("GET /bot/v1/info", s.handleBotAPIBotInfo)
+	// Keep old paths for backward compatibility
 	botAPI.HandleFunc("POST /bot/v1/messages/send", s.handleBotAPISend)
 	botAPI.HandleFunc("GET /bot/v1/contacts", s.handleBotAPIContacts)
 	botAPI.HandleFunc("GET /bot/v1/bot", s.handleBotAPIBotInfo)
+	// WebSocket placeholder
+	botAPI.HandleFunc("GET /bot/v1/ws", func(w http.ResponseWriter, r *http.Request) {
+		botAPIError(w, "not implemented", http.StatusNotImplemented)
+	})
 	botAPI.HandleFunc("/bot/", s.handleBotAPINotFound)
 	mux.Handle("/bot/", s.appTokenAuth(botAPI))
 

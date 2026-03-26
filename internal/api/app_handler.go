@@ -26,17 +26,17 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 
 	var req struct {
-		Name        string          `json:"name"`
-		Slug        string          `json:"slug"`
-		Description string          `json:"description"`
-		Icon        string          `json:"icon"`
-		IconURL     string          `json:"icon_url"`
-		Homepage    string          `json:"homepage"`
-		SetupURL    string          `json:"setup_url"`
-		RedirectURL string          `json:"redirect_url"`
-		Tools       json.RawMessage `json:"tools"`
-		Events      json.RawMessage `json:"events"`
-		Scopes      json.RawMessage `json:"scopes"`
+		Name             string          `json:"name"`
+		Slug             string          `json:"slug"`
+		Description      string          `json:"description"`
+		Icon             string          `json:"icon"`
+		IconURL          string          `json:"icon_url"`
+		Homepage         string          `json:"homepage"`
+		OAuthSetupURL    string          `json:"oauth_setup_url"`
+		OAuthRedirectURL string          `json:"oauth_redirect_url"`
+		Tools            json.RawMessage `json:"tools"`
+		Events           json.RawMessage `json:"events"`
+		Scopes           json.RawMessage `json:"scopes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -61,18 +61,18 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	app, err := s.Store.CreateApp(&store.App{
-		OwnerID:     userID,
-		Name:        req.Name,
-		Slug:        slug,
-		Description: req.Description,
-		Icon:        req.Icon,
-		IconURL:     req.IconURL,
-		Homepage:    req.Homepage,
-		SetupURL:    req.SetupURL,
-		RedirectURL: req.RedirectURL,
-		Tools:       req.Tools,
-		Events:      req.Events,
-		Scopes:      req.Scopes,
+		OwnerID:          userID,
+		Name:             req.Name,
+		Slug:             slug,
+		Description:      req.Description,
+		Icon:             req.Icon,
+		IconURL:          req.IconURL,
+		Homepage:         req.Homepage,
+		OAuthSetupURL:    req.OAuthSetupURL,
+		OAuthRedirectURL: req.OAuthRedirectURL,
+		Tools:            req.Tools,
+		Events:           req.Events,
+		Scopes:           req.Scopes,
 	})
 	if err != nil {
 		jsonError(w, "create failed", http.StatusInternalServerError)
@@ -116,14 +116,13 @@ func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "not found", http.StatusNotFound)
 		return
 	}
-	// Owner can see everything; others can only see listed apps (without client_secret)
+	// Owner can see everything; others can only see listed apps (without secrets)
 	if app.OwnerID != userID {
-		if !app.Listed {
+		if app.Listing != "listed" {
 			jsonError(w, "not found", http.StatusNotFound)
 			return
 		}
-		app.ClientSecret = ""  // hide secrets from non-owners
-		app.SigningSecret = ""
+		app.WebhookSecret = "" // hide secrets from non-owners
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -145,18 +144,24 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Marketplace apps cannot be edited directly
+	if app.Registry != "" {
+		jsonError(w, "marketplace apps cannot be edited", http.StatusForbidden)
+		return
+	}
+
 	var req struct {
-		Name        string          `json:"name"`
-		Description string          `json:"description"`
-		Icon        string          `json:"icon"`
-		IconURL     string          `json:"icon_url"`
-		Homepage    string          `json:"homepage"`
-		SetupURL    string          `json:"setup_url"`
-		RedirectURL string          `json:"redirect_url"`
-		RequestURL  *string         `json:"request_url"`
-		Tools       json.RawMessage `json:"tools"`
-		Events      json.RawMessage `json:"events"`
-		Scopes      json.RawMessage `json:"scopes"`
+		Name             string          `json:"name"`
+		Description      string          `json:"description"`
+		Icon             string          `json:"icon"`
+		IconURL          string          `json:"icon_url"`
+		Homepage         string          `json:"homepage"`
+		OAuthSetupURL    string          `json:"oauth_setup_url"`
+		OAuthRedirectURL string          `json:"oauth_redirect_url"`
+		WebhookURL       *string         `json:"webhook_url"`
+		Tools            json.RawMessage `json:"tools"`
+		Events           json.RawMessage `json:"events"`
+		Scopes           json.RawMessage `json:"scopes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -183,13 +188,13 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	if req.Homepage != "" {
 		homepage = req.Homepage
 	}
-	setupURL := app.SetupURL
-	if req.SetupURL != "" {
-		setupURL = req.SetupURL
+	oauthSetupURL := app.OAuthSetupURL
+	if req.OAuthSetupURL != "" {
+		oauthSetupURL = req.OAuthSetupURL
 	}
-	redirectURL := app.RedirectURL
-	if req.RedirectURL != "" {
-		redirectURL = req.RedirectURL
+	oauthRedirectURL := app.OAuthRedirectURL
+	if req.OAuthRedirectURL != "" {
+		oauthRedirectURL = req.OAuthRedirectURL
 	}
 	tools := app.Tools
 	if req.Tools != nil {
@@ -204,15 +209,15 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		scopes = req.Scopes
 	}
 
-	if err := s.Store.UpdateApp(appID, name, description, icon, iconURL, homepage, setupURL, redirectURL, tools, events, scopes); err != nil {
+	if err := s.Store.UpdateApp(appID, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL, tools, events, scopes); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
 
-	// Update request_url separately (resets url_verified)
-	if req.RequestURL != nil && *req.RequestURL != app.RequestURL {
-		if err := s.Store.UpdateAppRequestURL(appID, *req.RequestURL); err != nil {
-			jsonError(w, "update request_url failed", http.StatusInternalServerError)
+	// Update webhook_url separately (resets webhook_verified)
+	if req.WebhookURL != nil && *req.WebhookURL != app.WebhookURL {
+		if err := s.Store.UpdateAppWebhookURL(appID, *req.WebhookURL); err != nil {
+			jsonError(w, "update webhook_url failed", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -248,11 +253,11 @@ func (s *Server) handleRequestListing(w http.ResponseWriter, r *http.Request) {
 	if app == nil {
 		return
 	}
-	if app.Listed {
+	if app.Listing == "listed" {
 		jsonError(w, "already listed", http.StatusBadRequest)
 		return
 	}
-	if app.ListingStatus == "pending" {
+	if app.Listing == "pending" {
 		jsonError(w, "already pending review", http.StatusBadRequest)
 		return
 	}
@@ -299,23 +304,6 @@ func (s *Server) handleAdminListApps(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(apps)
 }
 
-// PUT /api/admin/apps/{id}/listed — toggle listed status (admin only)
-func (s *Server) handleSetAppListed(w http.ResponseWriter, r *http.Request) {
-	appID := r.PathValue("id")
-	var req struct {
-		Listed bool `json:"listed"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonError(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-	if err := s.Store.SetAppListed(appID, req.Listed); err != nil {
-		jsonError(w, "update failed", http.StatusInternalServerError)
-		return
-	}
-	jsonOK(w)
-}
-
 // requireApp loads an app by path ID and verifies ownership.
 // Returns the app or nil (with error already written to w).
 func (s *Server) requireApp(w http.ResponseWriter, r *http.Request) *store.App {
@@ -348,7 +336,7 @@ func (s *Server) requireAppForInstall(w http.ResponseWriter, r *http.Request) *s
 	// Admin can access all apps; otherwise must be owner or listed
 	user, _ := s.Store.GetUserByID(userID)
 	isAdmin := user != nil && store.IsAdmin(user.Role)
-	if !isAdmin && app.OwnerID != userID && !app.Listed {
+	if !isAdmin && app.OwnerID != userID && app.Listing != "listed" {
 		jsonError(w, "not found", http.StatusNotFound)
 		return nil
 	}

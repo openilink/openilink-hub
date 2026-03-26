@@ -25,8 +25,9 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 
 	var req struct {
-		BotID  string `json:"bot_id"`
-		Handle string `json:"handle"`
+		BotID  string          `json:"bot_id"`
+		Handle string          `json:"handle"`
+		Scopes json.RawMessage `json:"scopes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.BotID == "" {
 		jsonError(w, "bot_id required", http.StatusBadRequest)
@@ -61,23 +62,28 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("install: created", "inst", inst.ID, "app_token", inst.AppToken[:8]+"...")
 
-	// Set handle
+	// Set handle and scopes
+	scopes := inst.Scopes
+	if req.Scopes != nil {
+		scopes = req.Scopes
+	}
 	if err := s.Store.UpdateInstallation(inst.ID, handle, inst.Config, inst.Enabled); err != nil {
 		slog.Error("install: set handle failed", "inst", inst.ID, "err", err)
 	}
 	inst.Handle = handle
+	inst.Scopes = scopes
 
-	// Auto-notify App via redirect_url (for apps without setup_url)
-	if app.SetupURL == "" && app.RedirectURL != "" {
-		slog.Info("install: notifying app", "inst", inst.ID, "redirect_url", app.RedirectURL)
+	// Auto-notify App via oauth_redirect_url (for apps without oauth_setup_url)
+	if app.OAuthSetupURL == "" && app.OAuthRedirectURL != "" {
+		slog.Info("install: notifying app", "inst", inst.ID, "oauth_redirect_url", app.OAuthRedirectURL)
 		s.notifyAppInstalled(app, inst)
-		// Re-read installation to get updated request_url
+		// Re-read installation to get updated webhook_url
 		if updated, err := s.Store.GetInstallation(inst.ID); err == nil {
 			inst = updated
-			slog.Info("install: after notify", "inst", inst.ID, "request_url", inst.AppRequestURL)
+			slog.Info("install: after notify", "inst", inst.ID, "webhook_url", inst.AppWebhookURL)
 		}
 	} else {
-		slog.Info("install: no redirect_url, skipping auto-notify", "inst", inst.ID, "setup_url", app.SetupURL, "redirect_url", app.RedirectURL)
+		slog.Info("install: no oauth_redirect_url, skipping auto-notify", "inst", inst.ID, "oauth_setup_url", app.OAuthSetupURL, "oauth_redirect_url", app.OAuthRedirectURL)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -217,8 +223,8 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if app.RequestURL == "" {
-		jsonError(w, "no request_url configured", http.StatusBadRequest)
+	if app.WebhookURL == "" {
+		jsonError(w, "no webhook_url configured", http.StatusBadRequest)
 		return
 	}
 
@@ -227,7 +233,7 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 	_, _ = rand.Read(challengeBytes)
 	challenge := hex.EncodeToString(challengeBytes)
 
-	// Send challenge to the request URL
+	// Send challenge to the webhook URL
 	payload, _ := json.Marshal(map[string]any{
 		"v":         1,
 		"type":      "url_verification",
@@ -235,10 +241,10 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 	})
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(app.RequestURL, "application/json", bytes.NewReader(payload))
+	resp, err := client.Post(app.WebhookURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("verify-url: request failed", "app", app.ID, "url", app.RequestURL, "err", err)
-		jsonError(w, "验证失败：无法连接到 "+app.RequestURL+" ("+err.Error()+")", http.StatusUnprocessableEntity)
+		slog.Error("verify-url: request failed", "app", app.ID, "url", app.WebhookURL, "err", err)
+		jsonError(w, "验证失败：无法连接到 "+app.WebhookURL+" ("+err.Error()+")", http.StatusUnprocessableEntity)
 		return
 	}
 	defer resp.Body.Close()
@@ -247,7 +253,7 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 	bodyStr := strings.TrimSpace(string(body))
 
 	if resp.StatusCode != http.StatusOK {
-		slog.Error("verify-url: remote error", "app", app.ID, "url", app.RequestURL, "status", resp.StatusCode, "body", bodyStr)
+		slog.Error("verify-url: remote error", "app", app.ID, "url", app.WebhookURL, "status", resp.StatusCode, "body", bodyStr)
 		msg := "验证失败：远端返回 HTTP " + strconv.Itoa(resp.StatusCode)
 		if bodyStr != "" {
 			msg += " — " + bodyStr
@@ -260,7 +266,7 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 		Challenge string `json:"challenge"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		slog.Error("verify-url: invalid response", "app", app.ID, "url", app.RequestURL, "body", bodyStr, "err", err)
+		slog.Error("verify-url: invalid response", "app", app.ID, "url", app.WebhookURL, "body", bodyStr, "err", err)
 		jsonError(w, "验证失败：远端返回了无效的响应", http.StatusUnprocessableEntity)
 		return
 	}
@@ -271,13 +277,13 @@ func (s *Server) handleVerifyURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.Store.SetAppURLVerified(app.ID, true); err != nil {
+	if err := s.Store.SetAppWebhookVerified(app.ID, true); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "url_verified": true})
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "webhook_verified": true})
 }
 
 // GET /api/apps/{id}/installations/{iid}/event-logs
@@ -366,26 +372,26 @@ func (s *Server) handleListBotApps(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(installations)
 }
 
-// notifyAppInstalled POSTs installation credentials to the App's redirect_url.
-// The App responds with its request_url, which Hub auto-sets and verifies.
+// notifyAppInstalled POSTs installation credentials to the App's oauth_redirect_url.
+// The App responds with its webhook_url, which Hub auto-sets and verifies.
 func (s *Server) notifyAppInstalled(app *store.App, inst *store.AppInstallation) {
-	if app.RedirectURL == "" {
+	if app.OAuthRedirectURL == "" {
 		return
 	}
 	payload, _ := json.Marshal(map[string]string{
 		"installation_id": inst.ID,
 		"app_token":       inst.AppToken,
-		"signing_secret":  app.SigningSecret,
+		"webhook_secret":  app.WebhookSecret,
 		"bot_id":          inst.BotID,
 		"handle":          inst.Handle,
 		"hub_url":         s.Config.RPOrigin,
 	})
 
-	slog.Info("notify: POST to redirect_url", "inst", inst.ID, "url", app.RedirectURL)
+	slog.Info("notify: POST to oauth_redirect_url", "inst", inst.ID, "url", app.OAuthRedirectURL)
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Post(app.RedirectURL, "application/json", bytes.NewReader(payload))
+	resp, err := client.Post(app.OAuthRedirectURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("notify: request failed", "inst", inst.ID, "url", app.RedirectURL, "err", err)
+		slog.Error("notify: request failed", "inst", inst.ID, "url", app.OAuthRedirectURL, "err", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -399,25 +405,25 @@ func (s *Server) notifyAppInstalled(app *store.App, inst *store.AppInstallation)
 	}
 
 	var result struct {
-		RequestURL string `json:"request_url"`
+		WebhookURL string `json:"webhook_url"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil || result.RequestURL == "" {
-		slog.Error("notify: no request_url in response", "inst", inst.ID, "body", string(body))
+	if err := json.Unmarshal(body, &result); err != nil || result.WebhookURL == "" {
+		slog.Error("notify: no webhook_url in response", "inst", inst.ID, "body", string(body))
 		return
 	}
 
-	slog.Info("notify: got request_url", "app", app.ID, "request_url", result.RequestURL)
+	slog.Info("notify: got webhook_url", "app", app.ID, "webhook_url", result.WebhookURL)
 
-	// Auto-set request_url on the App and verify
-	if err := s.Store.UpdateAppRequestURL(app.ID, result.RequestURL); err != nil {
-		slog.Error("notify: update request_url failed", "app", app.ID, "err", err)
+	// Auto-set webhook_url on the App and verify
+	if err := s.Store.UpdateAppWebhookURL(app.ID, result.WebhookURL); err != nil {
+		slog.Error("notify: update webhook_url failed", "app", app.ID, "err", err)
 		return
 	}
-	s.autoVerifyURL(app.ID, result.RequestURL)
+	s.autoVerifyURL(app.ID, result.WebhookURL)
 }
 
-// autoVerifyURL sends a challenge to verify the app's request_url.
-func (s *Server) autoVerifyURL(appID, requestURL string) {
+// autoVerifyURL sends a challenge to verify the app's webhook_url.
+func (s *Server) autoVerifyURL(appID, webhookURL string) {
 	challengeBytes := make([]byte, 16)
 	_, _ = rand.Read(challengeBytes)
 	challenge := hex.EncodeToString(challengeBytes)
@@ -428,11 +434,11 @@ func (s *Server) autoVerifyURL(appID, requestURL string) {
 		"challenge": challenge,
 	})
 
-	slog.Info("auto-verify: POST challenge", "app", appID, "url", requestURL)
+	slog.Info("auto-verify: POST challenge", "app", appID, "url", webhookURL)
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Post(requestURL, "application/json", bytes.NewReader(payload))
+	resp, err := client.Post(webhookURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		slog.Error("auto-verify: request failed", "app", appID, "url", requestURL, "err", err)
+		slog.Error("auto-verify: request failed", "app", appID, "url", webhookURL, "err", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -453,7 +459,7 @@ func (s *Server) autoVerifyURL(appID, requestURL string) {
 		return
 	}
 	if result.Challenge == challenge {
-		_ = s.Store.SetAppURLVerified(appID, true)
+		_ = s.Store.SetAppWebhookVerified(appID, true)
 		slog.Info("auto-verify: success", "app", appID)
 	} else {
 		slog.Error("auto-verify: challenge mismatch", "app", appID, "expected", challenge, "got", result.Challenge)

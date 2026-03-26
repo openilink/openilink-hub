@@ -1008,11 +1008,14 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 		if got.Slug != "test-app" {
 			t.Errorf("slug = %q, want %q", got.Slug, "test-app")
 		}
-		if got.ClientSecret == "" {
-			t.Error("client_secret should be auto-generated")
+		if got.WebhookSecret == "" {
+			t.Error("webhook_secret should be auto-generated")
 		}
-		if got.SigningSecret == "" {
-			t.Error("signing_secret should be auto-generated")
+		if got.Kind != "app" {
+			t.Errorf("kind = %q, want %q", got.Kind, "app")
+		}
+		if got.Listing != "unlisted" {
+			t.Errorf("listing = %q, want %q", got.Listing, "unlisted")
 		}
 		if got.Status != "active" {
 			t.Errorf("status = %q, want %q", got.Status, "active")
@@ -1065,17 +1068,24 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 		}
 	})
 
-	t.Run("SetAppListed", func(t *testing.T) {
-		if err := s.SetAppListed(appID, true); err != nil {
-			t.Fatalf("SetAppListed: %v", err)
+	t.Run("SetAppWebhookVerified", func(t *testing.T) {
+		if err := s.SetAppWebhookVerified(appID, true); err != nil {
+			t.Fatalf("SetAppWebhookVerified: %v", err)
 		}
 		got, _ := s.GetApp(appID)
-		if !got.Listed {
-			t.Error("expected listed=true")
+		if !got.WebhookVerified {
+			t.Error("expected webhook_verified=true")
 		}
 	})
 
 	t.Run("ListListedApps", func(t *testing.T) {
+		// App starts as "unlisted"; promote it to "listed" first.
+		if err := s.RequestListing(appID); err != nil {
+			t.Fatalf("RequestListing: %v", err)
+		}
+		if err := s.ReviewListing(appID, true, ""); err != nil {
+			t.Fatalf("ReviewListing(approve): %v", err)
+		}
 		apps, err := s.ListListedApps()
 		if err != nil {
 			t.Fatalf("ListListedApps: %v", err)
@@ -1083,28 +1093,22 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 		if len(apps) < 1 {
 			t.Fatal("expected at least 1 listed app")
 		}
-	})
-
-	t.Run("SetAppURLVerified", func(t *testing.T) {
-		if err := s.SetAppURLVerified(appID, true); err != nil {
-			t.Fatalf("SetAppURLVerified: %v", err)
-		}
-		got, _ := s.GetApp(appID)
-		if !got.URLVerified {
-			t.Error("expected url_verified=true")
+		// Reset back to unlisted so subsequent tests start from expected state.
+		if err := s.ReviewListing(appID, false, "reset"); err != nil {
+			t.Fatalf("ReviewListing(reset): %v", err)
 		}
 	})
 
-	t.Run("UpdateAppRequestURL", func(t *testing.T) {
-		if err := s.UpdateAppRequestURL(appID, "https://new.com/hook"); err != nil {
-			t.Fatalf("UpdateAppRequestURL: %v", err)
+	t.Run("UpdateAppWebhookURL", func(t *testing.T) {
+		if err := s.UpdateAppWebhookURL(appID, "https://new.com/hook"); err != nil {
+			t.Fatalf("UpdateAppWebhookURL: %v", err)
 		}
 		got, _ := s.GetApp(appID)
-		if got.RequestURL != "https://new.com/hook" {
-			t.Errorf("request_url = %q, want %q", got.RequestURL, "https://new.com/hook")
+		if got.WebhookURL != "https://new.com/hook" {
+			t.Errorf("webhook_url = %q, want %q", got.WebhookURL, "https://new.com/hook")
 		}
-		if got.URLVerified {
-			t.Error("url_verified should be reset to false after UpdateAppRequestURL")
+		if got.WebhookVerified {
+			t.Error("webhook_verified should be reset to false after UpdateAppWebhookURL")
 		}
 	})
 
@@ -1113,8 +1117,8 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 			t.Fatalf("RequestListing: %v", err)
 		}
 		got, _ := s.GetApp(appID)
-		if got.ListingStatus != "pending" {
-			t.Errorf("listing_status = %q, want %q", got.ListingStatus, "pending")
+		if got.Listing != "pending" {
+			t.Errorf("listing = %q, want %q", got.Listing, "pending")
 		}
 	})
 
@@ -1123,8 +1127,8 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 			t.Fatalf("ReviewListing(reject): %v", err)
 		}
 		got, _ := s.GetApp(appID)
-		if got.ListingStatus != "rejected" {
-			t.Errorf("listing_status = %q, want %q", got.ListingStatus, "rejected")
+		if got.Listing != "rejected" {
+			t.Errorf("listing = %q, want %q", got.Listing, "rejected")
 		}
 		if got.ListingRejectReason != "not ready" {
 			t.Errorf("reject_reason = %q, want %q", got.ListingRejectReason, "not ready")
@@ -1137,8 +1141,8 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 			t.Fatalf("ReviewListing(approve): %v", err)
 		}
 		got, _ := s.GetApp(appID)
-		if !got.Listed {
-			t.Error("expected listed=true after approval")
+		if got.Listing != "listed" {
+			t.Errorf("listing = %q, want %q", got.Listing, "listed")
 		}
 	})
 
@@ -1243,10 +1247,10 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 	})
 
 	t.Run("OAuthCode", func(t *testing.T) {
-		if err := s.CreateOAuthCode("code123", appID, b.ID, "state1"); err != nil {
+		if err := s.CreateOAuthCode("code123", appID, b.ID, "state1", "challenge1"); err != nil {
 			t.Fatalf("CreateOAuthCode: %v", err)
 		}
-		gotAppID, gotBotID, err := s.ExchangeOAuthCode("code123")
+		gotAppID, gotBotID, gotChallenge, err := s.ExchangeOAuthCode("code123")
 		if err != nil {
 			t.Fatalf("ExchangeOAuthCode: %v", err)
 		}
@@ -1256,8 +1260,11 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 		if gotBotID != b.ID {
 			t.Errorf("botID = %q, want %q", gotBotID, b.ID)
 		}
+		if gotChallenge != "challenge1" {
+			t.Errorf("codeChallenge = %q, want %q", gotChallenge, "challenge1")
+		}
 		// Code should be consumed
-		_, _, err = s.ExchangeOAuthCode("code123")
+		_, _, _, err = s.ExchangeOAuthCode("code123")
 		if err == nil {
 			t.Error("expected error re-using consumed code")
 		}
@@ -1285,7 +1292,7 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 	})
 
 	t.Run("ExchangeOAuthCode_NotFound", func(t *testing.T) {
-		_, _, err := s.ExchangeOAuthCode("nonexistent-code")
+		_, _, _, err := s.ExchangeOAuthCode("nonexistent-code")
 		if err == nil {
 			t.Error("expected error for non-existent OAuth code, got nil")
 		}

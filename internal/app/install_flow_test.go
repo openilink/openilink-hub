@@ -13,7 +13,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/store"
 )
 
-// --- Mock install DB that tracks UpdateAppRequestURL and SetAppURLVerified calls ---
+// --- Mock install DB that tracks UpdateAppWebhookURL and SetAppWebhookVerified calls ---
 
 type mockInstallDB struct {
 	mu              sync.Mutex
@@ -24,7 +24,7 @@ type mockInstallDB struct {
 	verifyCallCount int
 }
 
-func (m *mockInstallDB) UpdateAppRequestURL(id, requestURL string) error {
+func (m *mockInstallDB) UpdateAppWebhookURL(id, requestURL string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.updatedURL = requestURL
@@ -32,7 +32,7 @@ func (m *mockInstallDB) UpdateAppRequestURL(id, requestURL string) error {
 	return nil
 }
 
-func (m *mockInstallDB) SetAppURLVerified(id string, verified bool) error {
+func (m *mockInstallDB) SetAppWebhookVerified(id string, verified bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.urlVerifiedID = id
@@ -172,7 +172,7 @@ func simulateNotifyAppInstalled(
 		return "", nil
 	}
 
-	_ = db.UpdateAppRequestURL(appID, result.RequestURL)
+	_ = db.UpdateAppWebhookURL(appID, result.RequestURL)
 	return result.RequestURL, nil
 }
 
@@ -203,7 +203,7 @@ func simulateAutoVerifyURL(
 		return false
 	}
 	if result.Challenge == challenge {
-		_ = db.SetAppURLVerified(appID, true)
+		_ = db.SetAppWebhookVerified(appID, true)
 		return true
 	}
 	return false
@@ -223,7 +223,7 @@ func TestInstallFlow_FullNotifyAndVerify(t *testing.T) {
 		AppID:         "app-001",
 		BotID:         "bot-001",
 		AppToken:      "tok_abc123",
-		AppSigningSecret: "sec_xyz789",
+		AppWebhookSecret: "sec_xyz789",
 		Handle:        "echo-work",
 	}
 
@@ -293,7 +293,7 @@ func TestInstallFlow_NotifyAppReturns500(t *testing.T) {
 		AppID:         "app-002",
 		BotID:         "bot-002",
 		AppToken:      "tok_fail",
-		AppSigningSecret: "sec_fail",
+		AppWebhookSecret: "sec_fail",
 		Handle:        "failbot",
 	}
 
@@ -306,7 +306,7 @@ func TestInstallFlow_NotifyAppReturns500(t *testing.T) {
 		t.Errorf("should return empty request_url for 500, got %q", requestURL)
 	}
 	if db.updateCallCount != 0 {
-		t.Errorf("db.UpdateAppRequestURL should not be called on failure, called %d times", db.updateCallCount)
+		t.Errorf("db.UpdateAppWebhookURL should not be called on failure, called %d times", db.updateCallCount)
 	}
 }
 
@@ -325,7 +325,7 @@ func TestInstallFlow_NotifyAppReturnsNoRequestURL(t *testing.T) {
 		AppID:         "app-003",
 		BotID:         "bot-003",
 		AppToken:      "tok_nurl",
-		AppSigningSecret: "sec_nurl",
+		AppWebhookSecret: "sec_nurl",
 		Handle:        "no-url-bot",
 	}
 
@@ -337,7 +337,7 @@ func TestInstallFlow_NotifyAppReturnsNoRequestURL(t *testing.T) {
 		t.Errorf("should return empty request_url, got %q", requestURL)
 	}
 	if db.updateCallCount != 0 {
-		t.Errorf("db.UpdateAppRequestURL should not be called without request_url, called %d times", db.updateCallCount)
+		t.Errorf("db.UpdateAppWebhookURL should not be called without request_url, called %d times", db.updateCallCount)
 	}
 }
 
@@ -362,7 +362,7 @@ func TestInstallFlow_AutoVerifyWrongChallenge(t *testing.T) {
 		t.Error("db.urlVerified should remain false")
 	}
 	if db.verifyCallCount != 0 {
-		t.Errorf("SetAppURLVerified should not be called with wrong challenge, called %d times", db.verifyCallCount)
+		t.Errorf("SetAppWebhookVerified should not be called with wrong challenge, called %d times", db.verifyCallCount)
 	}
 }
 
@@ -382,7 +382,7 @@ func TestInstallFlow_AutoVerifyServerError(t *testing.T) {
 		t.Error("should not verify with server error")
 	}
 	if db.verifyCallCount != 0 {
-		t.Errorf("SetAppURLVerified should not be called on error, called %d times", db.verifyCallCount)
+		t.Errorf("SetAppWebhookVerified should not be called on error, called %d times", db.verifyCallCount)
 	}
 }
 
@@ -397,7 +397,7 @@ func TestInstallFlow_AutoVerifyUnreachable(t *testing.T) {
 		t.Error("should not verify with unreachable server")
 	}
 	if db.verifyCallCount != 0 {
-		t.Error("SetAppURLVerified should not be called")
+		t.Error("SetAppWebhookVerified should not be called")
 	}
 }
 
@@ -416,7 +416,7 @@ func TestInstallFlow_EndToEnd_DynamicURL(t *testing.T) {
 		AppID:         "app-e2e",
 		BotID:         "bot-e2e",
 		AppToken:      "tok_e2e",
-		AppSigningSecret: "sec_e2e",
+		AppWebhookSecret: "sec_e2e",
 		Handle:        "my-app",
 	}
 
@@ -429,7 +429,7 @@ func TestInstallFlow_EndToEnd_DynamicURL(t *testing.T) {
 		t.Fatal("expected request_url")
 	}
 	if db.updateCallCount != 1 {
-		t.Errorf("expected 1 UpdateAppRequestURL call, got %d", db.updateCallCount)
+		t.Errorf("expected 1 UpdateAppWebhookURL call, got %d", db.updateCallCount)
 	}
 
 	// Step 2: Verify
@@ -438,7 +438,7 @@ func TestInstallFlow_EndToEnd_DynamicURL(t *testing.T) {
 		t.Fatal("verify should succeed")
 	}
 	if db.verifyCallCount != 1 {
-		t.Errorf("expected 1 SetAppURLVerified call, got %d", db.verifyCallCount)
+		t.Errorf("expected 1 SetAppWebhookVerified call, got %d", db.verifyCallCount)
 	}
 	if !db.urlVerified {
 		t.Error("should be verified")

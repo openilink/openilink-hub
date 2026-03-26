@@ -142,7 +142,7 @@ func TestMockApp_EventDeliveryWithSignature(t *testing.T) {
 
 	inst := &store.AppInstallation{
 		ID: "inst-int-1", AppID: "app-int-1", BotID: "bot-int-1",
-		AppSigningSecret: secret, AppRequestURL: m.server.URL,
+		AppWebhookSecret: secret, AppWebhookURL: m.server.URL,
 	}
 	event := NewEvent("message.text", map[string]string{"text": "hello world"})
 
@@ -201,7 +201,7 @@ func TestMockApp_CommandDelivery(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-cmd-1", AppID: "app-cmd-1", BotID: "bot-cmd-1",
-		AppSigningSecret: secret, AppRequestURL: m.server.URL,
+		AppWebhookSecret: secret, AppWebhookURL: m.server.URL,
 	}
 	event := NewEvent("command", map[string]any{
 		"command": "deploy",
@@ -240,7 +240,7 @@ func TestMockApp_SyncReplyInResult(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-r-1", AppID: "app-r-1", BotID: "bot-r-1",
-		AppSigningSecret: "secret", AppRequestURL: m.server.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: m.server.URL,
 	}
 
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -264,7 +264,7 @@ func TestMockApp_InvalidSignatureRejected(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-bad-1", AppID: "app-bad-1", BotID: "bot-bad-1",
-		AppSigningSecret: "wrong-secret", AppRequestURL: m.server.URL,
+		AppWebhookSecret: "wrong-secret", AppWebhookURL: m.server.URL,
 	}
 
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -284,7 +284,7 @@ func TestMockApp_MultipleEventsTracked(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, m.server.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-m-1", AppID: "app-m-1", BotID: "bot-m-1",
-		AppSigningSecret: "secret", AppRequestURL: m.server.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: m.server.URL,
 	}
 
 	for i := 0; i < 5; i++ {
@@ -312,17 +312,18 @@ func TestMockApp_FullFlowWithMatchAndDeliver(t *testing.T) {
 
 	cmds, _ := json.Marshal([]store.AppTool{{Name: "run_deploy", Command: "deploy"}})
 	events, _ := json.Marshal([]string{"message"})
+	scopes, _ := json.Marshal([]string{"message:read"})
 
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
 			{
 				ID: "inst-ff-1", AppID: "app-ff-1", BotID: "bot-ff-1",
-				Enabled: true, AppRequestURL: m.server.URL,
-				AppSigningSecret: secret,
+				Enabled: true, AppWebhookURL: m.server.URL,
+				AppWebhookSecret: secret,
 			},
 		},
 		apps: map[string]*store.App{
-			"app-ff-1": {ID: "app-ff-1", Tools: cmds, Events: events},
+			"app-ff-1": {ID: "app-ff-1", Tools: cmds, Events: events, Scopes: scopes},
 		},
 	}
 

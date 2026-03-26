@@ -27,16 +27,26 @@ func (db *DB) CreateApp(app *store.App) (*store.App, error) {
 	if app.Scopes == nil {
 		app.Scopes = json.RawMessage("[]")
 	}
-	if app.ClientSecret == "" {
-		app.ClientSecret = generateToken(32)
+	if app.WebhookSecret == "" {
+		app.WebhookSecret = generateToken(32)
 	}
-	if app.SigningSecret == "" {
-		app.SigningSecret = generateToken(32)
+	if app.Kind == "" {
+		app.Kind = "app"
 	}
-	_, err := db.Exec(`INSERT INTO apps (id, owner_id, name, slug, description, icon, icon_url, homepage, tools, events, scopes, setup_url, redirect_url, client_secret, signing_secret, listed, listing_status, listing_reject_reason)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	if app.Listing == "" {
+		app.Listing = "unlisted"
+	}
+	_, err := db.Exec(`INSERT INTO apps (id, owner_id, name, slug, description, icon, icon_url, homepage,
+		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
+		webhook_url, webhook_secret, webhook_verified,
+		kind, registry, version, readme,
+		listing, listing_reject_reason)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		app.ID, app.OwnerID, app.Name, app.Slug, app.Description, app.Icon, app.IconURL, app.Homepage,
-		app.Tools, app.Events, app.Scopes, app.SetupURL, app.RedirectURL, app.ClientSecret, app.SigningSecret, app.Listed, "", "",
+		app.Tools, app.Events, app.Scopes, app.OAuthSetupURL, app.OAuthRedirectURL,
+		app.WebhookURL, app.WebhookSecret, app.WebhookVerified,
+		app.Kind, app.Registry, app.Version, app.Readme,
+		app.Listing, app.ListingRejectReason,
 	)
 	if err != nil {
 		return nil, err
@@ -49,17 +59,19 @@ func (db *DB) CreateApp(app *store.App) (*store.App, error) {
 func (db *DB) GetApp(id string) (*store.App, error) {
 	a := &store.App{}
 	err := db.QueryRow(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
-		a.tools, a.events, a.scopes, a.setup_url, a.redirect_url, a.client_secret,
-		a.request_url, a.signing_secret, a.url_verified,
-		a.listed, a.listing_status, a.listing_reject_reason, a.status,
+		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
+		a.webhook_url, a.webhook_secret, a.webhook_verified,
+		a.kind, a.registry, a.version, a.readme,
+		a.listing, a.listing_reject_reason, a.status,
 		a.created_at, a.updated_at,
 		COALESCE(u.username, '')
 		FROM apps a LEFT JOIN users u ON u.id = a.owner_id
 		WHERE a.id = ?`, id).Scan(
 		&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
-		&a.Tools, &a.Events, &a.Scopes, &a.SetupURL, &a.RedirectURL, &a.ClientSecret,
-		&a.RequestURL, &a.SigningSecret, &a.URLVerified,
-		&a.Listed, &a.ListingStatus, &a.ListingRejectReason, &a.Status,
+		&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
+		&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
+		&a.Kind, &a.Registry, &a.Version, &a.Readme,
+		&a.Listing, &a.ListingRejectReason, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt, &a.OwnerName)
 	if err != nil {
 		return nil, err
@@ -70,15 +82,17 @@ func (db *DB) GetApp(id string) (*store.App, error) {
 func (db *DB) GetAppBySlug(slug string) (*store.App, error) {
 	a := &store.App{}
 	err := db.QueryRow(`SELECT id, owner_id, name, slug, description, icon, icon_url, homepage,
-		tools, events, scopes, setup_url, redirect_url, client_secret,
-		request_url, signing_secret, url_verified,
-		listed, listing_status, listing_reject_reason, status,
+		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
+		webhook_url, webhook_secret, webhook_verified,
+		kind, registry, version, readme,
+		listing, listing_reject_reason, status,
 		created_at, updated_at
 		FROM apps WHERE slug = ?`, slug).Scan(
 		&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
-		&a.Tools, &a.Events, &a.Scopes, &a.SetupURL, &a.RedirectURL, &a.ClientSecret,
-		&a.RequestURL, &a.SigningSecret, &a.URLVerified,
-		&a.Listed, &a.ListingStatus, &a.ListingRejectReason, &a.Status,
+		&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
+		&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
+		&a.Kind, &a.Registry, &a.Version, &a.Readme,
+		&a.Listing, &a.ListingRejectReason, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -88,9 +102,10 @@ func (db *DB) GetAppBySlug(slug string) (*store.App, error) {
 
 func (db *DB) ListAppsByOwner(ownerID string) ([]store.App, error) {
 	rows, err := db.Query(`SELECT id, owner_id, name, slug, description, icon, icon_url, homepage,
-		tools, events, scopes, setup_url, redirect_url, client_secret,
-		request_url, signing_secret, url_verified,
-		listed, listing_status, listing_reject_reason, status,
+		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
+		webhook_url, webhook_secret, webhook_verified,
+		kind, registry, version, readme,
+		listing, listing_reject_reason, status,
 		created_at, updated_at
 		FROM apps WHERE owner_id = ? ORDER BY created_at DESC`, ownerID)
 	if err != nil {
@@ -101,9 +116,10 @@ func (db *DB) ListAppsByOwner(ownerID string) ([]store.App, error) {
 	for rows.Next() {
 		var a store.App
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
-			&a.Tools, &a.Events, &a.Scopes, &a.SetupURL, &a.RedirectURL, &a.ClientSecret,
-			&a.RequestURL, &a.SigningSecret, &a.URLVerified,
-			&a.Listed, &a.ListingStatus, &a.ListingRejectReason, &a.Status,
+			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
+			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
+			&a.Kind, &a.Registry, &a.Version, &a.Readme,
+			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -114,13 +130,14 @@ func (db *DB) ListAppsByOwner(ownerID string) ([]store.App, error) {
 
 func (db *DB) ListListedApps() ([]store.App, error) {
 	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
-		a.tools, a.events, a.scopes, a.setup_url, a.redirect_url, '',
-		a.request_url, '', a.url_verified,
-		a.listed, a.listing_status, a.listing_reject_reason, a.status,
+		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
+		a.webhook_url, '', a.webhook_verified,
+		a.kind, a.registry, a.version, a.readme,
+		a.listing, a.listing_reject_reason, a.status,
 		a.created_at, a.updated_at,
 		COALESCE(u.username, '')
 		FROM apps a LEFT JOIN users u ON u.id = a.owner_id
-		WHERE a.listed = 1 AND a.status = 'active' ORDER BY a.name`)
+		WHERE a.listing = 'listed' AND a.status = 'active' ORDER BY a.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -129,9 +146,10 @@ func (db *DB) ListListedApps() ([]store.App, error) {
 	for rows.Next() {
 		var a store.App
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
-			&a.Tools, &a.Events, &a.Scopes, &a.SetupURL, &a.RedirectURL, &a.ClientSecret,
-			&a.RequestURL, &a.SigningSecret, &a.URLVerified,
-			&a.Listed, &a.ListingStatus, &a.ListingRejectReason, &a.Status,
+			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
+			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
+			&a.Kind, &a.Registry, &a.Version, &a.Readme,
+			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
 			return nil, err
 		}
@@ -142,9 +160,10 @@ func (db *DB) ListListedApps() ([]store.App, error) {
 
 func (db *DB) ListAllApps() ([]store.App, error) {
 	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
-		a.tools, a.events, a.scopes, a.setup_url, a.redirect_url, '',
-		a.request_url, '', a.url_verified,
-		a.listed, a.listing_status, a.listing_reject_reason, a.status,
+		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
+		a.webhook_url, '', a.webhook_verified,
+		a.kind, a.registry, a.version, a.readme,
+		a.listing, a.listing_reject_reason, a.status,
 		a.created_at, a.updated_at,
 		COALESCE(u.username, '')
 		FROM apps a LEFT JOIN users u ON u.id = a.owner_id
@@ -157,9 +176,10 @@ func (db *DB) ListAllApps() ([]store.App, error) {
 	for rows.Next() {
 		var a store.App
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
-			&a.Tools, &a.Events, &a.Scopes, &a.SetupURL, &a.RedirectURL, &a.ClientSecret,
-			&a.RequestURL, &a.SigningSecret, &a.URLVerified,
-			&a.Listed, &a.ListingStatus, &a.ListingRejectReason, &a.Status,
+			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
+			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
+			&a.Kind, &a.Registry, &a.Version, &a.Readme,
+			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
 			return nil, err
 		}
@@ -168,15 +188,48 @@ func (db *DB) ListAllApps() ([]store.App, error) {
 	return apps, rows.Err()
 }
 
-func (db *DB) SetAppListed(id string, listed bool) error {
-	_, err := db.Exec("UPDATE apps SET listed=?, updated_at=unixepoch() WHERE id=?", listed, id)
+func (db *DB) ListMarketplaceApps() ([]store.App, error) {
+	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
+		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
+		a.webhook_url, '', a.webhook_verified,
+		a.kind, a.registry, a.version, a.readme,
+		a.listing, a.listing_reject_reason, a.status,
+		a.created_at, a.updated_at,
+		COALESCE(u.username, '')
+		FROM apps a LEFT JOIN users u ON u.id = a.owner_id
+		WHERE a.registry != '' AND a.status = 'active' ORDER BY a.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var apps []store.App
+	for rows.Next() {
+		var a store.App
+		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
+			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
+			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
+			&a.Kind, &a.Registry, &a.Version, &a.Readme,
+			&a.Listing, &a.ListingRejectReason, &a.Status,
+			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
+			return nil, err
+		}
+		apps = append(apps, a)
+	}
+	return apps, rows.Err()
+}
+
+func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL string, tools, events, scopes json.RawMessage) error {
+	_, err := db.Exec(`UPDATE apps SET name=?, description=?, icon=?, icon_url=?, homepage=?,
+		tools=?, events=?, scopes=?, oauth_setup_url=?, oauth_redirect_url=?, updated_at=unixepoch() WHERE id=?`,
+		name, description, icon, iconURL, homepage, tools, events, scopes, oauthSetupURL, oauthRedirectURL, id)
 	return err
 }
 
-func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, setupURL, redirectURL string, tools, events, scopes json.RawMessage) error {
-	_, err := db.Exec(`UPDATE apps SET name=?, description=?, icon=?, icon_url=?, homepage=?,
-		tools=?, events=?, scopes=?, setup_url=?, redirect_url=?, updated_at=unixepoch() WHERE id=?`,
-		name, description, icon, iconURL, homepage, tools, events, scopes, setupURL, redirectURL, id)
+func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version string, tools, events, scopes json.RawMessage) error {
+	_, err := db.Exec(`UPDATE apps SET name=?, description=?, icon_url=?, homepage=?,
+		webhook_url=?, oauth_setup_url=?, oauth_redirect_url=?, version=?,
+		tools=?, events=?, scopes=?, updated_at=unixepoch() WHERE id=?`,
+		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, tools, events, scopes, id)
 	return err
 }
 
@@ -192,11 +245,12 @@ func (db *DB) InstallApp(appID, botID string) (*store.AppInstallation, error) {
 		BotID:    botID,
 		AppToken: "app_" + generateToken(32),
 		Config:   json.RawMessage("{}"),
+		Scopes:   json.RawMessage("[]"),
 		Enabled:  true,
 	}
-	_, err := db.Exec(`INSERT INTO app_installations (id, app_id, bot_id, app_token, config)
-		VALUES (?,?,?,?,?)`,
-		inst.ID, inst.AppID, inst.BotID, inst.AppToken, inst.Config,
+	_, err := db.Exec(`INSERT INTO app_installations (id, app_id, bot_id, app_token, config, scopes)
+		VALUES (?,?,?,?,?,?)`,
+		inst.ID, inst.AppID, inst.BotID, inst.AppToken, inst.Config, inst.Scopes,
 	)
 	if err != nil {
 		return nil, err
@@ -209,17 +263,17 @@ func (db *DB) InstallApp(appID, botID string) (*store.AppInstallation, error) {
 func (db *DB) GetInstallation(id string) (*store.AppInstallation, error) {
 	i := &store.AppInstallation{}
 	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token,
-		i.handle, i.config, i.enabled,
+		i.handle, i.config, i.scopes, i.enabled,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
-		a.request_url, a.signing_secret
+		a.webhook_url, a.webhook_secret
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.id = ?`, id).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
-		&i.Handle, &i.Config, &i.Enabled,
+		&i.Handle, &i.Config, &i.Scopes, &i.Enabled,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
-		&i.AppRequestURL, &i.AppSigningSecret)
+		&i.AppWebhookURL, &i.AppWebhookSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -229,17 +283,17 @@ func (db *DB) GetInstallation(id string) (*store.AppInstallation, error) {
 func (db *DB) GetInstallationByToken(token string) (*store.AppInstallation, error) {
 	i := &store.AppInstallation{}
 	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token,
-		i.handle, i.config, i.enabled,
+		i.handle, i.config, i.scopes, i.enabled,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
-		a.request_url, a.signing_secret
+		a.webhook_url, a.webhook_secret
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.app_token = ?`, token).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
-		&i.Handle, &i.Config, &i.Enabled,
+		&i.Handle, &i.Config, &i.Scopes, &i.Enabled,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
-		&i.AppRequestURL, &i.AppSigningSecret)
+		&i.AppWebhookURL, &i.AppWebhookSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -256,10 +310,10 @@ func (db *DB) ListInstallationsByBot(botID string) ([]store.AppInstallation, err
 
 func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation, error) {
 	rows, err := db.Query(fmt.Sprintf(`SELECT i.id, i.app_id, i.bot_id, i.app_token,
-		i.handle, i.config, i.enabled,
+		i.handle, i.config, i.scopes, i.enabled,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
-		a.request_url, a.signing_secret
+		a.webhook_url, a.webhook_secret
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE %s ORDER BY i.created_at DESC`, where), arg)
 	if err != nil {
@@ -270,10 +324,10 @@ func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation,
 	for rows.Next() {
 		var i store.AppInstallation
 		if err := rows.Scan(&i.ID, &i.AppID, &i.BotID, &i.AppToken,
-			&i.Handle, &i.Config, &i.Enabled,
+			&i.Handle, &i.Config, &i.Scopes, &i.Enabled,
 			&i.CreatedAt, &i.UpdatedAt,
 			&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
-			&i.AppRequestURL, &i.AppSigningSecret); err != nil {
+			&i.AppWebhookURL, &i.AppWebhookSecret); err != nil {
 			return nil, err
 		}
 		list = append(list, i)
@@ -287,13 +341,13 @@ func (db *DB) UpdateInstallation(id, handle string, config json.RawMessage, enab
 	return err
 }
 
-func (db *DB) SetAppURLVerified(id string, verified bool) error {
-	_, err := db.Exec("UPDATE apps SET url_verified=?, updated_at=unixepoch() WHERE id=?", verified, id)
+func (db *DB) SetAppWebhookVerified(id string, verified bool) error {
+	_, err := db.Exec("UPDATE apps SET webhook_verified=?, updated_at=unixepoch() WHERE id=?", verified, id)
 	return err
 }
 
-func (db *DB) UpdateAppRequestURL(id, requestURL string) error {
-	_, err := db.Exec("UPDATE apps SET request_url=?, url_verified=0, updated_at=unixepoch() WHERE id=?", requestURL, id)
+func (db *DB) UpdateAppWebhookURL(id, webhookURL string) error {
+	_, err := db.Exec("UPDATE apps SET webhook_url=?, webhook_verified=0, updated_at=unixepoch() WHERE id=?", webhookURL, id)
 	return err
 }
 
@@ -306,17 +360,17 @@ func (db *DB) RegenerateInstallationToken(id string) (string, error) {
 func (db *DB) GetInstallationByHandle(botID, handle string) (*store.AppInstallation, error) {
 	i := &store.AppInstallation{}
 	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token,
-		i.handle, i.config, i.enabled,
+		i.handle, i.config, i.scopes, i.enabled,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
-		a.request_url, a.signing_secret
+		a.webhook_url, a.webhook_secret
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.bot_id = ? AND i.handle = ?`, botID, handle).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
-		&i.Handle, &i.Config, &i.Enabled,
+		&i.Handle, &i.Config, &i.Scopes, &i.Enabled,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
-		&i.AppRequestURL, &i.AppSigningSecret)
+		&i.AppWebhookURL, &i.AppWebhookSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -328,29 +382,29 @@ func (db *DB) DeleteInstallation(id string) error {
 	return err
 }
 
-func (db *DB) CreateOAuthCode(code, appID, botID, state string) error {
-	_, err := db.Exec(`INSERT INTO app_oauth_codes (code, app_id, bot_id, state) VALUES (?,?,?,?)`,
-		code, appID, botID, state)
+func (db *DB) CreateOAuthCode(code, appID, botID, state, codeChallenge string) error {
+	_, err := db.Exec(`INSERT INTO app_oauth_codes (code, app_id, bot_id, state, code_challenge) VALUES (?,?,?,?,?)`,
+		code, appID, botID, state, codeChallenge)
 	return err
 }
 
-func (db *DB) ExchangeOAuthCode(code string) (appID, botID string, err error) {
+func (db *DB) ExchangeOAuthCode(code string) (appID, botID, codeChallenge string, err error) {
 	tx, err := db.Begin()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	defer tx.Rollback()
 
-	err = tx.QueryRow("SELECT app_id, bot_id FROM app_oauth_codes WHERE code = ? AND expires_at > unixepoch()", code).
-		Scan(&appID, &botID)
+	err = tx.QueryRow("SELECT app_id, bot_id, code_challenge FROM app_oauth_codes WHERE code = ? AND expires_at > unixepoch()", code).
+		Scan(&appID, &botID, &codeChallenge)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	tx.Exec("DELETE FROM app_oauth_codes WHERE code = ?", code)
 	if err := tx.Commit(); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return appID, botID, nil
+	return appID, botID, codeChallenge, nil
 }
 
 func (db *DB) CleanExpiredOAuthCodes() {
@@ -358,15 +412,15 @@ func (db *DB) CleanExpiredOAuthCodes() {
 }
 
 func (db *DB) RequestListing(id string) error {
-	_, err := db.Exec("UPDATE apps SET listing_status='pending', updated_at=unixepoch() WHERE id=?", id)
+	_, err := db.Exec("UPDATE apps SET listing='pending', updated_at=unixepoch() WHERE id=?", id)
 	return err
 }
 
 func (db *DB) ReviewListing(id string, approve bool, reason string) error {
 	if approve {
-		_, err := db.Exec("UPDATE apps SET listed=1, listing_status='', listing_reject_reason='', updated_at=unixepoch() WHERE id=?", id)
+		_, err := db.Exec("UPDATE apps SET listing='listed', listing_reject_reason='', updated_at=unixepoch() WHERE id=?", id)
 		return err
 	}
-	_, err := db.Exec("UPDATE apps SET listing_status='rejected', listing_reject_reason=?, updated_at=unixepoch() WHERE id=?", reason, id)
+	_, err := db.Exec("UPDATE apps SET listing='rejected', listing_reject_reason=?, updated_at=unixepoch() WHERE id=?", reason, id)
 	return err
 }

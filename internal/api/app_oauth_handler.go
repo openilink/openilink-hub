@@ -2,6 +2,8 @@ package api
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
@@ -10,13 +12,14 @@ import (
 	"github.com/openilink/openilink-hub/internal/auth"
 )
 
-// GET /api/apps/{id}/oauth/authorize?bot_id=xxx&state=xxx
-// Called when user confirms the install. Creates installation, generates code, redirects to redirect_url.
+// GET /api/apps/{id}/oauth/authorize?bot_id=xxx&state=xxx&code_challenge=xxx
+// Called when user confirms the install. Creates installation, generates code, redirects to oauth_redirect_url.
 func (s *Server) handleAppOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	appID := r.PathValue("id")
 	botID := r.URL.Query().Get("bot_id")
 	state := r.URL.Query().Get("state")
+	codeChallenge := r.URL.Query().Get("code_challenge")
 
 	if botID == "" || state == "" {
 		jsonError(w, "bot_id and state required", http.StatusBadRequest)
@@ -28,8 +31,8 @@ func (s *Server) handleAppOAuthAuthorize(w http.ResponseWriter, r *http.Request)
 		jsonError(w, "app not found", http.StatusNotFound)
 		return
 	}
-	if app.RedirectURL == "" {
-		jsonError(w, "app has no redirect_url configured", http.StatusBadRequest)
+	if app.OAuthRedirectURL == "" {
+		jsonError(w, "app has no oauth_redirect_url configured", http.StatusBadRequest)
 		return
 	}
 
@@ -45,45 +48,42 @@ func (s *Server) handleAppOAuthAuthorize(w http.ResponseWriter, r *http.Request)
 	_, _ = rand.Read(codeBytes)
 	code := hex.EncodeToString(codeBytes)
 
-	if err := s.Store.CreateOAuthCode(code, appID, botID, state); err != nil {
+	if err := s.Store.CreateOAuthCode(code, appID, botID, state, codeChallenge); err != nil {
 		slog.Error("create oauth code failed", "app", appID, "err", err)
 		jsonError(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	// Redirect to app's redirect_url with code and state
-	redirectURL := app.RedirectURL + "?code=" + code + "&state=" + state
+	// Redirect to app's oauth_redirect_url with code and state
+	redirectURL := app.OAuthRedirectURL + "?code=" + code + "&state=" + state
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 // POST /api/apps/{id}/oauth/exchange
 // App exchanges a temporary code for installation credentials.
+// Supports PKCE (code_verifier) for auth. If no PKCE was used at authorize time,
+// the code itself is sufficient (single-use, short-lived).
 func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) {
 	appID := r.PathValue("id")
 
 	var req struct {
 		Code         string `json:"code"`
-		ClientSecret string `json:"client_secret"`
+		CodeVerifier string `json:"code_verifier"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Code == "" || req.ClientSecret == "" {
-		jsonError(w, "code and client_secret required", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Code == "" {
+		jsonError(w, "code required", http.StatusBadRequest)
 		return
 	}
 
-	// Verify client_secret
 	app, err := s.Store.GetApp(appID)
 	if err != nil {
 		jsonError(w, "app not found", http.StatusNotFound)
 		return
 	}
-	if app.ClientSecret != req.ClientSecret {
-		jsonError(w, "invalid client_secret", http.StatusUnauthorized)
-		return
-	}
 
 	// Exchange code
-	codeAppID, botID, err := s.Store.ExchangeOAuthCode(req.Code)
-	if err != nil {
+	codeAppID, botID, codeChallenge, exchangeErr := s.Store.ExchangeOAuthCode(req.Code)
+	if exchangeErr != nil {
 		jsonError(w, "invalid or expired code", http.StatusBadRequest)
 		return
 	}
@@ -91,6 +91,23 @@ func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "code does not match app", http.StatusBadRequest)
 		return
 	}
+
+	// PKCE verification
+	if codeChallenge != "" {
+		if req.CodeVerifier == "" {
+			jsonError(w, "code_verifier required", http.StatusBadRequest)
+			return
+		}
+		// Verify SHA256(code_verifier) == code_challenge (S256 method)
+		h := sha256.Sum256([]byte(req.CodeVerifier))
+		computed := base64.RawURLEncoding.EncodeToString(h[:])
+		if computed != codeChallenge {
+			jsonError(w, "invalid code_verifier", http.StatusUnauthorized)
+			return
+		}
+	}
+	// If no code_challenge was set and no code_verifier provided, allow it
+	// (the code itself is single-use and expires quickly)
 
 	// Create or get existing installation
 	inst, err := s.Store.InstallApp(appID, botID)
@@ -114,13 +131,13 @@ func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(map[string]any{
 		"installation_id": inst.ID,
 		"app_token":       inst.AppToken,
-		"signing_secret":  app.SigningSecret,
+		"webhook_secret":  app.WebhookSecret,
 		"bot_id":          inst.BotID,
 	})
 }
 
 // GET /api/apps/{id}/oauth/setup-redirect?bot_id=xxx
-// Starts the OAuth install flow by redirecting to the app's setup_url.
+// Starts the OAuth install flow by redirecting to the app's oauth_setup_url.
 func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	appID := r.PathValue("id")
@@ -136,8 +153,8 @@ func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Requ
 		jsonError(w, "app not found", http.StatusNotFound)
 		return
 	}
-	if app.SetupURL == "" {
-		jsonError(w, "app has no setup_url", http.StatusBadRequest)
+	if app.OAuthSetupURL == "" {
+		jsonError(w, "app has no oauth_setup_url", http.StatusBadRequest)
 		return
 	}
 
@@ -163,8 +180,8 @@ func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Requ
 	}
 	hubURL := scheme + "://" + r.Host
 
-	// Redirect to app's setup_url
-	setupURL := app.SetupURL +
+	// Redirect to app's oauth_setup_url
+	setupURL := app.OAuthSetupURL +
 		"?hub=" + hubURL +
 		"&app_id=" + appID +
 		"&bot_id=" + botID +

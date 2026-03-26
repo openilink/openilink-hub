@@ -19,12 +19,12 @@ func TestMentionRouting_ParseAndMatchHandle(t *testing.T) {
 			{
 				ID: "i1", AppID: "a1", BotID: "b1",
 				Handle: "echo-work", Enabled: true,
-				AppRequestURL: "http://work.example.com",
+				AppWebhookURL: "http://work.example.com",
 			},
 			{
 				ID: "i2", AppID: "a1", BotID: "b1",
 				Handle: "echo-family", Enabled: true,
-				AppRequestURL: "http://family.example.com",
+				AppWebhookURL: "http://family.example.com",
 			},
 		},
 		apps: map[string]*store.App{
@@ -121,8 +121,8 @@ func TestMentionRouting_HandleWithCommand(t *testing.T) {
 		AppID:         "app-echo-1",
 		BotID:         "bot-echo-1",
 		Handle:        "echo-work",
-		AppSigningSecret: secret,
-		AppRequestURL:    srv.URL,
+		AppWebhookSecret: secret,
+		AppWebhookURL:    srv.URL,
 		Enabled:       true,
 	}
 
@@ -205,12 +205,12 @@ func TestMentionRouting_MultipleInstallsSameAppDifferentHandles(t *testing.T) {
 			{
 				ID: "i1", AppID: "a1", BotID: "b1",
 				Handle: "github-work", Enabled: true,
-				AppRequestURL: "http://work.example.com",
+				AppWebhookURL: "http://work.example.com",
 			},
 			{
 				ID: "i2", AppID: "a1", BotID: "b1",
 				Handle: "github-personal", Enabled: true,
-				AppRequestURL: "http://personal.example.com",
+				AppWebhookURL: "http://personal.example.com",
 			},
 		},
 		apps: map[string]*store.App{
@@ -231,8 +231,8 @@ func TestMentionRouting_MultipleInstallsSameAppDifferentHandles(t *testing.T) {
 	if inst1.ID != "i1" {
 		t.Errorf("expected i1, got %q", inst1.ID)
 	}
-	if inst1.AppRequestURL != "http://work.example.com" {
-		t.Errorf("request_url = %q, want %q", inst1.AppRequestURL, "http://work.example.com")
+	if inst1.AppWebhookURL != "http://work.example.com" {
+		t.Errorf("request_url = %q, want %q", inst1.AppWebhookURL, "http://work.example.com")
 	}
 
 	// Route to second handle
@@ -246,8 +246,8 @@ func TestMentionRouting_MultipleInstallsSameAppDifferentHandles(t *testing.T) {
 	if inst2.ID != "i2" {
 		t.Errorf("expected i2, got %q", inst2.ID)
 	}
-	if inst2.AppRequestURL != "http://personal.example.com" {
-		t.Errorf("request_url = %q, want %q", inst2.AppRequestURL, "http://personal.example.com")
+	if inst2.AppWebhookURL != "http://personal.example.com" {
+		t.Errorf("request_url = %q, want %q", inst2.AppWebhookURL, "http://personal.example.com")
 	}
 
 	// Verify they are different installations of the same app
@@ -334,8 +334,8 @@ func TestMentionRouting_FullMentionToEventDelivery(t *testing.T) {
 			{
 				ID: "inst-m-1", AppID: "app-m-1", BotID: "bot-m-1",
 				Handle: "echo-work", Enabled: true,
-				AppRequestURL:    m.server.URL,
-				AppSigningSecret: secret,
+				AppWebhookURL:    m.server.URL,
+				AppWebhookSecret: secret,
 			},
 		},
 		apps: map[string]*store.App{

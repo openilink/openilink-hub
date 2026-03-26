@@ -129,7 +129,7 @@ func TestDeliverEvent_Success(t *testing.T) {
 
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "test-secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "test-secret", AppWebhookURL: srv.URL,
 	}
 	event := NewEvent("message.text", map[string]string{"text": "hello"})
 
@@ -203,7 +203,7 @@ func TestDeliverEvent_CommandEnvelopeType(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: srv.URL,
 	}
 	_, err := d.DeliverEvent(inst, NewEvent("command", map[string]string{"command": "help"}))
 	if err != nil {
@@ -230,7 +230,7 @@ func TestDeliverEvent_SyncReply(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: srv.URL,
 	}
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
 	if err != nil {
@@ -254,7 +254,7 @@ func TestDeliverEvent_SyncReplyDefaultType(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: srv.URL,
 	}
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
 	if err != nil {
@@ -276,7 +276,7 @@ func TestDeliverEvent_Failure500(t *testing.T) {
 	d := newTestDispatcher(mock, srv.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: srv.URL,
 	}
 
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -306,7 +306,7 @@ func TestDeliverEvent_Timeout(t *testing.T) {
 	d := newTestDispatcher(mock, client)
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: srv.URL,
 	}
 
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -322,7 +322,7 @@ func TestDeliverEvent_NoRequestURL(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, http.DefaultClient)
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppRequestURL: "",
+		AppWebhookURL: "",
 	}
 
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -343,7 +343,7 @@ func TestDeliverEvent_EmptyResponseBody(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: srv.URL,
 	}
 
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -371,7 +371,7 @@ func TestDeliverEvent_SignatureVerification(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: secret, AppRequestURL: srv.URL,
+		AppWebhookSecret: secret, AppWebhookURL: srv.URL,
 	}
 	_, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
 	if err != nil {
@@ -394,7 +394,7 @@ func TestDeliverEvent_CreateLogError(t *testing.T) {
 	d := newTestDispatcher(mock, srv.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: srv.URL,
 	}
 
 	result, err := d.DeliverEvent(inst, NewEvent("message.text", nil))
@@ -417,7 +417,7 @@ func TestDeliverEvent_TraceIDHeader(t *testing.T) {
 	d := newTestDispatcher(&mockLogDB{}, srv.Client())
 	inst := &store.AppInstallation{
 		ID: "inst-1", AppID: "app-1", BotID: "bot-1",
-		AppSigningSecret: "secret", AppRequestURL: srv.URL,
+		AppWebhookSecret: "secret", AppWebhookURL: srv.URL,
 	}
 	d.DeliverEvent(inst, NewEvent("message.text", nil))
 
