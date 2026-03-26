@@ -194,7 +194,7 @@ export function BotDetailPage() {
       </div>
 
       {/* Migration Banner */}
-      {channels.length > 0 && (
+      {channels.length > 0 && !showChannels && (
         <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-2xl">
           <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
           <div className="flex-1">
