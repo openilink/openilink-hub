@@ -86,7 +86,7 @@ const contextTokenMaxAge = 24 * time.Hour
 // checkSendStatus is a pure function that determines send capability from pre-fetched data.
 func checkSendStatus(status string, hasFreshToken bool) (bool, string) {
 	if status == "session_expired" {
-		return false, "会话已过期，请重新扫码绑定"
+		return false, "会话已过期，请先在微信中发送一条消息以恢复连接，若仍无法恢复请重新扫码绑定"
 	}
 	if status != "connected" {
 		return false, "Bot 未连接"

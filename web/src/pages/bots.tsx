@@ -230,9 +230,11 @@ function BotInstanceCard({ bot, onRefresh, onRebind }: { bot: any; onRefresh: ()
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40 rounded-xl">
-              <DropdownMenuItem onClick={() => handleAction("reconnect")} className="gap-2">
-                <RefreshCw className="h-3.5 w-3.5" /> 重新连接
-              </DropdownMenuItem>
+              {bot.status !== "session_expired" && (
+                <DropdownMenuItem onClick={() => handleAction("reconnect")} className="gap-2">
+                  <RefreshCw className="h-3.5 w-3.5" /> 重新连接
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => handleAction("delete")} className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive">
                 <Trash2 className="h-3.5 w-3.5" /> 删除账号
               </DropdownMenuItem>
@@ -260,14 +262,18 @@ function BotInstanceCard({ bot, onRefresh, onRebind }: { bot: any; onRefresh: ()
         </div>
         
         {bot.status === "session_expired" && (
-          <div className="mt-4 flex items-center gap-2 rounded-xl bg-destructive/5 p-3 border border-destructive/10">
-            <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
-            <p className="text-[11px] font-medium text-destructive leading-snug flex-1">
-              登录已过期，请重新扫码。
+          <div className="mt-4 space-y-2 rounded-xl bg-destructive/5 p-3 border border-destructive/10">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+              <p className="text-[11px] font-medium text-destructive leading-snug flex-1">
+                会话已过期。请先在微信中给该账号发送一条消息以恢复连接。
+              </p>
+            </div>
+            <p className="text-[10px] text-muted-foreground pl-6">
+              如果发送消息后仍无法恢复，请
+              <button className="underline text-destructive font-medium cursor-pointer" onClick={onRebind}>重新扫码绑定</button>
+              。
             </p>
-            <Button variant="destructive" size="sm" className="h-6 px-2 text-[10px] font-bold shrink-0" onClick={onRebind}>
-              重新扫码
-            </Button>
           </div>
         )}
       </CardContent>
