@@ -39,11 +39,11 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
   const rows = useMemo(() => flattenSpans(spans, tree, collapsed), [spans, tree, collapsed]);
 
   const traceStart = useMemo(
-    () => Math.min(...spans.map((s) => s.start_time)),
+    () => (spans.length > 0 ? Math.min(...spans.map((s) => s.start_time)) : 0),
     [spans],
   );
   const traceEnd = useMemo(
-    () => Math.max(...spans.map((s) => s.end_time || s.start_time)),
+    () => (spans.length > 0 ? Math.max(...spans.map((s) => s.end_time || s.start_time)) : 0),
     [spans],
   );
   const traceDuration = traceEnd - traceStart || 1;

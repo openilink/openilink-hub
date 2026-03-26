@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Activity, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ export function TraceDetailPage() {
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const fetchIdRef = useRef(0);
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!botId || !traceId) return;
     const id = ++fetchIdRef.current;
     setLoading(true);
@@ -33,17 +33,18 @@ export function TraceDetailPage() {
       const data = await api.getTrace(botId, traceId);
       if (fetchIdRef.current !== id) return;
       setSpans(data || []);
-    } catch {
+    } catch (e) {
+      console.error("Failed to load trace:", e);
       if (fetchIdRef.current !== id) return;
       setSpans([]);
     } finally {
       if (fetchIdRef.current === id) setLoading(false);
     }
-  }
+  }, [botId, traceId]);
 
   useEffect(() => {
     load();
-  }, [botId, traceId]);
+  }, [load]);
 
   const rootSpan = useMemo(() => spans.find((s) => !s.parent_span_id), [spans]);
   const selectedSpan = useMemo(

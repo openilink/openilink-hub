@@ -96,12 +96,13 @@ const nodeTypes: NodeTypes = {
 };
 
 export function FlowView({ spans, selectedSpanId, onSelectSpan }: FlowViewProps) {
-  const { layoutNodes, layoutEdges } = useMemo(() => {
+  // Expensive dagre layout — only recompute when spans change
+  const { baseNodes, layoutEdges } = useMemo(() => {
     const nodes: Node[] = spans.map((span) => ({
       id: span.span_id,
       type: "spanNode",
       position: { x: 0, y: 0 },
-      data: { span, isSelected: selectedSpanId === span.span_id },
+      data: { span, isSelected: false },
     }));
 
     const edges: Edge[] = spans
@@ -115,17 +116,31 @@ export function FlowView({ spans, selectedSpanId, onSelectSpan }: FlowViewProps)
       }));
 
     const laid = layoutGraph(nodes, edges);
-    return { layoutNodes: laid, layoutEdges: edges };
-  }, [spans, selectedSpanId]);
+    return { baseNodes: laid, layoutEdges: edges };
+  }, [spans]);
+
+  // Cheap selection update — no dagre relayout
+  const layoutNodes = useMemo(
+    () =>
+      baseNodes.map((node) => ({
+        ...node,
+        data: { ...node.data, isSelected: node.id === selectedSpanId },
+      })),
+    [baseNodes, selectedSpanId],
+  );
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
 
-  // Sync nodes/edges when layout changes (e.g. selectedSpanId updates)
+  // Sync nodes when selection or layout changes
   useEffect(() => {
     setNodes(layoutNodes);
+  }, [layoutNodes, setNodes]);
+
+  // Sync edges when spans change
+  useEffect(() => {
     setEdges(layoutEdges);
-  }, [layoutNodes, layoutEdges, setNodes, setEdges]);
+  }, [layoutEdges, setEdges]);
 
   const onNodeClick = useCallback(
     (_: any, node: Node) => {
