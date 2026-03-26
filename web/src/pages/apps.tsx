@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -18,6 +18,12 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -30,6 +36,73 @@ import { AppIcon } from "../components/app-icon";
 // ==================== Page ====================
 
 export function AppsPage() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [listedApps, setListedApps] = useState<any[]>([]);
+  const [registryApps, setRegistryApps] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [pendingApp, setPendingApp] = useState<any>(null);
+  const [bots, setBots] = useState<any[]>([]);
+  const [selectedBotId, setSelectedBotId] = useState("");
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.listApps({ listing: "listed" }).catch(() => []),
+      api.getMarketplaceApps().catch(() => []),
+      api.listBots().catch(() => []),
+    ]).then(([listed, registry, botList]) => {
+      setListedApps(listed || []);
+      setRegistryApps(registry || []);
+      setBots(botList || []);
+      if (botList?.length) setSelectedBotId(botList[0].id);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  // Group registry apps by registry_name
+  const registryGroups = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    for (const app of registryApps) {
+      const name = app.registry_name || app.registry_url || "Registry";
+      if (!groups[name]) groups[name] = [];
+      groups[name].push(app);
+    }
+    return groups;
+  }, [registryApps]);
+
+  const registryNames = Object.keys(registryGroups);
+  const showTabs = registryNames.length > 0;
+
+  async function handleInstallConfirm() {
+    if (!pendingApp || !selectedBotId) return;
+    const appId = pendingApp.id || pendingApp.local_id;
+    if (appId) {
+      navigate(`/dashboard/accounts/${selectedBotId}/install/${appId}`);
+      setPendingApp(null);
+      return;
+    }
+    setSyncing(true);
+    try {
+      const synced = await api.syncMarketplaceApp(pendingApp.slug);
+      navigate(`/dashboard/accounts/${selectedBotId}/install/${synced.id}`);
+      setPendingApp(null);
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "同步失败", description: e.message });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function filterApps(apps: any[]) {
+    if (!search) return apps;
+    const q = search.toLowerCase();
+    return apps.filter(a =>
+      a.name?.toLowerCase().includes(q) || (a.slug || "").toLowerCase().includes(q)
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -44,128 +117,35 @@ export function AppsPage() {
         </div>
       </div>
 
-      <MarketplaceContent />
-    </div>
-  );
-}
-
-// ==================== Marketplace (Store) ====================
-
-function MarketplaceContent() {
-  const navigate = useNavigate();
-  const [marketplaceApps, setMarketplaceApps] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [pendingApp, setPendingApp] = useState<any>(null);
-  const [bots, setBots] = useState<any[]>([]);
-  const [selectedBotId, setSelectedBotId] = useState("");
-  const [syncing, setSyncing] = useState(false);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    setLoading(true);
-    api.listApps({ listing: "listed" }).then(l => setMarketplaceApps(l || [])).catch(() => setMarketplaceApps([])).finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    api.listBots().then(l => { setBots(l || []); if (l?.length) setSelectedBotId(l[0].id); });
-  }, []);
-
-  const filteredApps = marketplaceApps.filter(a =>
-    !search || a.name?.toLowerCase().includes(search.toLowerCase()) || (a.slug || "").toLowerCase().includes(search.toLowerCase())
-  );
-
-  async function handleInstallConfirm() {
-    if (!pendingApp || !selectedBotId) return;
-    const appId = pendingApp.id || pendingApp.local_id;
-    if (appId) {
-      navigate(`/dashboard/accounts/${selectedBotId}/install/${appId}`);
-      setPendingApp(null);
-      return;
-    }
-    // Marketplace app without local record — sync first
-    setSyncing(true);
-    try {
-      const synced = await api.syncMarketplaceApp(pendingApp.slug);
-      navigate(`/dashboard/accounts/${selectedBotId}/install/${synced.id}`);
-      setPendingApp(null);
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "同步失败", description: e.message });
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  return (
-    <div className="space-y-8">
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
         <Input placeholder="搜索应用..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 rounded-full bg-card shadow-sm border-border/50" aria-label="搜索应用" />
       </div>
 
-      {/* Marketplace Apps */}
-      <div className="space-y-4">
-        <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground">应用市场</h3>
-        {loading ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map(i => <Card key={i} className="h-48 animate-pulse bg-muted/20 rounded-3xl" />)}
-          </div>
-        ) : filteredApps.length === 0 ? (
-          <div className="text-center py-16 space-y-3 border-2 border-dashed rounded-2xl">
-            <Blocks className="w-10 h-10 mx-auto text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">{search ? "没有匹配的应用" : "市场暂无应用"}</p>
-          </div>
-        ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {filteredApps.map((app) => (
-              <Card key={app.slug || app.id} className="group relative overflow-hidden rounded-[2rem] border-border/50 bg-card/50 transition-all hover:shadow-2xl hover:-translate-y-1">
-                <CardHeader className="pb-4">
-                  <div className="flex items-start gap-4">
-                    <AppIcon icon={app.icon} iconUrl={app.icon_url} />
-                    <div className="min-w-0 space-y-1 pt-1">
-                      <CardTitle className="text-lg font-bold truncate group-hover:text-primary transition-colors">{app.name}</CardTitle>
-                      <div className="flex flex-wrap gap-1.5">
-                        {app.author && (
-                          <span className="text-[10px] text-muted-foreground">{app.author}</span>
-                        )}
-                        {app.version && (
-                          <Badge variant="outline" className="text-[9px] h-4 font-bold tracking-tighter opacity-60">
-                            v{app.version}
-                          </Badge>
-                        )}
-                        {app.installed && (
-                          <Badge variant="default" className="text-[9px] h-4 font-bold tracking-tighter">
-                            已安装
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pb-6">
-                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 min-h-[2.5rem]">
-                    {app.description || "暂无描述"}
-                  </p>
-                </CardContent>
-                <CardFooter className="bg-muted/30 pt-4 flex justify-between items-center px-6">
-                  <span className="text-[10px] font-bold text-muted-foreground">{app.author || app.slug}</span>
-                  {app.installed && app.update_available ? (
-                    <Button size="sm" variant="outline" onClick={() => setPendingApp(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs">
-                      更新 <RefreshCw className="h-3 w-3" />
-                    </Button>
-                  ) : app.installed ? (
-                    <Badge variant="secondary" className="text-xs">已安装</Badge>
-                  ) : (
-                    <Button size="sm" onClick={() => setPendingApp(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs shadow-lg shadow-primary/10">
-                      安装 <Download className="h-3 w-3" />
-                    </Button>
-                  )}
-                </CardFooter>
-              </Card>
+      {loading ? (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map(i => <Card key={i} className="h-48 animate-pulse bg-muted/20 rounded-3xl" />)}
+        </div>
+      ) : showTabs ? (
+        <Tabs defaultValue="local">
+          <TabsList>
+            <TabsTrigger value="local">本站</TabsTrigger>
+            {registryNames.map(name => (
+              <TabsTrigger key={name} value={name}>{name}</TabsTrigger>
             ))}
-          </div>
-        )}
-      </div>
+          </TabsList>
+          <TabsContent value="local" className="mt-6">
+            <AppGrid apps={filterApps(listedApps)} search={search} onInstall={setPendingApp} />
+          </TabsContent>
+          {registryNames.map(name => (
+            <TabsContent key={name} value={name} className="mt-6">
+              <AppGrid apps={filterApps(registryGroups[name])} search={search} onInstall={setPendingApp} />
+            </TabsContent>
+          ))}
+        </Tabs>
+      ) : (
+        <AppGrid apps={filterApps(listedApps)} search={search} onInstall={setPendingApp} />
+      )}
 
       <Dialog open={!!pendingApp} onOpenChange={(o) => !o && setPendingApp(null)}>
         <DialogContent className="sm:max-w-md">
@@ -190,3 +170,66 @@ function MarketplaceContent() {
   );
 }
 
+// ==================== App Grid ====================
+
+function AppGrid({ apps, search, onInstall }: { apps: any[]; search: string; onInstall: (app: any) => void }) {
+  if (apps.length === 0) {
+    return (
+      <div className="text-center py-16 space-y-3 border-2 border-dashed rounded-2xl">
+        <Blocks className="w-10 h-10 mx-auto text-muted-foreground/40" />
+        <p className="text-sm text-muted-foreground">{search ? "没有匹配的应用" : "暂无应用"}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      {apps.map((app) => (
+        <Card key={app.slug || app.id} className="group relative overflow-hidden rounded-2xl border-border/50 bg-card/50 transition-all hover:shadow-2xl hover:-translate-y-1">
+          <CardHeader className="pb-4">
+            <div className="flex items-start gap-4">
+              <AppIcon icon={app.icon} iconUrl={app.icon_url} />
+              <div className="min-w-0 space-y-1 pt-1">
+                <CardTitle className="text-lg font-bold truncate group-hover:text-primary transition-colors">{app.name}</CardTitle>
+                <div className="flex flex-wrap gap-1.5">
+                  {(app.author || app.owner_name) && (
+                    <span className="text-xs text-muted-foreground">{app.author || app.owner_name}</span>
+                  )}
+                  {app.version && (
+                    <Badge variant="outline" className="h-4 font-bold tracking-tighter opacity-60">
+                      v{app.version}
+                    </Badge>
+                  )}
+                  {app.installed && (
+                    <Badge variant="default" className="h-4 font-bold tracking-tighter">
+                      已安装
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-6">
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 min-h-[2.5rem]">
+              {app.description || "暂无描述"}
+            </p>
+          </CardContent>
+          <CardFooter className="bg-muted/30 pt-4 flex justify-between items-center px-6">
+            <span className="text-xs font-bold text-muted-foreground">{app.author || app.owner_name || app.slug}</span>
+            {app.installed && app.update_available ? (
+              <Button size="sm" variant="outline" onClick={() => onInstall(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs">
+                更新 <RefreshCw className="h-3 w-3" />
+              </Button>
+            ) : app.installed ? (
+              <Badge variant="secondary" className="text-xs">已安装</Badge>
+            ) : (
+              <Button size="sm" onClick={() => onInstall(app)} className="h-8 rounded-full px-4 gap-1.5 font-bold text-xs shadow-lg shadow-primary/10">
+                安装 <Download className="h-3 w-3" />
+              </Button>
+            )}
+          </CardFooter>
+        </Card>
+      ))}
+    </div>
+  );
+}
