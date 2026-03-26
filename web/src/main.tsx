@@ -60,11 +60,7 @@ createRoot(document.getElementById("root")!).render(
               </Route>
 
               {/* Apps */}
-              <Route path="apps" element={<AppsPage />}>
-                <Route index element={<Navigate to="my" replace />} />
-                <Route path="my" element={null} />
-                <Route path="marketplace" element={null} />
-              </Route>
+              <Route path="apps" element={<AppsPage />} />
               <Route path="apps/:id" element={<AppDetailPage />} />
 
               {/* Domain 4: Management & Ops */}

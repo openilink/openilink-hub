@@ -39,7 +39,7 @@ export function OnboardingPage() {
     if (step !== 2 || !botId) return;
     setLoadingApps(true);
     Promise.all([
-      api.listApps({ listing: true }),
+      api.listApps({ listing: "listed" }),
       api.listBotApps(botId),
     ]).then(([marketplace, installed]) => {
       setApps(marketplace || []);
