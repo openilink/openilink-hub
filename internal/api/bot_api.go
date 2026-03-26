@@ -165,8 +165,10 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		ct := detectContentType(itemType)
 		ext := detectExt(outMsg.FileName, itemType)
 		now := time.Now()
+		var rnd [4]byte
+		rand.Read(rnd[:])
 		key := fmt.Sprintf("%s/%s/out_%d_%x%s", inst.BotID,
-			now.Format("2006/01/02"), now.UnixMilli(), now.UnixNano()%0xFFFF, ext)
+			now.Format("2006/01/02"), now.UnixMilli(), rnd, ext)
 		if _, err := s.ObjectStore.Put(r.Context(), key, ct, outMsg.Data); err == nil {
 			mediaStatus = "ready"
 			mediaKeys, _ = json.Marshal(map[string]string{"0": key})

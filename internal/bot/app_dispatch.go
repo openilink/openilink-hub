@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -470,8 +471,10 @@ func (m *Manager) sendAppMedia(ctx context.Context, inst *Instance, to, contextT
 		ct := detectOutboundContentType(result.ReplyType)
 		ext := detectOutboundExt(fileName, result.ReplyType)
 		now := time.Now()
+		var rnd [4]byte
+		rand.Read(rnd[:])
 		key := fmt.Sprintf("%s/%s/out_%d_%x%s", inst.DBID,
-			now.Format("2006/01/02"), now.UnixMilli(), now.UnixNano()%0xFFFF, ext)
+			now.Format("2006/01/02"), now.UnixMilli(), rnd, ext)
 		if _, err := m.storage.Put(ctx, key, ct, data); err == nil {
 			mediaStatus = "ready"
 			mediaKeys, _ = json.Marshal(map[string]string{"0": key})
