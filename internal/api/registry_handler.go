@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -11,7 +12,11 @@ import (
 // GET /api/registry/v1/apps.json — public endpoint for this Hub to act as a registry
 func (s *Server) handleRegistryApps(w http.ResponseWriter, r *http.Request) {
 	// Check if registry is enabled
-	enabled, _ := s.Store.GetConfig("registry.enabled")
+	enabled, err := s.Store.GetConfig("registry.enabled")
+	if err != nil {
+		slog.Error("failed to get registry config", "err", err)
+		// Treat as disabled if config is unreadable
+	}
 	if enabled != "true" {
 		http.NotFound(w, r)
 		return

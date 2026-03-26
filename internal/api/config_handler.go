@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -182,7 +183,10 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/admin/config/registry — get registry config
 func (s *Server) handleGetRegistryConfig(w http.ResponseWriter, r *http.Request) {
-	enabled, _ := s.Store.GetConfig("registry.enabled")
+	enabled, err := s.Store.GetConfig("registry.enabled")
+	if err != nil {
+		slog.Error("failed to get registry config", "err", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"enabled": enabled,

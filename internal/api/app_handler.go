@@ -122,11 +122,19 @@ func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "not found", http.StatusNotFound)
 			return
 		}
-		app.WebhookSecret = "" // hide secrets from non-owners
+		// Secret is already hidden via json:"-" on store.App
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(app)
+		return
 	}
 
+	// Owner sees everything including secrets
+	type appWithSecret struct {
+		*store.App
+		WebhookSecret string `json:"webhook_secret,omitempty"`
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(app)
+	json.NewEncoder(w).Encode(appWithSecret{App: app, WebhookSecret: app.WebhookSecret})
 }
 
 // PUT /api/apps/{id}

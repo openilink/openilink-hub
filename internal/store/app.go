@@ -17,7 +17,7 @@ type App struct {
 	OAuthSetupURL       string          `json:"oauth_setup_url,omitempty"`
 	OAuthRedirectURL    string          `json:"oauth_redirect_url,omitempty"`
 	WebhookURL          string          `json:"webhook_url,omitempty"`
-	WebhookSecret       string          `json:"webhook_secret,omitempty"`
+	WebhookSecret       string          `json:"-"` // never serialize; exposed explicitly where needed
 	WebhookVerified     bool            `json:"webhook_verified"`
 	Kind                string          `json:"kind"`
 	Registry            string          `json:"registry,omitempty"`

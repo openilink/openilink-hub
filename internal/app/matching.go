@@ -112,9 +112,9 @@ func (d *Dispatcher) MatchEvent(botID string, eventType string) ([]store.AppInst
 			continue
 		}
 
-		// App must have message:read scope to receive message events
+		// Installation (or app) must have message:read scope to receive message events
 		if strings.HasPrefix(eventType, "message.") || eventType == "message" {
-			if !appHasScope(app, "message:read") {
+			if !instOrAppHasScope(&inst, app, "message:read") {
 				continue
 			}
 		}
@@ -192,6 +192,25 @@ func appHasCommand(app *store.App, commandName string) bool {
 		}
 	}
 	return false
+}
+
+// instOrAppHasScope checks if the installation has the scope granted.
+// If installation scopes are empty (default), falls back to app-level scopes.
+func instOrAppHasScope(inst *store.AppInstallation, app *store.App, scope string) bool {
+	// Check installation-level scopes first
+	if len(inst.Scopes) > 0 && string(inst.Scopes) != "[]" {
+		var scopes []string
+		if err := json.Unmarshal(inst.Scopes, &scopes); err == nil {
+			for _, s := range scopes {
+				if s == scope {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	// Fall back to app-level scopes
+	return appHasScope(app, scope)
 }
 
 // appHasScope checks whether an app declares the given scope.

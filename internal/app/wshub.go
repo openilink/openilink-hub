@@ -34,8 +34,13 @@ func (h *WSHub) Register(instID string, c *WSConn) {
 	h.conns[instID] = c
 }
 
-func (h *WSHub) Unregister(instID string) {
+func (h *WSHub) Unregister(instID string, conn *WSConn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	delete(h.conns, instID)
+	// Only delete if the registered connection matches the one being removed.
+	// A newer connection may have replaced it via Register, so we must not
+	// delete the new connection when the old one's cleanup goroutine fires.
+	if h.conns[instID] == conn {
+		delete(h.conns, instID)
+	}
 }

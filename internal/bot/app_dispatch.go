@@ -60,6 +60,10 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
+		// TODO: For WS-only apps (no webhook_url), events should still be
+		// deliverable if a WebSocket connection exists in the WSHub. Currently
+		// DeliverWithRetry requires a webhook_url. This will be addressed when
+		// implementing the full WS event delivery endpoint.
 		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppWebhookURL, store.SpanKindClient, map[string]any{
 			"app.name":    installations[i].AppName,
 			"app.slug":    installations[i].AppSlug,
