@@ -225,44 +225,60 @@ export function BotDetailPage() {
               <Cable className="w-10 h-10 mx-auto text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">暂无转发规则</p>
             </div>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {channels.map((ch) => {
-                const bridgeApp = builtinApps.find((a: any) => a.slug === "bridge");
-                const handleMigrate = () => {
-                  if (!bridgeApp) {
-                    toast({ variant: "destructive", title: "未找到 Bridge App", description: "请确认 Bridge App 已注册。" });
-                    return;
-                  }
-                  const params = new URLSearchParams();
-                  if (ch.handle) params.set("handle", ch.handle);
-                  if (ch.webhook_config?.url) params.set("config.forward_url", ch.webhook_config.url);
-                  navigate(`/dashboard/accounts/${id}/install/${bridgeApp.id}?${params.toString()}`);
-                };
-                return (
-                  <Card key={ch.id} className="group relative border-border/50 bg-card/50 rounded-2xl transition-all hover:shadow-xl hover:border-primary/20 cursor-pointer" onClick={handleMigrate}>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                          <Cable className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+          ) : (() => {
+            const bridgeApp = builtinApps.find((a: any) => a.slug === "bridge");
+            const bridgeLoading = marketplaceLoading;
+            const handleMigrate = (ch: any) => {
+              if (bridgeLoading) return;
+              if (!bridgeApp) {
+                toast({ variant: "destructive", title: "未找到 Bridge App", description: "请确认 Bridge App 已注册。" });
+                return;
+              }
+              const params = new URLSearchParams();
+              if (ch.handle) params.set("handle", ch.handle);
+              if (ch.webhook_config?.url) params.set("config.forward_url", ch.webhook_config.url);
+              navigate(`/dashboard/accounts/${id}/install/${bridgeApp.id}?${params.toString()}`);
+            };
+            return (
+              <div className="space-y-4">
+                <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
+                  迁移完成后，请手动删除旧的转发规则以避免重复转发。如果转发规则配置了认证或脚本，需要在安装后手动配置。
+                </div>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {channels.map((ch) => (
+                    <Card
+                      key={ch.id}
+                      className={`group relative border-border/50 bg-card/50 rounded-2xl transition-all hover:shadow-xl hover:border-primary/20 ${bridgeLoading ? "opacity-50" : "cursor-pointer"}`}
+                      onClick={() => handleMigrate(ch)}
+                    >
+                      <CardHeader>
+                        <div className="flex justify-between items-start">
+                          <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                            <Cable className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant={ch.enabled ? "default" : "secondary"} className="h-5 rounded-full text-xs font-bold">
+                              {ch.enabled ? "运行中" : "已停用"}
+                            </Badge>
+                            <Badge variant="outline" className="h-5 rounded-full text-xs font-bold">待迁移</Badge>
+                          </div>
                         </div>
-                        <Badge variant="outline" className="h-5 rounded-full text-xs font-bold">待迁移</Badge>
-                      </div>
-                      <CardTitle className="text-lg font-bold mt-4">{ch.name}</CardTitle>
-                      <p className="text-xs font-mono text-muted-foreground">@{ch.handle || "默认"}</p>
-                      {ch.webhook_config?.url && (
-                        <p className="text-xs text-muted-foreground truncate">{ch.webhook_config.url}</p>
-                      )}
-                    </CardHeader>
-                    <CardFooter className="bg-muted/30 pt-3 flex justify-between items-center px-6">
-                      <span className="text-xs text-muted-foreground">点击迁移到 Bridge App</span>
-                      <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-all" />
-                    </CardFooter>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+                        <CardTitle className="text-lg font-bold mt-4">{ch.name}</CardTitle>
+                        <p className="text-xs font-mono text-muted-foreground">@{ch.handle || "默认"}</p>
+                        {ch.webhook_config?.url && (
+                          <p className="text-xs text-muted-foreground truncate">{ch.webhook_config.url}</p>
+                        )}
+                      </CardHeader>
+                      <CardFooter className="bg-muted/30 pt-3 flex justify-between items-center px-6">
+                        <span className="text-xs text-muted-foreground">点击迁移到 Bridge App</span>
+                        <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-all" />
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
