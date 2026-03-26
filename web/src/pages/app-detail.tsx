@@ -389,23 +389,23 @@ function InstallAppSection({ appId }: { appId: string }) {
           {bots.length === 0 ? (
             <p className="text-sm text-muted-foreground">请先创建一个账号，然后再安装应用。</p>
           ) : (
-          <div className="flex gap-2 items-end">
-            <div className="flex-1 space-y-1">
-              <label htmlFor="install-bot-select" className="text-xs text-muted-foreground">账号</label>
-              <select id="install-bot-select" value={botId} onChange={e => setBotId(e.target.value)}
-                className="w-full h-8 px-2 rounded-md border bg-background text-xs outline-none">
-                {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 space-y-1">
+                <label htmlFor="install-bot-select" className="text-xs text-muted-foreground">账号</label>
+                <select id="install-bot-select" value={botId} onChange={e => setBotId(e.target.value)}
+                  className="w-full h-8 px-2 rounded-md border bg-background text-xs outline-none">
+                  {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div className="flex-1 space-y-1">
+                <label htmlFor="install-handle-input" className="text-xs text-muted-foreground">Handle</label>
+                <Input id="install-handle-input" value={handle} onChange={e => setHandle(e.target.value)} placeholder="如 notify" className="h-8 text-xs font-mono" />
+              </div>
+              <Button size="sm" onClick={handleInstall} disabled={installing || !botId || !handle.trim()} className="h-8">
+                {installing && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                安装
+              </Button>
             </div>
-            <div className="flex-1 space-y-1">
-              <label htmlFor="install-handle-input" className="text-xs text-muted-foreground">Handle</label>
-              <Input id="install-handle-input" value={handle} onChange={e => setHandle(e.target.value)} placeholder="如 notify" className="h-8 text-xs font-mono" />
-            </div>
-            <Button size="sm" onClick={handleInstall} disabled={installing || !botId || !handle.trim()} className="h-8">
-              {installing && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-              安装
-            </Button>
-          </div>
           )}
         </CardContent>
       </Card>
@@ -465,38 +465,38 @@ function DistributionSection({ app, onUpdate }: { app: any; onUpdate: () => void
           <CardTitle>应用市场</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-        {app.listing === "listed" ? (
-          <div className="flex items-center gap-2">
-            <Badge variant="default">已上架</Badge>
-            <span className="text-xs text-muted-foreground">你的应用已在应用市场中展示。</span>
-          </div>
-        ) : app.listing === "pending" ? (
-          <div className="space-y-2">
+          {app.listing === "listed" ? (
             <div className="flex items-center gap-2">
-              <Badge variant="outline">审核中</Badge>
-              <span className="text-xs text-muted-foreground">上架申请已提交，等待管理员审核。</span>
+              <Badge variant="default">已上架</Badge>
+              <span className="text-xs text-muted-foreground">你的应用已在应用市场中展示。</span>
             </div>
-          </div>
-        ) : app.listing === "rejected" ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="destructive">已拒绝</Badge>
-              {app.listing_reject_reason && (
-                <span className="text-xs text-destructive">原因：{app.listing_reject_reason}</span>
-              )}
+          ) : app.listing === "pending" ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">审核中</Badge>
+                <span className="text-xs text-muted-foreground">上架申请已提交，等待管理员审核。</span>
+              </div>
             </div>
-            <Button size="sm" variant="outline" disabled={loading} onClick={handleRequestListing}>
-              {loading ? "..." : "重新申请"}
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">你的应用尚未上架。上架后其他用户可以搜索并安装。</p>
-            <Button size="sm" variant="outline" disabled={loading} onClick={handleRequestListing}>
-              {loading ? "..." : "申请上架"}
-            </Button>
-          </div>
-        )}
+          ) : app.listing === "rejected" ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="destructive">已拒绝</Badge>
+                {app.listing_reject_reason && (
+                  <span className="text-xs text-destructive">原因：{app.listing_reject_reason}</span>
+                )}
+              </div>
+              <Button size="sm" variant="outline" disabled={loading} onClick={handleRequestListing}>
+                {loading ? "..." : "重新申请"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">你的应用尚未上架。上架后其他用户可以搜索并安装。</p>
+              <Button size="sm" variant="outline" disabled={loading} onClick={handleRequestListing}>
+                {loading ? "..." : "申请上架"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
