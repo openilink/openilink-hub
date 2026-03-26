@@ -124,14 +124,14 @@ export function InstallationDetailPage() {
               >
                 {inst.enabled ? "运行中" : "已停用"}
               </Badge>
-              {app.registry && (
+              {app.registry && app.registry !== "builtin" && (
                 <Badge variant="outline" className="rounded-full font-bold">
                   来自应用市场
                 </Badge>
               )}
               {app.registry === "builtin" && (
                 <Badge variant="outline" className="rounded-full font-bold">
-                  自定义集成
+                  内置应用
                 </Badge>
               )}
             </div>
@@ -404,8 +404,6 @@ function ConfigSection({
 function EventLogsSection({ appId, instId }: { appId: string; instId: string }) {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-
   const loadLogs = useCallback(async () => {
     try {
       const data = (await api.listEventLogs(appId, instId, 50)) || [];
@@ -462,16 +460,9 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.map((log) => {
-                  const isExpanded = expandedRow === log.id;
-                  const hasDetail = log.request_body || log.response_body;
-                  return (
+                {logs.map((log) => (
                     <TableRow
                       key={log.id || log.trace_id + log.created_at}
-                      className={hasDetail ? "cursor-pointer" : ""}
-                      onClick={() =>
-                        hasDetail && setExpandedRow(isExpanded ? null : log.id)
-                      }
                     >
                       <TableCell className="font-mono whitespace-nowrap">
                         {formatTime(log.created_at)}
@@ -494,8 +485,7 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
                         {log.error || "-"}
                       </TableCell>
                     </TableRow>
-                  );
-                })}
+                ))}
               </TableBody>
             </Table>
           </div>
