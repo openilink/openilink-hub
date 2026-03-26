@@ -184,7 +184,7 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
   function renderGuide(): string | null {
     if (app.guide) {
       return app.guide
-        .replace(/\{hub_url\}/g, hubUrl.replace(/^https?:\/\//, ""))
+        .replace(/\{hub_url\}/g, hubUrl)
         .replace(/\{your_token\}/g, token || "<your_token>");
     }
     return null;
