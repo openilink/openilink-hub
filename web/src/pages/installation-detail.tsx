@@ -14,7 +14,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
+import { Card, CardHeader, CardTitle, CardAction, CardContent } from "../components/ui/card";
 import {
   Table,
   TableBody,
@@ -168,6 +168,7 @@ export function InstallationDetailPage() {
 function TokenSection({ app, inst }: { app: any; inst: any }) {
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
   const token = inst.app_token || inst.token || "";
   const hubUrl = window.location.origin;
 
@@ -175,6 +176,8 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      toast({ variant: "destructive", title: "复制失败", description: "请手动选中复制" });
     });
   }
 
@@ -424,8 +427,8 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>事件投递日志</CardTitle>
+        <CardTitle>事件投递日志</CardTitle>
+        <CardAction>
           <Button
             variant="ghost"
             size="sm"
@@ -435,7 +438,7 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
             <RefreshCw className="h-3 w-3" />
             刷新
           </Button>
-        </div>
+        </CardAction>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -461,30 +464,28 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
               </TableHeader>
               <TableBody>
                 {logs.map((log) => (
-                    <TableRow
-                      key={log.id || log.trace_id + log.created_at}
-                    >
-                      <TableCell className="font-mono whitespace-nowrap">
-                        {formatTime(log.created_at)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="font-mono">
-                          {log.event_type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-muted-foreground">
-                        {log.trace_id ? log.trace_id.slice(0, 12) + "..." : "-"}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={log.status_code || log.status} />
-                      </TableCell>
-                      <TableCell className="font-mono">
-                        {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
-                      </TableCell>
-                      <TableCell className="text-destructive max-w-48 truncate">
-                        {log.error || "-"}
-                      </TableCell>
-                    </TableRow>
+                  <TableRow key={log.id || log.trace_id + log.created_at}>
+                    <TableCell className="font-mono whitespace-nowrap">
+                      {formatTime(log.created_at)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-mono">
+                        {log.event_type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-muted-foreground">
+                      {log.trace_id ? log.trace_id.slice(0, 12) + "..." : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={log.status_code || log.status} />
+                    </TableCell>
+                    <TableCell className="font-mono">
+                      {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
+                    </TableCell>
+                    <TableCell className="text-destructive max-w-48 truncate">
+                      {log.error || "-"}
+                    </TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
@@ -521,8 +522,8 @@ function ApiLogsSection({ appId, instId }: { appId: string; instId: string }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>API 调用日志</CardTitle>
+        <CardTitle>API 调用日志</CardTitle>
+        <CardAction>
           <Button
             variant="ghost"
             size="sm"
@@ -532,7 +533,7 @@ function ApiLogsSection({ appId, instId }: { appId: string; instId: string }) {
             <RefreshCw className="h-3 w-3" />
             刷新
           </Button>
-        </div>
+        </CardAction>
       </CardHeader>
       <CardContent>
         {loading ? (
