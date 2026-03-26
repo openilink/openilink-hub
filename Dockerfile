@@ -15,12 +15,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /app/internal/web/dist ./internal/web/dist
-RUN CGO_ENABLED=1 go build -o /openilink-hub .
+RUN CGO_ENABLED=1 go build -o /oih .
 
 # --- Runtime ---
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
-COPY --from=backend /openilink-hub /usr/local/bin/openilink-hub
+COPY --from=backend /oih /usr/local/bin/oih
 EXPOSE 9800
-ENTRYPOINT ["openilink-hub"]
+ENTRYPOINT ["oih"]
 CMD ["-listen", "0.0.0.0:9800"]

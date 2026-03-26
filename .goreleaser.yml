@@ -8,7 +8,7 @@ before:
 
 builds:
   - id: linux-amd64
-    binary: openilink-hub
+    binary: oih
     goos: [linux]
     goarch: [amd64]
     env:

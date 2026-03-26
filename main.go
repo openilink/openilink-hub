@@ -46,7 +46,7 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version":
-			fmt.Printf("openilink-hub %s (%s, %s)\n", version, commit, date)
+			fmt.Printf("oih (OpeniLink Hub) %s (%s, %s)\n", version, commit, date)
 			return
 		case "install":
 			listen := ":9800"

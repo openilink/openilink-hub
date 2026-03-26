@@ -1,6 +1,6 @@
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
-COPY openilink-hub /usr/local/bin/openilink-hub
+COPY oih /usr/local/bin/oih
 EXPOSE 9800
-ENTRYPOINT ["openilink-hub"]
+ENTRYPOINT ["oih"]
 CMD ["-listen", "0.0.0.0:9800"]
