@@ -271,7 +271,7 @@ function BotInstanceCard({ bot, onRefresh, onRebind }: { bot: any; onRefresh: ()
             </div>
             <p className="text-[10px] text-muted-foreground pl-6">
               如果发送消息后仍无法恢复，请
-              <button className="underline text-destructive font-medium cursor-pointer" onClick={onRebind}>重新扫码绑定</button>
+              <button type="button" className="underline text-destructive font-medium cursor-pointer" onClick={onRebind}>重新扫码绑定</button>
               。
             </p>
           </div>
