@@ -19,7 +19,6 @@ type App struct {
 	WebhookURL          string          `json:"webhook_url,omitempty"`
 	WebhookSecret       string          `json:"-"` // never serialize; exposed explicitly where needed
 	WebhookVerified     bool            `json:"webhook_verified"`
-	Kind                string          `json:"kind"`
 	Registry            string          `json:"registry,omitempty"`
 	Version             string          `json:"version,omitempty"`
 	Readme              string          `json:"readme,omitempty"`
@@ -60,7 +59,6 @@ type AppInstallation struct {
 	AppIconURL       string `json:"app_icon_url,omitempty"`
 	AppWebhookURL    string `json:"-"`
 	AppWebhookSecret string `json:"-"`
-	AppKind          string `json:"app_kind,omitempty"`
 	AppRegistry      string `json:"app_registry,omitempty"`
 	AppReadme        string `json:"app_readme,omitempty"`
 	AppGuide         string `json:"app_guide,omitempty"`
@@ -70,7 +68,7 @@ type AppInstallation struct {
 type AppStore interface {
 	CreateApp(app *App) (*App, error)
 	GetApp(id string) (*App, error)
-	GetAppBySlug(slug string) (*App, error)
+	GetAppBySlug(slug, registry string) (*App, error)
 	ListAppsByOwner(ownerID string) ([]App, error)
 	ListListedApps() ([]App, error)
 	ListAllApps() ([]App, error)

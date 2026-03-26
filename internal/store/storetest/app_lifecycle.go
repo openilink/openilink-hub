@@ -40,16 +40,12 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 			WebhookURL:       "https://example.com/webhook",
 			OAuthSetupURL:    "https://example.com/setup",
 			OAuthRedirectURL: "https://example.com/redirect",
-			Kind:             "app",
 		})
 		if err != nil {
 			t.Fatalf("CreateApp: %v", err)
 		}
 		if app.ID == "" {
 			t.Fatal("expected non-empty ID")
-		}
-		if app.Kind != "app" {
-			t.Errorf("kind = %q, want %q", app.Kind, "app")
 		}
 		if app.Listing != "unlisted" {
 			t.Errorf("listing = %q, want %q", app.Listing, "unlisted")
@@ -108,27 +104,27 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		}
 	})
 
-	t.Run("CreateIntegrationApp", func(t *testing.T) {
+	t.Run("CreateBuiltinApp", func(t *testing.T) {
 		app, err := s.CreateApp(&store.App{
 			OwnerID:     u.ID,
-			Name:        "My Integration",
-			Slug:        "my-integration",
-			Description: "integration without webhook",
-			Kind:        "integration",
+			Name:        "My Builtin App",
+			Slug:        "my-builtin",
+			Description: "builtin template app",
+			Registry:    "builtin",
 		})
 		if err != nil {
-			t.Fatalf("CreateApp(integration): %v", err)
+			t.Fatalf("CreateApp(builtin): %v", err)
 		}
-		if app.Kind != "integration" {
-			t.Errorf("kind = %q, want %q", app.Kind, "integration")
+		if app.Registry != "builtin" {
+			t.Errorf("registry = %q, want %q", app.Registry, "builtin")
 		}
 		if app.WebhookURL != "" {
-			t.Errorf("webhook_url should be empty for integration, got %q", app.WebhookURL)
+			t.Errorf("webhook_url should be empty for builtin, got %q", app.WebhookURL)
 		}
 	})
 
 	t.Run("GetAppBySlug", func(t *testing.T) {
-		got, err := s.GetAppBySlug("full-app")
+		got, err := s.GetAppBySlug("full-app", "")
 		if err != nil {
 			t.Fatalf("GetAppBySlug: %v", err)
 		}
@@ -138,14 +134,97 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 	})
 
 	t.Run("GetAppBySlug_NotFound", func(t *testing.T) {
-		_, err := s.GetAppBySlug("nonexistent-slug")
+		_, err := s.GetAppBySlug("nonexistent-slug", "")
 		if err == nil {
 			t.Error("expected error for non-existent slug")
 		}
 	})
 
+	t.Run("DuplicateSlug_SameRegistry_Conflict", func(t *testing.T) {
+		// Creating another app with same slug and same registry should fail
+		_, err := s.CreateApp(&store.App{
+			OwnerID:     u.ID,
+			Name:        "Full App Duplicate",
+			Slug:        "full-app",
+			Description: "same slug, same registry (empty)",
+		})
+		if err == nil {
+			t.Fatal("expected conflict error for duplicate slug+registry")
+		}
+	})
+
+	t.Run("LocalAppSameSlugAsBuiltin", func(t *testing.T) {
+		// A local app (registry="") with the same slug as a builtin app should succeed
+		builtinApp, err := s.CreateApp(&store.App{
+			OwnerID:  u.ID,
+			Name:     "Builtin Full App",
+			Slug:     "full-app",
+			Registry: "builtin",
+		})
+		if err != nil {
+			t.Fatalf("CreateApp(builtin same slug): %v", err)
+		}
+		// Look up each by slug+registry
+		gotLocal, err := s.GetAppBySlug("full-app", "")
+		if err != nil {
+			t.Fatalf("GetAppBySlug(local): %v", err)
+		}
+		if gotLocal.Name != "Full App" {
+			t.Errorf("name = %q, want %q", gotLocal.Name, "Full App")
+		}
+		gotBuiltin, err := s.GetAppBySlug("full-app", "builtin")
+		if err != nil {
+			t.Fatalf("GetAppBySlug(builtin): %v", err)
+		}
+		if gotBuiltin.Name != "Builtin Full App" {
+			t.Errorf("name = %q, want %q", gotBuiltin.Name, "Builtin Full App")
+		}
+		// Clean up
+		s.DeleteApp(builtinApp.ID)
+	})
+
+	t.Run("DuplicateSlug_DifferentRegistry", func(t *testing.T) {
+		// Create two marketplace apps with the same slug but different registries
+		regApp1, err := s.CreateApp(&store.App{
+			OwnerID:  u.ID,
+			Name:     "RegApp Alpha",
+			Slug:     "reg-dup-slug",
+			Registry: "https://alpha.example.com",
+		})
+		if err != nil {
+			t.Fatalf("CreateApp(registry alpha): %v", err)
+		}
+		regApp2, err := s.CreateApp(&store.App{
+			OwnerID:  u.ID,
+			Name:     "RegApp Beta",
+			Slug:     "reg-dup-slug",
+			Registry: "https://beta.example.com",
+		})
+		if err != nil {
+			t.Fatalf("CreateApp(registry beta): %v", err)
+		}
+		// Look up each by slug+registry
+		gotAlpha, err := s.GetAppBySlug("reg-dup-slug", "https://alpha.example.com")
+		if err != nil {
+			t.Fatalf("GetAppBySlug(alpha): %v", err)
+		}
+		if gotAlpha.Name != "RegApp Alpha" {
+			t.Errorf("name = %q, want %q", gotAlpha.Name, "RegApp Alpha")
+		}
+		gotBeta, err := s.GetAppBySlug("reg-dup-slug", "https://beta.example.com")
+		if err != nil {
+			t.Fatalf("GetAppBySlug(beta): %v", err)
+		}
+		if gotBeta.Name != "RegApp Beta" {
+			t.Errorf("name = %q, want %q", gotBeta.Name, "RegApp Beta")
+		}
+		// Clean up
+		s.DeleteApp(regApp1.ID)
+		s.DeleteApp(regApp2.ID)
+	})
+
 	t.Run("UpdateAppFields", func(t *testing.T) {
-		app, _ := s.GetAppBySlug("full-app")
+		app, _ := s.GetAppBySlug("full-app", "")
 		newTools, _ := json.Marshal([]store.AppTool{
 			{Name: "deploy", Command: "deploy"},
 			{Name: "status", Command: "status"},
@@ -214,7 +293,6 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 			Version:     "1.0.0",
 			Readme:      "# Marketplace App",
 			Guide:       "Install and configure",
-			Kind:        "app",
 			WebhookURL:  "https://marketplace.example.com/webhook",
 			Tools:       tools,
 			Events:      events,
@@ -295,7 +373,7 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 	// 3. Installation lifecycle
 	// -----------------------------------------------------------------------
 
-	app, _ := s.GetAppBySlug("full-app")
+	app, _ := s.GetAppBySlug("full-app", "")
 	var instID string
 	var instToken string
 
@@ -334,9 +412,6 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		}
 		if got.AppSlug == "" {
 			t.Error("joined app_slug should not be empty")
-		}
-		if got.AppKind == "" {
-			t.Error("joined app_kind should not be empty")
 		}
 		if got.AppWebhookURL == "" {
 			t.Error("joined app_webhook_url should not be empty for an app with webhook_url")
@@ -475,9 +550,6 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		}
 		if got.AppGuide != "Updated guide" {
 			t.Errorf("joined app_guide = %q", got.AppGuide)
-		}
-		if got.AppKind != "app" {
-			t.Errorf("joined app_kind = %q", got.AppKind)
 		}
 		// Clean up.
 		s.DeleteInstallation(inst.ID)
@@ -721,7 +793,7 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 	})
 
 	t.Run("ScopeRoundTrip_InstallationScopes", func(t *testing.T) {
-		scopeApp, _ := s.GetAppBySlug("scope-test-app")
+		scopeApp, _ := s.GetAppBySlug("scope-test-app", "")
 		inst, err := s.InstallApp(scopeApp.ID, b.ID)
 		if err != nil {
 			t.Fatalf("InstallApp: %v", err)

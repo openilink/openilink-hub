@@ -87,7 +87,7 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find the local app (must be a marketplace app with registry set)
-	localApp, err := s.Store.GetAppBySlug(slug)
+	localApp, err := s.Store.GetAppBySlug(slug, regApp.RegistryURL)
 	if err != nil || localApp == nil || localApp.Registry == "" {
 		jsonError(w, "app not installed from marketplace", http.StatusNotFound)
 		return

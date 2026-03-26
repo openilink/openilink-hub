@@ -127,6 +127,7 @@ func (s *Server) Handler() http.Handler {
 
 	// Bot app installations
 	protected.HandleFunc("GET /api/bots/{id}/apps", s.handleListBotApps)
+	protected.HandleFunc("POST /api/bots/{id}/apps", s.handleUnifiedInstall)
 
 	// Channels (under bots)
 	protected.HandleFunc("GET /api/bots/{id}/channels", s.handleListChannels)

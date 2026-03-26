@@ -202,7 +202,7 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
       )}
 
       {/* Integration Token Guide */}
-      {app.kind === "integration" && (
+      {app.registry === "builtin" && (
         <IntegrationTokenGuide app={app} />
       )}
 
@@ -216,7 +216,7 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
         </Card>
       )}
 
-      {app.kind === "integration" && !app.readme && (
+      {app.registry === "builtin" && !app.readme && (
         <Card className="space-y-3">
           <h3 className="text-sm font-medium">使用说明</h3>
           <p className="text-xs text-muted-foreground">此应用为 Integration 类型，使用 Token 进行 API 调用。请在安装管理中查看 Token。</p>

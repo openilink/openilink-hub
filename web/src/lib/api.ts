@@ -185,6 +185,10 @@ export const api = {
   updateRegistry: (id: string, data: { enabled: boolean }) => request<any>(`/api/admin/registries/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteRegistry: (id: string) => request<any>(`/api/admin/registries/${id}`, { method: "DELETE" }),
 
+  // Unified install
+  unifiedInstall: (botId: string, data: any) =>
+    request<any>(`/api/bots/${botId}/apps`, { method: "POST", body: JSON.stringify(data) }),
+
   // Registry config
   getRegistryConfig: () => request<any>("/api/admin/config/registry"),
   setRegistryConfig: (data: { enabled: string }) => request<any>("/api/admin/config/registry", { method: "PUT", body: JSON.stringify(data) }),

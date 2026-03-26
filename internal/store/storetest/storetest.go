@@ -1012,9 +1012,6 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 		if got.WebhookSecret == "" {
 			t.Error("webhook_secret should be auto-generated")
 		}
-		if got.Kind != "app" {
-			t.Errorf("kind = %q, want %q", got.Kind, "app")
-		}
 		if got.Listing != "unlisted" {
 			t.Errorf("listing = %q, want %q", got.Listing, "unlisted")
 		}
@@ -1024,7 +1021,7 @@ func TestAppCRUD(t *testing.T, s store.Store) {
 	})
 
 	t.Run("GetAppBySlug", func(t *testing.T) {
-		got, err := s.GetAppBySlug("test-app")
+		got, err := s.GetAppBySlug("test-app", "")
 		if err != nil {
 			t.Fatalf("GetAppBySlug: %v", err)
 		}

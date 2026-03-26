@@ -57,3 +57,7 @@ CREATE TABLE IF NOT EXISTS registries (
     enabled    INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- Replace global slug uniqueness with per-registry namespace
+DROP INDEX IF EXISTS apps_slug_key;
+CREATE UNIQUE INDEX IF NOT EXISTS apps_slug_registry_key ON apps(slug, registry);

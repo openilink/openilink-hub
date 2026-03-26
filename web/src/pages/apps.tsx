@@ -238,7 +238,7 @@ type InstallResult = {
   appId: string;
   appName: string;
   token?: string;
-  kind?: string;
+  registry?: string;
   templateId?: string;
   guide?: string;
 };
@@ -282,52 +282,37 @@ function InstallFlowDialog({ target, onClose }: { target: InstallTarget; onClose
     setSaving(true);
     try {
       if (isTemplate) {
-        // Step 1: Create a new integration app
-        const slug = `${target.template.id}-${randomSuffix()}`;
-        const created = await api.createApp({
+        const installation = await api.unifiedInstall(botId, {
+          template_slug: target.template.id,
           name: target.template.name,
-          slug,
           description: target.template.description,
           icon: target.template.emoji,
-          kind: "integration",
           scopes: target.template.scopes,
           events: target.template.events,
           readme: target.template.readme,
           guide: target.template.guide,
-        });
-        // Step 2: Install to bot
-        const installation = await api.installApp(created.id, {
-          bot_id: botId,
           handle: handle.trim() || undefined,
-          scopes: target.template.scopes,
         });
         setResult({
-          appId: created.id,
+          appId: installation.app_id,
           appName: target.template.name,
           token: installation.app_token,
-          kind: "integration",
+          registry: "builtin",
           templateId: target.template.id,
           guide: target.template.guide,
         });
       } else {
-        // Marketplace app
         const app = target.app;
-        let appId = app.local_id || app.id;
-        if (!appId) {
-          // Sync from marketplace first
-          const synced = await api.syncMarketplaceApp(app.slug);
-          appId = synced.id;
-        }
-        const installation = await api.installApp(appId, {
-          bot_id: botId,
+        const installation = await api.unifiedInstall(botId, {
+          marketplace_slug: app.slug,
           handle: handle.trim() || undefined,
           scopes: app.scopes,
         });
         setResult({
-          appId: appId,
+          appId: installation.app_id,
           appName: app.name,
           token: installation.app_token,
-          kind: app.kind,
+          registry: app.registry,
         });
       }
       toast({ title: "安装成功", description: `已安装 ${appName}。` });
@@ -464,7 +449,7 @@ function InstallResultScreen({ result, onClose }: { result: InstallResult; onClo
     });
   }
 
-  const isIntegration = result.kind === "integration";
+  const isIntegration = result.registry === "builtin";
 
   return (
     <div className="py-2 space-y-6">

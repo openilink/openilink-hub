@@ -127,7 +127,7 @@ export function InstallationDetailPage() {
                   来自应用市场
                 </Badge>
               )}
-              {app.kind === "integration" && !app.registry && (
+              {app.registry === "builtin" && !app.registry && (
                 <Badge variant="outline" className="rounded-full text-[10px] font-bold">
                   自定义集成
                 </Badge>
@@ -191,7 +191,7 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
   }
 
   const guideText = renderGuide();
-  const showGenericGuide = !guideText && app.kind === "integration";
+  const showGenericGuide = !guideText && app.registry === "builtin";
   const showUsageGuide = guideText || showGenericGuide;
 
   return (

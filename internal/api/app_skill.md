@@ -13,10 +13,11 @@ Two communication directions:
 1. **Platform -> App**: Platform POSTs events (messages, commands) to your App's Webhook URL (or pushes via WebSocket)
 2. **App -> Platform**: Your App calls the Bot API with an `app_token` to send messages, read contacts, etc.
 
-### App Types
+### App Types (by registry field)
 
-- **Custom App** (`kind: custom`): Created by developers on a specific Hub instance
-- **Marketplace App** (`kind: marketplace`): Installed from an App Registry, managed centrally
+- **Local App** (`registry: ""`): Created by developers on a specific Hub instance
+- **Built-in Template** (`registry: "builtin"`): Hub built-in template (WebSocket App, Webhook App, OpenClaw Channel)
+- **Marketplace App** (`registry: "https://..."`): Installed from an external App Registry
 
 ## Quick Start
 

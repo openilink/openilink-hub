@@ -37,7 +37,6 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		Tools            json.RawMessage `json:"tools"`
 		Events           json.RawMessage `json:"events"`
 		Scopes           json.RawMessage `json:"scopes"`
-		Kind             string          `json:"kind"`
 		Readme           string          `json:"readme"`
 		Guide            string          `json:"guide"`
 	}
@@ -57,8 +56,8 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check slug uniqueness
-	if existing, _ := s.Store.GetAppBySlug(slug); existing != nil {
+	// Check slug uniqueness (only among the user's own apps)
+	if existing, _ := s.Store.GetAppBySlug(slug, ""); existing != nil && existing.OwnerID == userID {
 		jsonError(w, "slug already taken", http.StatusConflict)
 		return
 	}
@@ -76,7 +75,6 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		Tools:            req.Tools,
 		Events:           req.Events,
 		Scopes:           req.Scopes,
-		Kind:             req.Kind,
 		Readme:           req.Readme,
 		Guide:            req.Guide,
 	})

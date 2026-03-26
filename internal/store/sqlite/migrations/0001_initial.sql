@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS apps (
     id                   TEXT PRIMARY KEY,
     owner_id             TEXT NOT NULL,
     name                 TEXT NOT NULL,
-    slug                 TEXT NOT NULL UNIQUE,
+    slug                 TEXT NOT NULL,
     description          TEXT NOT NULL DEFAULT '',
     icon                 TEXT NOT NULL DEFAULT '',
     icon_url             TEXT NOT NULL DEFAULT '',
@@ -198,7 +198,6 @@ CREATE TABLE IF NOT EXISTS apps (
     webhook_url          TEXT NOT NULL DEFAULT '',
     webhook_secret       TEXT NOT NULL DEFAULT '',
     webhook_verified     INTEGER NOT NULL DEFAULT 0,
-    kind                 TEXT NOT NULL DEFAULT 'app',
     registry             TEXT NOT NULL DEFAULT '',
     version              TEXT NOT NULL DEFAULT '',
     readme               TEXT NOT NULL DEFAULT '',
@@ -209,6 +208,7 @@ CREATE TABLE IF NOT EXISTS apps (
     created_at           INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at           INTEGER NOT NULL DEFAULT (unixepoch())
 );
+CREATE UNIQUE INDEX IF NOT EXISTS apps_slug_registry_key ON apps(slug, registry);
 
 CREATE TABLE IF NOT EXISTS app_installations (
     id              TEXT PRIMARY KEY,

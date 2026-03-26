@@ -422,6 +422,153 @@ func (s *Server) notifyAppInstalled(app *store.App, inst *store.AppInstallation)
 	s.autoVerifyURL(app.ID, result.WebhookURL)
 }
 
+// POST /api/bots/{id}/apps -- unified install endpoint
+// Supports three modes:
+//   - {"app_id": "uuid"} -- install existing app
+//   - {"marketplace_slug": "github"} -- install from marketplace
+//   - {"template_slug": "websocket-app", "scopes": [...]} -- install from template (creates App if needed)
+func (s *Server) handleUnifiedInstall(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
+	botID := r.PathValue("id")
+
+	// Verify user owns the bot
+	bot, err := s.Store.GetBot(botID)
+	if err != nil || bot.UserID != userID {
+		jsonError(w, "bot not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		AppID           string          `json:"app_id"`
+		MarketplaceSlug string          `json:"marketplace_slug"`
+		TemplateSlug    string          `json:"template_slug"`
+		Handle          string          `json:"handle"`
+		Scopes          json.RawMessage `json:"scopes"`
+		// Template-only fields (used when creating app from template)
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Icon        string          `json:"icon"`
+		Events      json.RawMessage `json:"events"`
+		Readme      string          `json:"readme"`
+		Guide       string          `json:"guide"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Check handle uniqueness
+	if req.Handle != "" {
+		if existing, _ := s.Store.GetInstallationByHandle(botID, req.Handle); existing != nil {
+			jsonError(w, "handle @"+req.Handle+" already in use on this bot", http.StatusConflict)
+			return
+		}
+	}
+
+	var app *store.App
+
+	if req.AppID != "" {
+		// Mode 1: install existing app by ID
+		app, err = s.Store.GetApp(req.AppID)
+		if err != nil {
+			jsonError(w, "app not found", http.StatusNotFound)
+			return
+		}
+	} else if req.MarketplaceSlug != "" {
+		// Mode 2: install from marketplace
+		if s.Registry == nil {
+			jsonError(w, "marketplace not configured", http.StatusBadRequest)
+			return
+		}
+		regApp, err := s.Registry.GetApp(req.MarketplaceSlug)
+		if err != nil || regApp == nil {
+			jsonError(w, "app not found in marketplace", http.StatusNotFound)
+			return
+		}
+		// Find or create local app record
+		app, _ = s.Store.GetAppBySlug(req.MarketplaceSlug, regApp.RegistryURL)
+		if app == nil {
+			app, err = s.Store.CreateApp(&store.App{
+				Name:             regApp.Name,
+				Slug:             regApp.Slug,
+				Description:      regApp.Description,
+				IconURL:          regApp.IconURL,
+				Homepage:         regApp.Homepage,
+				WebhookURL:       regApp.WebhookURL,
+				OAuthSetupURL:    regApp.OAuthSetupURL,
+				OAuthRedirectURL: regApp.OAuthRedirectURL,
+				Tools:            regApp.Tools,
+				Events:           regApp.Events,
+				Scopes:           regApp.Scopes,
+				Registry:         regApp.RegistryURL,
+				Version:          regApp.Version,
+				Readme:           regApp.Readme,
+				Guide:            regApp.Guide,
+			})
+			if err != nil {
+				jsonError(w, "create marketplace app failed", http.StatusInternalServerError)
+				return
+			}
+		}
+	} else if req.TemplateSlug != "" {
+		// Mode 3: install from template (reuse existing App or create)
+		app, _ = s.Store.GetAppBySlug(req.TemplateSlug, "builtin")
+		if app == nil {
+			// First time this template is used on this Hub -- create the App
+			app, err = s.Store.CreateApp(&store.App{
+				OwnerID:     userID,
+				Name:        req.Name,
+				Slug:        req.TemplateSlug,
+				Description: req.Description,
+				Icon:        req.Icon,
+				Events:      req.Events,
+				Scopes:      req.Scopes,
+				Registry:    "builtin",
+				Readme:      req.Readme,
+				Guide:       req.Guide,
+			})
+			if err != nil {
+				jsonError(w, "create template app failed", http.StatusInternalServerError)
+				return
+			}
+		}
+	} else {
+		jsonError(w, "app_id, marketplace_slug, or template_slug required", http.StatusBadRequest)
+		return
+	}
+
+	// Create installation
+	inst, err := s.Store.InstallApp(app.ID, botID)
+	if err != nil {
+		jsonError(w, "install failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Set handle and scopes
+	handle := req.Handle
+	scopes := req.Scopes
+	if scopes == nil {
+		scopes = inst.Scopes
+	}
+	if handle != "" || scopes != nil {
+		s.Store.UpdateInstallation(inst.ID, handle, inst.Config, scopes, inst.Enabled)
+		inst.Handle = handle
+		inst.Scopes = scopes
+	}
+
+	// Auto-notify for apps with redirect URL
+	if app.OAuthSetupURL == "" && app.OAuthRedirectURL != "" {
+		s.notifyAppInstalled(app, inst)
+		if updated, _ := s.Store.GetInstallation(inst.ID); updated != nil {
+			inst = updated
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(inst)
+}
+
 // autoVerifyURL sends a challenge to verify the app's webhook_url.
 func (s *Server) autoVerifyURL(appID, webhookURL string) {
 	challengeBytes := make([]byte, 16)
