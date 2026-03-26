@@ -110,6 +110,7 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 		regApp.OAuthSetupURL,
 		regApp.OAuthRedirectURL,
 		regApp.Version,
+		regApp.Guide,
 		regApp.Tools,
 		regApp.Events,
 		regApp.Scopes,

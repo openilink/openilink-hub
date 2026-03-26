@@ -23,6 +23,7 @@ type App struct {
 	Registry            string          `json:"registry,omitempty"`
 	Version             string          `json:"version,omitempty"`
 	Readme              string          `json:"readme,omitempty"`
+	Guide               string          `json:"guide,omitempty"`
 	Listing             string          `json:"listing"`
 	ListingRejectReason string          `json:"listing_reject_reason,omitempty"`
 	Status              string          `json:"status"`
@@ -71,7 +72,7 @@ type AppStore interface {
 	ListAllApps() ([]App, error)
 	ListMarketplaceApps() ([]App, error)
 	UpdateApp(id string, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL string, tools, events, scopes json.RawMessage) error
-	UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version string, tools, events, scopes json.RawMessage) error
+	UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, guide string, tools, events, scopes json.RawMessage) error
 	DeleteApp(id string) error
 	InstallApp(appID, botID string) (*AppInstallation, error)
 	GetInstallation(id string) (*AppInstallation, error)

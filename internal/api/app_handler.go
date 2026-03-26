@@ -37,6 +37,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		Tools            json.RawMessage `json:"tools"`
 		Events           json.RawMessage `json:"events"`
 		Scopes           json.RawMessage `json:"scopes"`
+		Guide            string          `json:"guide"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -73,6 +74,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		Tools:            req.Tools,
 		Events:           req.Events,
 		Scopes:           req.Scopes,
+		Guide:            req.Guide,
 	})
 	if err != nil {
 		jsonError(w, "create failed", http.StatusInternalServerError)

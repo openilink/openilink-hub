@@ -14,6 +14,7 @@ type App struct {
 	Name             string          `json:"name"`
 	Description      string          `json:"description"`
 	Readme           string          `json:"readme,omitempty"`
+	Guide            string          `json:"guide,omitempty"`
 	Version          string          `json:"version"`
 	Author           string          `json:"author"`
 	IconURL          string          `json:"icon_url"`

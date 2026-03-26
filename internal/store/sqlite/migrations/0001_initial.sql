@@ -202,6 +202,7 @@ CREATE TABLE IF NOT EXISTS apps (
     registry             TEXT NOT NULL DEFAULT '',
     version              TEXT NOT NULL DEFAULT '',
     readme               TEXT NOT NULL DEFAULT '',
+    guide                TEXT NOT NULL DEFAULT '',
     listing              TEXT NOT NULL DEFAULT 'unlisted',
     listing_reject_reason TEXT NOT NULL DEFAULT '',
     status               TEXT NOT NULL DEFAULT 'active',

@@ -10,6 +10,7 @@ ALTER TABLE apps ADD COLUMN kind TEXT NOT NULL DEFAULT 'app';
 ALTER TABLE apps ADD COLUMN registry TEXT NOT NULL DEFAULT '';
 ALTER TABLE apps ADD COLUMN version TEXT NOT NULL DEFAULT '';
 ALTER TABLE apps ADD COLUMN readme TEXT NOT NULL DEFAULT '';
+ALTER TABLE apps ADD COLUMN guide TEXT NOT NULL DEFAULT '';
 
 -- Replace listed + listing_status with single listing column
 ALTER TABLE apps ADD COLUMN listing TEXT NOT NULL DEFAULT 'unlisted';

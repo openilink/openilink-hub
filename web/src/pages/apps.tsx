@@ -26,7 +26,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { api } from "../lib/api";
-import { SCOPE_DESCRIPTIONS } from "../lib/constants";
+import { SCOPE_DESCRIPTIONS, APP_TEMPLATES } from "../lib/constants";
 import {
   Tabs,
   TabsContent,
@@ -52,92 +52,6 @@ function slugify(name: string): string {
 function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 8);
 }
-
-// ==================== Templates ====================
-
-const TEMPLATES = [
-  {
-    id: "websocket-app",
-    emoji: "\u{1F4E1}",
-    name: "WebSocket App",
-    description: "通过 WebSocket 实时收发 Bot 消息",
-    scopes: ["message:write", "message:read", "contact:read", "bot:read"],
-    events: ["message"],
-    readme: `## WebSocket App
-
-连接 WebSocket 实时收发消息。
-
-### 连接方式
-
-\`\`\`
-wss://{hub_url}/bot/v1/ws?token={your_token}
-\`\`\`
-
-### 发送消息
-
-通过 WebSocket 发送：
-\`\`\`json
-{"type":"send","to":"wxid_xxx","content":"hello"}
-\`\`\`
-
-或通过 HTTP：
-\`\`\`bash
-curl -X POST {hub_url}/bot/v1/message/send \\
-  -H "Authorization: Bearer {your_token}" \\
-  -d '{"to":"wxid_xxx","content":"hello"}'
-\`\`\``,
-  },
-  {
-    id: "webhook-app",
-    emoji: "\u{1F517}",
-    name: "Webhook App",
-    description: "通过 HTTP API 向 Bot 发送消息",
-    scopes: ["message:write"],
-    events: [],
-    readme: `## Webhook App
-
-通过 HTTP API 发送消息。
-
-### 发送消息
-
-\`\`\`bash
-curl -X POST {hub_url}/bot/v1/message/send \\
-  -H "Authorization: Bearer {your_token}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"to":"wxid_xxx","content":"hello"}'
-\`\`\`
-
-### 发送图片
-
-\`\`\`bash
-curl -X POST {hub_url}/bot/v1/message/send \\
-  -H "Authorization: Bearer {your_token}" \\
-  -d '{"to":"wxid_xxx","type":"image","url":"https://example.com/img.png"}'
-\`\`\``,
-  },
-  {
-    id: "openclaw-channel",
-    emoji: "\u{1F99E}",
-    name: "OpenClaw Channel",
-    description: "通过 OpenClaw 协议接入 Bot",
-    scopes: ["message:write", "message:read", "contact:read", "bot:read"],
-    events: ["message"],
-    readme: `## OpenClaw Channel
-
-通过 OpenClaw Channel Plugin 接入 Bot。
-
-### 安装 Plugin
-
-请参考 [OpenClaw Channel Plugin 文档](https://github.com/nicepkg/openclaw) 安装和配置。
-
-### 配置
-
-在 OpenClaw 配置中填入以下信息：
-
-- **Hub URL**: \`{hub_url}\`
-- **Token**: \`{your_token}\``,
-  },
-];
 
 // ==================== Page ====================
 
@@ -183,7 +97,7 @@ export function AppsPage() {
 function MarketplaceTab() {
   const [marketplaceApps, setMarketplaceApps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [installTarget, setInstallTarget] = useState<{ type: "template"; template: typeof TEMPLATES[number] } | { type: "marketplace"; app: any } | null>(null);
+  const [installTarget, setInstallTarget] = useState<{ type: "template"; template: typeof APP_TEMPLATES[number] } | { type: "marketplace"; app: any } | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -195,7 +109,7 @@ function MarketplaceTab() {
     !search || a.name?.toLowerCase().includes(search.toLowerCase()) || (a.slug || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredTemplates = TEMPLATES.filter(t =>
+  const filteredTemplates = APP_TEMPLATES.filter(t =>
     !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.description.includes(search)
   );
 
@@ -317,7 +231,7 @@ function MarketplaceTab() {
 // ==================== Install Flow Dialog ====================
 
 type InstallTarget =
-  | { type: "template"; template: typeof TEMPLATES[number] }
+  | { type: "template"; template: typeof APP_TEMPLATES[number] }
   | { type: "marketplace"; app: any };
 
 type InstallResult = {
@@ -326,7 +240,7 @@ type InstallResult = {
   token?: string;
   kind?: string;
   templateId?: string;
-  readme?: string;
+  guide?: string;
 };
 
 function InstallFlowDialog({ target, onClose }: { target: InstallTarget; onClose: () => void }) {
@@ -379,6 +293,7 @@ function InstallFlowDialog({ target, onClose }: { target: InstallTarget; onClose
           scopes: target.template.scopes,
           events: target.template.events,
           readme: target.template.readme,
+          guide: target.template.guide,
         });
         // Step 2: Install to bot
         const installation = await api.installApp(created.id, {
@@ -392,7 +307,7 @@ function InstallFlowDialog({ target, onClose }: { target: InstallTarget; onClose
           token: installation.token,
           kind: "integration",
           templateId: target.template.id,
-          readme: target.template.readme,
+          guide: target.template.guide,
         });
       } else {
         // Marketplace app

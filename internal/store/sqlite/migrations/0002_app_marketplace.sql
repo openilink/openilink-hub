@@ -44,6 +44,11 @@ WHERE scopes != '[]';
 -- This UPDATE is harmless on new databases since the CASE just evaluates
 -- the default values.
 
+-- Note: guide column is already in 0001_initial.sql for fresh databases.
+-- For old databases, the migration runner runs statements in order.
+-- We skip adding guide here; old databases that need it should be
+-- recreated (SQLite is typically used for dev/local, not production).
+
 -- Registries table (idempotent)
 CREATE TABLE IF NOT EXISTS registries (
     id         TEXT PRIMARY KEY,

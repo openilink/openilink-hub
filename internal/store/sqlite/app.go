@@ -39,13 +39,13 @@ func (db *DB) CreateApp(app *store.App) (*store.App, error) {
 	_, err := db.Exec(`INSERT INTO apps (id, owner_id, name, slug, description, icon, icon_url, homepage,
 		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
 		webhook_url, webhook_secret, webhook_verified,
-		kind, registry, version, readme,
+		kind, registry, version, readme, guide,
 		listing, listing_reject_reason)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		app.ID, app.OwnerID, app.Name, app.Slug, app.Description, app.Icon, app.IconURL, app.Homepage,
 		app.Tools, app.Events, app.Scopes, app.OAuthSetupURL, app.OAuthRedirectURL,
 		app.WebhookURL, app.WebhookSecret, app.WebhookVerified,
-		app.Kind, app.Registry, app.Version, app.Readme,
+		app.Kind, app.Registry, app.Version, app.Readme, app.Guide,
 		app.Listing, app.ListingRejectReason,
 	)
 	if err != nil {
@@ -61,7 +61,7 @@ func (db *DB) GetApp(id string) (*store.App, error) {
 	err := db.QueryRow(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
 		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
 		a.webhook_url, a.webhook_secret, a.webhook_verified,
-		a.kind, a.registry, a.version, a.readme,
+		a.kind, a.registry, a.version, a.readme, a.guide,
 		a.listing, a.listing_reject_reason, a.status,
 		a.created_at, a.updated_at,
 		COALESCE(u.username, '')
@@ -70,7 +70,7 @@ func (db *DB) GetApp(id string) (*store.App, error) {
 		&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 		&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 		&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-		&a.Kind, &a.Registry, &a.Version, &a.Readme,
+		&a.Kind, &a.Registry, &a.Version, &a.Readme, &a.Guide,
 		&a.Listing, &a.ListingRejectReason, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt, &a.OwnerName)
 	if err != nil {
@@ -84,14 +84,14 @@ func (db *DB) GetAppBySlug(slug string) (*store.App, error) {
 	err := db.QueryRow(`SELECT id, owner_id, name, slug, description, icon, icon_url, homepage,
 		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
 		webhook_url, webhook_secret, webhook_verified,
-		kind, registry, version, readme,
+		kind, registry, version, readme, guide,
 		listing, listing_reject_reason, status,
 		created_at, updated_at
 		FROM apps WHERE slug = ?`, slug).Scan(
 		&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 		&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 		&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-		&a.Kind, &a.Registry, &a.Version, &a.Readme,
+		&a.Kind, &a.Registry, &a.Version, &a.Readme, &a.Guide,
 		&a.Listing, &a.ListingRejectReason, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
@@ -104,7 +104,7 @@ func (db *DB) ListAppsByOwner(ownerID string) ([]store.App, error) {
 	rows, err := db.Query(`SELECT id, owner_id, name, slug, description, icon, icon_url, homepage,
 		tools, events, scopes, oauth_setup_url, oauth_redirect_url,
 		webhook_url, webhook_secret, webhook_verified,
-		kind, registry, version, readme,
+		kind, registry, version, readme, guide,
 		listing, listing_reject_reason, status,
 		created_at, updated_at
 		FROM apps WHERE owner_id = ? ORDER BY created_at DESC`, ownerID)
@@ -118,7 +118,7 @@ func (db *DB) ListAppsByOwner(ownerID string) ([]store.App, error) {
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-			&a.Kind, &a.Registry, &a.Version, &a.Readme,
+			&a.Kind, &a.Registry, &a.Version, &a.Readme, &a.Guide,
 			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
@@ -132,7 +132,7 @@ func (db *DB) ListListedApps() ([]store.App, error) {
 	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
 		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
 		a.webhook_url, '', a.webhook_verified,
-		a.kind, a.registry, a.version, a.readme,
+		a.kind, a.registry, a.version, a.readme, a.guide,
 		a.listing, a.listing_reject_reason, a.status,
 		a.created_at, a.updated_at,
 		COALESCE(u.username, '')
@@ -148,7 +148,7 @@ func (db *DB) ListListedApps() ([]store.App, error) {
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-			&a.Kind, &a.Registry, &a.Version, &a.Readme,
+			&a.Kind, &a.Registry, &a.Version, &a.Readme, &a.Guide,
 			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
 			return nil, err
@@ -162,7 +162,7 @@ func (db *DB) ListAllApps() ([]store.App, error) {
 	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
 		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
 		a.webhook_url, '', a.webhook_verified,
-		a.kind, a.registry, a.version, a.readme,
+		a.kind, a.registry, a.version, a.readme, a.guide,
 		a.listing, a.listing_reject_reason, a.status,
 		a.created_at, a.updated_at,
 		COALESCE(u.username, '')
@@ -178,7 +178,7 @@ func (db *DB) ListAllApps() ([]store.App, error) {
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-			&a.Kind, &a.Registry, &a.Version, &a.Readme,
+			&a.Kind, &a.Registry, &a.Version, &a.Readme, &a.Guide,
 			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
 			return nil, err
@@ -192,7 +192,7 @@ func (db *DB) ListMarketplaceApps() ([]store.App, error) {
 	rows, err := db.Query(`SELECT a.id, a.owner_id, a.name, a.slug, a.description, a.icon, a.icon_url, a.homepage,
 		a.tools, a.events, a.scopes, a.oauth_setup_url, a.oauth_redirect_url,
 		a.webhook_url, '', a.webhook_verified,
-		a.kind, a.registry, a.version, a.readme,
+		a.kind, a.registry, a.version, a.readme, a.guide,
 		a.listing, a.listing_reject_reason, a.status,
 		a.created_at, a.updated_at,
 		COALESCE(u.username, '')
@@ -208,7 +208,7 @@ func (db *DB) ListMarketplaceApps() ([]store.App, error) {
 		if err := rows.Scan(&a.ID, &a.OwnerID, &a.Name, &a.Slug, &a.Description, &a.Icon, &a.IconURL, &a.Homepage,
 			&a.Tools, &a.Events, &a.Scopes, &a.OAuthSetupURL, &a.OAuthRedirectURL,
 			&a.WebhookURL, &a.WebhookSecret, &a.WebhookVerified,
-			&a.Kind, &a.Registry, &a.Version, &a.Readme,
+			&a.Kind, &a.Registry, &a.Version, &a.Readme, &a.Guide,
 			&a.Listing, &a.ListingRejectReason, &a.Status,
 			&a.CreatedAt, &a.UpdatedAt, &a.OwnerName); err != nil {
 			return nil, err
@@ -225,11 +225,11 @@ func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, o
 	return err
 }
 
-func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version string, tools, events, scopes json.RawMessage) error {
+func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, guide string, tools, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=?, description=?, icon_url=?, homepage=?,
-		webhook_url=?, oauth_setup_url=?, oauth_redirect_url=?, version=?,
+		webhook_url=?, oauth_setup_url=?, oauth_redirect_url=?, version=?, guide=?,
 		tools=?, events=?, scopes=?, updated_at=unixepoch() WHERE id=?`,
-		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, tools, events, scopes, id)
+		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, guide, tools, events, scopes, id)
 	return err
 }
 

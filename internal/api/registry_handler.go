@@ -37,6 +37,7 @@ func (s *Server) handleRegistryApps(w http.ResponseWriter, r *http.Request) {
 			Name:             app.Name,
 			Description:      app.Description,
 			Readme:           app.Readme,
+			Guide:            app.Guide,
 			Version:          app.Version,
 			Author:           app.OwnerName,
 			IconURL:          app.IconURL,
