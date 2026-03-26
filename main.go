@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +16,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
+	"github.com/openilink/openilink-hub/internal/daemon"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
 	"github.com/openilink/openilink-hub/internal/store"
@@ -42,7 +43,39 @@ func openStore(dsn string) (store.Store, error) {
 }
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version":
+			fmt.Printf("openilink-hub %s (%s, %s)\n", version, commit, date)
+			return
+		case "install":
+			listen := ":9800"
+			if len(os.Args) > 2 {
+				listen = os.Args[2]
+			}
+			if err := daemon.Install(listen, config.DataDir()); err != nil {
+				fmt.Fprintf(os.Stderr, "install failed: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "uninstall":
+			if err := daemon.Uninstall(); err != nil {
+				fmt.Fprintf(os.Stderr, "uninstall failed: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+
 	cfg := config.Parse()
+
+	// Ensure data directory exists for SQLite
+	if !strings.HasPrefix(cfg.DBPath, "postgres") {
+		if err := config.EnsureDataDir(); err != nil {
+			slog.Error("create data directory failed", "err", err)
+			os.Exit(1)
+		}
+	}
 
 	// Database
 	s, err := openStore(cfg.DBPath)
@@ -141,6 +174,7 @@ func main() {
 	}()
 
 	fmt.Printf("OpeniLink Hub %s (%s, %s) running on http://localhost%s\n", version, commit, date, cfg.ListenAddr)
+	fmt.Printf("Data: %s\n", config.DataDir())
 	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
 		slog.Error("server error", "err", err)
 		os.Exit(1)
