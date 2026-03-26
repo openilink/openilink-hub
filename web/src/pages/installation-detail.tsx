@@ -14,7 +14,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
-import { Card } from "../components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import {
   Table,
   TableBody,
@@ -31,6 +31,8 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { Skeleton } from "../components/ui/skeleton";
+import { Switch } from "../components/ui/switch";
+import { Label } from "../components/ui/label";
 import { api } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
@@ -118,17 +120,17 @@ export function InstallationDetailPage() {
               )}
               <Badge
                 variant={inst.enabled ? "default" : "secondary"}
-                className="rounded-full text-[10px] font-bold"
+                className="rounded-full font-bold"
               >
                 {inst.enabled ? "运行中" : "已停用"}
               </Badge>
               {app.registry && (
-                <Badge variant="outline" className="rounded-full text-[10px] font-bold">
+                <Badge variant="outline" className="rounded-full font-bold">
                   来自应用市场
                 </Badge>
               )}
               {app.registry === "builtin" && (
-                <Badge variant="outline" className="rounded-full text-[10px] font-bold">
+                <Badge variant="outline" className="rounded-full font-bold">
                   自定义集成
                 </Badge>
               )}
@@ -195,74 +197,79 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
   const showUsageGuide = guideText || showGenericGuide;
 
   return (
-    <Card className="space-y-4">
-      <h3 className="text-sm font-medium">Token & 使用方式</h3>
-
-      {/* Token display */}
-      <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Token</label>
-        <div className="flex items-center gap-2 p-2 rounded-lg border bg-background">
-          <code className="text-xs font-mono flex-1 break-all select-all">
-            {showToken ? token : maskedToken}
-          </code>
-          <button
-            onClick={() => setShowToken(!showToken)}
-            className="cursor-pointer text-muted-foreground hover:text-foreground shrink-0"
-            aria-label={showToken ? "隐藏" : "显示"}
-          >
-            {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-          </button>
-          <button
-            onClick={() => handleCopy(token)}
-            className="cursor-pointer text-muted-foreground hover:text-foreground shrink-0"
-            aria-label="复制"
-          >
-            {copied ? (
-              <Check className="w-3.5 h-3.5 text-primary" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-          </button>
+    <Card>
+      <CardHeader>
+        <CardTitle>Token & 使用方式</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Token display */}
+        <div className="space-y-1.5">
+          <Label className="text-muted-foreground">Token</Label>
+          <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
+            <code className="text-xs font-mono flex-1 break-all select-all">
+              {showToken ? token : maskedToken}
+            </code>
+            <button
+              type="button"
+              onClick={() => setShowToken(!showToken)}
+              className="cursor-pointer text-muted-foreground hover:text-foreground shrink-0"
+              aria-label={showToken ? "隐藏" : "显示"}
+            >
+              {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCopy(token)}
+              className="cursor-pointer text-muted-foreground hover:text-foreground shrink-0"
+              aria-label="复制"
+            >
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-primary" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Guide content */}
-      {guideText && (
-        <div className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed p-3 rounded-lg bg-muted/30 border overflow-x-auto">
-          {guideText}
-        </div>
-      )}
+        {/* Guide content */}
+        {guideText && (
+          <div className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed p-3 rounded-md bg-muted/30 border overflow-x-auto">
+            {guideText}
+          </div>
+        )}
 
-      {showGenericGuide && (
-        <div className="space-y-3">
-          <details className="group">
-            <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none">
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-              WebSocket 连接
-            </summary>
-            <pre className="mt-2 p-3 rounded-lg bg-muted/30 border text-xs font-mono overflow-x-auto whitespace-pre-wrap">
-              {`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token=${token || "<your_token>"}`}
-            </pre>
-          </details>
+        {showGenericGuide && (
+          <div className="space-y-3">
+            <details className="group">
+              <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none">
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                WebSocket 连接
+              </summary>
+              <pre className="mt-2 p-3 rounded-md bg-muted/30 border text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+                {`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token=${token || "<your_token>"}`}
+              </pre>
+            </details>
 
-          <details className="group">
-            <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none">
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-              HTTP 发消息
-            </summary>
-            <pre className="mt-2 p-3 rounded-lg bg-muted/30 border text-xs font-mono overflow-x-auto whitespace-pre-wrap">
-              {`curl -X POST ${hubUrl}/bot/v1/message/send \\\n  -H "Authorization: Bearer ${token || "<your_token>"}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"content":"hello"}'`}
-            </pre>
-          </details>
-        </div>
-      )}
+            <details className="group">
+              <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none">
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
+                HTTP 发消息
+              </summary>
+              <pre className="mt-2 p-3 rounded-md bg-muted/30 border text-xs font-mono overflow-x-auto whitespace-pre-wrap">
+                {`curl -X POST ${hubUrl}/bot/v1/message/send \\\n  -H "Authorization: Bearer ${token || "<your_token>"}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"content":"hello"}'`}
+              </pre>
+            </details>
+          </div>
+        )}
 
-      {/* Non-integration apps with no guide: just show the token (already shown above) */}
-      {!showUsageGuide && app.webhook_url && (
-        <p className="text-xs text-muted-foreground">
-          事件将推送到 <code className="font-mono">{app.webhook_url}</code>
-        </p>
-      )}
+        {/* Non-integration apps with no guide: just show the token (already shown above) */}
+        {!showUsageGuide && app.webhook_url && (
+          <p className="text-xs text-muted-foreground">
+            事件将推送到 <code className="font-mono">{app.webhook_url}</code>
+          </p>
+        )}
+      </CardContent>
     </Card>
   );
 }
@@ -318,66 +325,55 @@ function ConfigSection({
 
   return (
     <>
-      <Card className="space-y-4">
-        <h3 className="text-sm font-medium">配置</h3>
-
-        <div className="space-y-1.5">
-          <label htmlFor="inst-handle" className="text-xs text-muted-foreground">
-            Handle
-          </label>
-          <div className="flex items-center gap-2">
-            <Input
-              id="inst-handle"
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              className="h-8 text-xs font-mono flex-1"
-              placeholder="如 notify-prod"
-            />
-            <span className="text-xs text-muted-foreground font-mono shrink-0">
-              @{handle || "handle"}
-            </span>
+      <Card>
+        <CardHeader>
+          <CardTitle>配置</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="inst-handle" className="text-muted-foreground">
+              Handle
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="inst-handle"
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                className="h-8 text-xs font-mono flex-1"
+                placeholder="如 notify-prod"
+              />
+              <span className="text-xs text-muted-foreground font-mono shrink-0">
+                @{handle || "handle"}
+              </span>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <p className="text-xs font-medium">启用状态</p>
-            <p className="text-[10px] text-muted-foreground">
-              {enabled ? "应用正在接收事件和处理消息" : "应用已停用，不会接收任何事件"}
-            </p>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="inst-enabled">启用状态</Label>
+              <p className="text-xs text-muted-foreground">
+                {enabled ? "应用正在接收事件和处理消息" : "应用已停用，不会接收任何事件"}
+              </p>
+            </div>
+            <Switch id="inst-enabled" checked={enabled} onCheckedChange={setEnabled} />
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={enabled}
-            onClick={() => setEnabled(!enabled)}
-            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-              enabled ? "bg-primary" : "bg-muted"
-            }`}
-          >
-            <span
-              className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg transition-transform ${
-                enabled ? "translate-x-4" : "translate-x-0"
-              }`}
-            />
-          </button>
-        </div>
 
-        <div className="flex items-center gap-2 pt-2 border-t">
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-            保存
-          </Button>
-          <div className="flex-1" />
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setShowUninstallDialog(true)}
-          >
-            <Trash2 className="h-3.5 w-3.5 mr-1" />
-            卸载
-          </Button>
-        </div>
+          <div className="flex items-center gap-2 pt-2 border-t">
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              保存
+            </Button>
+            <div className="flex-1" />
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setShowUninstallDialog(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              卸载
+            </Button>
+          </div>
+        </CardContent>
       </Card>
 
       <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
@@ -428,80 +424,83 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
   }, [loadLogs]);
 
   return (
-    <Card className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">事件投递日志</h3>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs gap-1"
-          onClick={() => { setLoading(true); loadLogs(); }}
-        >
-          <RefreshCw className="h-3 w-3" />
-          刷新
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-8 w-full" />
-          ))}
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>事件投递日志</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={() => { setLoading(true); loadLogs(); }}
+          >
+            <RefreshCw className="h-3 w-3" />
+            刷新
+          </Button>
         </div>
-      ) : logs.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-8">暂无事件日志</p>
-      ) : (
-        <div className="rounded-lg border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">时间</TableHead>
-                <TableHead className="text-xs">事件类型</TableHead>
-                <TableHead className="text-xs">Trace ID</TableHead>
-                <TableHead className="text-xs">状态码</TableHead>
-                <TableHead className="text-xs">耗时</TableHead>
-                <TableHead className="text-xs">错误</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.map((log) => {
-                const isExpanded = expandedRow === log.id;
-                const hasDetail = log.request_body || log.response_body;
-                return (
-                  <TableRow
-                    key={log.id || log.trace_id + log.created_at}
-                    className={hasDetail ? "cursor-pointer" : ""}
-                    onClick={() =>
-                      hasDetail && setExpandedRow(isExpanded ? null : log.id)
-                    }
-                  >
-                    <TableCell className="text-xs font-mono whitespace-nowrap">
-                      {formatTime(log.created_at)}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <Badge variant="outline" className="text-[10px] font-mono">
-                        {log.event_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs font-mono text-muted-foreground">
-                      {log.trace_id ? log.trace_id.slice(0, 12) + "..." : "-"}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      <StatusBadge status={log.status_code || log.status} />
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
-                    </TableCell>
-                    <TableCell className="text-xs text-destructive max-w-48 truncate">
-                      {log.error || "-"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : logs.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">暂无事件日志</p>
+        ) : (
+          <div className="rounded-md border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>时间</TableHead>
+                  <TableHead>事件类型</TableHead>
+                  <TableHead>Trace ID</TableHead>
+                  <TableHead>状态码</TableHead>
+                  <TableHead>耗时</TableHead>
+                  <TableHead>错误</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map((log) => {
+                  const isExpanded = expandedRow === log.id;
+                  const hasDetail = log.request_body || log.response_body;
+                  return (
+                    <TableRow
+                      key={log.id || log.trace_id + log.created_at}
+                      className={hasDetail ? "cursor-pointer" : ""}
+                      onClick={() =>
+                        hasDetail && setExpandedRow(isExpanded ? null : log.id)
+                      }
+                    >
+                      <TableCell className="font-mono whitespace-nowrap">
+                        {formatTime(log.created_at)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono">
+                          {log.event_type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-muted-foreground">
+                        {log.trace_id ? log.trace_id.slice(0, 12) + "..." : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={log.status_code || log.status} />
+                      </TableCell>
+                      <TableCell className="font-mono">
+                        {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
+                      </TableCell>
+                      <TableCell className="text-destructive max-w-48 truncate">
+                        {log.error || "-"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }
@@ -530,66 +529,69 @@ function ApiLogsSection({ appId, instId }: { appId: string; instId: string }) {
   }, [loadLogs]);
 
   return (
-    <Card className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">API 调用日志</h3>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs gap-1"
-          onClick={() => { setLoading(true); loadLogs(); }}
-        >
-          <RefreshCw className="h-3 w-3" />
-          刷新
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-8 w-full" />
-          ))}
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>API 调用日志</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={() => { setLoading(true); loadLogs(); }}
+          >
+            <RefreshCw className="h-3 w-3" />
+            刷新
+          </Button>
         </div>
-      ) : logs.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-8">暂无 API 日志</p>
-      ) : (
-        <div className="rounded-lg border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">时间</TableHead>
-                <TableHead className="text-xs">方法</TableHead>
-                <TableHead className="text-xs">路径</TableHead>
-                <TableHead className="text-xs">状态码</TableHead>
-                <TableHead className="text-xs">耗时</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.map((log, idx) => (
-                <TableRow key={log.id || idx}>
-                  <TableCell className="text-xs font-mono whitespace-nowrap">
-                    {formatTime(log.created_at)}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <Badge variant="outline" className="text-[10px] font-mono font-bold">
-                      {log.method}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs font-mono text-muted-foreground max-w-64 truncate">
-                    {log.path}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <StatusBadge status={log.status_code || log.status} />
-                  </TableCell>
-                  <TableCell className="text-xs font-mono">
-                    {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
-                  </TableCell>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : logs.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">暂无 API 日志</p>
+        ) : (
+          <div className="rounded-md border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>时间</TableHead>
+                  <TableHead>方法</TableHead>
+                  <TableHead>路径</TableHead>
+                  <TableHead>状态码</TableHead>
+                  <TableHead>耗时</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+              </TableHeader>
+              <TableBody>
+                {logs.map((log, idx) => (
+                  <TableRow key={log.id || idx}>
+                    <TableCell className="font-mono whitespace-nowrap">
+                      {formatTime(log.created_at)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="font-mono font-bold">
+                        {log.method}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-muted-foreground max-w-64 truncate">
+                      {log.path}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={log.status_code || log.status} />
+                    </TableCell>
+                    <TableCell className="font-mono">
+                      {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }
@@ -603,7 +605,7 @@ function StatusBadge({ status }: { status: number | string | undefined }) {
 
   const variant = n >= 200 && n < 300 ? "default" : n >= 400 ? "destructive" : "outline";
   return (
-    <Badge variant={variant} className="text-[10px] font-mono">
+    <Badge variant={variant} className="font-mono">
       {n}
     </Badge>
   );
