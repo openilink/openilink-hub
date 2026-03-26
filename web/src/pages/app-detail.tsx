@@ -60,7 +60,7 @@ export function AppDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link to="/dashboard/apps/my" className="text-muted-foreground hover:text-foreground" aria-label="返回我的应用">
+        <Link to="/dashboard/apps" className="text-muted-foreground hover:text-foreground" aria-label="返回我的应用">
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-8 w-8" />

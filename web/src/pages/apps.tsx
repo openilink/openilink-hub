@@ -13,6 +13,7 @@ import { Badge } from "../components/ui/badge";
 import {
   Blocks,
   Download,
+  Loader2,
   Search,
   RefreshCw,
 } from "lucide-react";
@@ -161,7 +162,7 @@ export function AppsPage() {
                 className="w-full h-9 px-3 rounded-md border bg-background text-sm">
                 {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-              <Button className="w-full" disabled={syncing} onClick={handleInstallConfirm}>继续安装</Button>
+              <Button className="w-full" disabled={syncing} onClick={handleInstallConfirm}>{syncing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}继续安装</Button>
             </div>
           )}
         </DialogContent>
@@ -185,7 +186,7 @@ function AppGrid({ apps, search, onInstall }: { apps: any[]; search: string; onI
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {apps.map((app) => (
-        <Card key={app.slug || app.id} className="group relative overflow-hidden rounded-2xl border-border/50 bg-card/50 transition-all hover:shadow-2xl hover:-translate-y-1">
+        <Card key={`${app.registry || "local"}-${app.slug || app.id}`} className="group relative overflow-hidden rounded-2xl border-border/50 bg-card/50 transition-all hover:shadow-2xl hover:-translate-y-1">
           <CardHeader className="pb-4">
             <div className="flex items-start gap-4">
               <AppIcon icon={app.icon} iconUrl={app.icon_url} />

@@ -128,8 +128,6 @@ export function Layout() {
       accounts: "账号管理",
       apps: "应用",
       overview: "概览",
-      marketplace: "市场",
-      my: "我的",
       settings: "设置",
       profile: "个人资料",
       security: "安全",

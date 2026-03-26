@@ -61,7 +61,7 @@ export function BotAppsTab({ botId }: { botId: string }) {
         <div className="text-center py-16 space-y-3 border-2 border-dashed rounded-2xl">
           <Blocks className="w-10 h-10 mx-auto text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">暂无安装的应用</p>
-          <Button variant="outline" size="sm" onClick={() => navigate("/dashboard/apps/marketplace")}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/dashboard/apps")}>
             浏览应用市场
           </Button>
         </div>
@@ -123,7 +123,7 @@ function InstallDialog({ botId, open, onOpenChange, onInstalled }: {
   useEffect(() => {
     if (!open) { setConfirmApp(null); setSearch(""); return; }
     setLoading(true);
-    Promise.all([api.listApps(), api.listApps({ listing: true })]).then(([my, listed]) => {
+    Promise.all([api.listApps(), api.listApps({ listing: "listed" })]).then(([my, listed]) => {
       const seen = new Set<string>();
       const merged: any[] = [];
       for (const a of [...(my || []), ...(listed || [])]) {
