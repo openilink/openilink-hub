@@ -98,14 +98,15 @@ func (s *Server) handleDeleteRegistry(w http.ResponseWriter, r *http.Request) {
 }
 
 // refreshRegistrySources reloads registry sources from DB into the registry client.
-func (s *Server) refreshRegistrySources() {
+// Returns an error if the reload fails so callers can decide how to handle it.
+func (s *Server) refreshRegistrySources() error {
 	if s.Registry == nil {
-		return
+		return nil
 	}
 	registries, err := s.Store.ListRegistries()
 	if err != nil {
 		slog.Error("refreshRegistrySources: failed to list registries", "err", err)
-		return
+		return err
 	}
 	var sources []struct{ Name, URL string }
 	for _, reg := range registries {
@@ -114,4 +115,5 @@ func (s *Server) refreshRegistrySources() {
 		}
 	}
 	s.Registry.SetSources(sources)
+	return nil
 }

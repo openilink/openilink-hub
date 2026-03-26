@@ -51,7 +51,7 @@ type DeliveryResult struct {
 	ResponseBody string `json:"-"`
 }
 
-// eventEnvelope is the JSON structure POSTed to the app's request_url.
+// eventEnvelope is the JSON structure POSTed to the app's webhook_url.
 type eventEnvelope struct {
 	V              int            `json:"v"`
 	Type           string         `json:"type"`
@@ -124,7 +124,7 @@ func (d *Dispatcher) store() appStore {
 	return d.Store
 }
 
-// DeliverEvent posts a signed event payload to the installation's request_url
+// DeliverEvent posts a signed event payload to the installation's webhook_url
 // and logs the delivery attempt. Returns the delivery result or an error.
 func (d *Dispatcher) DeliverEvent(inst *store.AppInstallation, event *Event) (*DeliveryResult, error) {
 	if inst.AppWebhookURL == "" {

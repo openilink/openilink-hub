@@ -359,12 +359,13 @@ func TestMatchEvent_NoSubscription(t *testing.T) {
 
 func TestMatchEvent_DisabledExcluded(t *testing.T) {
 	events, _ := json.Marshal([]string{"message"})
+	scopes, _ := json.Marshal([]string{"message:read"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
 			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppWebhookURL: "http://example.com"},
 		},
 		apps: map[string]*store.App{
-			"a1": {ID: "a1", Events: events},
+			"a1": {ID: "a1", Events: events, Scopes: scopes},
 		},
 	}
 
