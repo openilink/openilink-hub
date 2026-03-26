@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Card } from "../components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { api } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -86,7 +86,7 @@ export function AppDetailPage() {
         <select
           value={section}
           onChange={e => setSection(e.target.value as SectionKey)}
-          className="w-full h-9 px-3 rounded-lg border bg-background text-sm"
+          className="w-full h-9 px-3 rounded-md border bg-background text-sm"
           aria-label="选择设置页面"
         >
           {NAV_SECTIONS.flatMap(g => g.items).map(item => (
@@ -100,7 +100,7 @@ export function AppDetailPage() {
         <nav className="hidden md:block w-52 shrink-0 space-y-6">
           {NAV_SECTIONS.map(group => (
             <div key={group.group} className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-2 mb-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-2 mb-2">
                 {group.group}
               </p>
               {group.items.map(item => (
@@ -172,32 +172,38 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
       </div>
 
       {/* Display Information */}
-      <Card className="space-y-3">
-        <h3 className="text-sm font-medium">展示信息</h3>
-        <form onSubmit={handleSave} className="space-y-2">
-          <Input placeholder="名称" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
-          <Input placeholder="描述" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
-          <Input placeholder="图标 (emoji 或 URL)" value={form.icon} onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
-          <Input placeholder="主页 URL" value={form.homepage} onChange={(e) => setForm((f) => ({ ...f, homepage: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
-          {!app.registry && (
-          <div className="flex items-center justify-between">
-            <div>
-              {error && <span className="text-xs text-destructive">{error}</span>}
-              {success && <span className="text-xs text-primary">{success}</span>}
+      <Card>
+        <CardHeader>
+          <CardTitle>展示信息</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSave} className="space-y-2">
+            <Input placeholder="名称" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
+            <Input placeholder="描述" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
+            <Input placeholder="图标 (emoji 或 URL)" value={form.icon} onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
+            <Input placeholder="主页 URL" value={form.homepage} onChange={(e) => setForm((f) => ({ ...f, homepage: e.target.value }))} className="h-8 text-xs" disabled={!!app.registry} />
+            {!app.registry && (
+            <div className="flex items-center justify-between">
+              <div>
+                {error && <span className="text-xs text-destructive">{error}</span>}
+                {success && <span className="text-xs text-primary">{success}</span>}
+              </div>
+              <Button type="submit" size="sm" disabled={saving}>{saving ? "..." : "保存"}</Button>
             </div>
-            <Button type="submit" size="sm" disabled={saving}>{saving ? "..." : "保存"}</Button>
-          </div>
-          )}
-        </form>
+            )}
+          </form>
+        </CardContent>
       </Card>
 
       {/* Registry badge */}
       {app.registry && (
-        <Card className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">来自应用市场</Badge>
-            <span className="text-xs text-muted-foreground">此应用来自应用市场 Registry，配置不可编辑。</span>
-          </div>
+        <Card>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">来自应用市场</Badge>
+              <span className="text-xs text-muted-foreground">此应用来自应用市场 Registry，配置不可编辑。</span>
+            </div>
+          </CardContent>
         </Card>
       )}
 
@@ -208,48 +214,61 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
 
       {/* Readme */}
       {app.readme && (
-        <Card className="space-y-3">
-          <h3 className="text-sm font-medium">说明文档</h3>
-          <div className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
-            {app.readme.replace(/\{hub_url\}/g, window.location.origin).replace(/\{your_token\}/g, "<your_token>")}
-          </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>说明文档</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
+              {app.readme.replace(/\{hub_url\}/g, window.location.origin).replace(/\{your_token\}/g, "<your_token>")}
+            </div>
+          </CardContent>
         </Card>
       )}
 
       {app.registry === "builtin" && !app.readme && (
-        <Card className="space-y-3">
-          <h3 className="text-sm font-medium">使用说明</h3>
-          <p className="text-xs text-muted-foreground">此应用为 Integration 类型，使用 Token 进行 API 调用。请在安装管理中查看 Token。</p>
-          <div className="space-y-2 text-xs font-mono text-muted-foreground">
+        <Card>
+          <CardHeader>
+            <CardTitle>使用说明</CardTitle>
+            <CardDescription>此应用为 Integration 类型，使用 Token 进行 API 调用。请在安装管理中查看 Token。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-xs font-mono text-muted-foreground">
             <p className="font-sans text-xs font-medium text-foreground">HTTP 发消息</p>
-            <pre className="p-2 rounded-lg bg-muted/30 border overflow-x-auto whitespace-pre-wrap">{`curl -X POST ${window.location.origin}/bot/v1/message/send \\
+            <pre className="p-2 rounded-md bg-muted/30 border overflow-x-auto whitespace-pre-wrap">{`curl -X POST ${window.location.origin}/bot/v1/message/send \\
   -H "Authorization: Bearer <your_token>" \\
   -d '{"content":"hello"}'`}</pre>
             <p className="font-sans text-xs font-medium text-foreground">WebSocket 连接</p>
-            <pre className="p-2 rounded-lg bg-muted/30 border overflow-x-auto whitespace-pre-wrap">{`wss://${window.location.origin.replace(/^https?:\/\//, "")}/bot/v1/ws?token=<your_token>`}</pre>
-          </div>
+            <pre className="p-2 rounded-md bg-muted/30 border overflow-x-auto whitespace-pre-wrap">{`wss://${window.location.origin.replace(/^https?:\/\//, "")}/bot/v1/ws?token=<your_token>`}</pre>
+          </CardContent>
         </Card>
       )}
 
       {/* App Credentials */}
-      <Card className="space-y-4">
-        <h3 className="text-sm font-medium">应用凭证</h3>
-        <p className="text-xs text-muted-foreground">这些凭证用于你的 App 与 Hub 之间的安全通信。请妥善保管，不要泄露。</p>
-        {app.webhook_secret && (
-          <SecretField label="Webhook Secret" value={app.webhook_secret} description="Hub 使用此密钥对推送事件签名，App 用它验证请求来源" />
-        )}
-        {!app.webhook_secret && (
-          <p className="text-xs text-muted-foreground italic">凭证仅对 App 所有者可见。</p>
-        )}
+      <Card>
+        <CardHeader>
+          <CardTitle>应用凭证</CardTitle>
+          <CardDescription>这些凭证用于你的 App 与 Hub 之间的安全通信。请妥善保管，不要泄露。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {app.webhook_secret ? (
+            <SecretField label="Webhook Secret" value={app.webhook_secret} description="Hub 使用此密钥对推送事件签名，App 用它验证请求来源" />
+          ) : (
+            <p className="text-xs text-muted-foreground italic">凭证仅对 App 所有者可见。</p>
+          )}
+        </CardContent>
       </Card>
 
       {/* Delete App */}
-      <Card className="space-y-3">
-        <h3 className="text-sm font-medium text-destructive">删除应用</h3>
-        <p className="text-xs text-muted-foreground">删除后所有安装也将被移除，此操作不可撤销。</p>
-        <Button variant="destructive" size="sm" onClick={handleDelete}>
-          <Trash2 className="w-3.5 h-3.5 mr-1" /> 删除 App
-        </Button>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-destructive">删除应用</CardTitle>
+          <CardDescription>删除后所有安装也将被移除，此操作不可撤销。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="destructive" size="sm" onClick={handleDelete}>
+            <Trash2 className="w-3.5 h-3.5 mr-1" /> 删除 App
+          </Button>
+        </CardContent>
       </Card>
     </div>
   );
@@ -259,21 +278,23 @@ function IntegrationTokenGuide({ app }: { app: any }) {
   const hubUrl = window.location.origin;
 
   return (
-    <Card className="space-y-4">
-      <h3 className="text-sm font-medium">Integration Token 使用指南</h3>
-      <p className="text-xs text-muted-foreground">此应用为 Integration 类型。安装实例的 Token 可在「安装管理」中查看。</p>
-      <div className="space-y-3 text-xs">
+    <Card>
+      <CardHeader>
+        <CardTitle>Integration Token 使用指南</CardTitle>
+        <CardDescription>此应用为 Integration 类型。安装实例的 Token 可在「安装管理」中查看。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 text-xs">
         <div className="space-y-1">
           <p className="font-medium text-foreground">HTTP 发消息</p>
-          <pre className="p-2 rounded-lg bg-muted/30 border font-mono overflow-x-auto whitespace-pre-wrap">{`curl -X POST ${hubUrl}/bot/v1/message/send \\
+          <pre className="p-2 rounded-md bg-muted/30 border font-mono overflow-x-auto whitespace-pre-wrap">{`curl -X POST ${hubUrl}/bot/v1/message/send \\
   -H "Authorization: Bearer {token}" \\
   -d '{"content":"hello"}'`}</pre>
         </div>
         <div className="space-y-1">
           <p className="font-medium text-foreground">WebSocket 连接</p>
-          <pre className="p-2 rounded-lg bg-muted/30 border font-mono overflow-x-auto whitespace-pre-wrap">{`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token={token}`}</pre>
+          <pre className="p-2 rounded-md bg-muted/30 border font-mono overflow-x-auto whitespace-pre-wrap">{`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token={token}`}</pre>
         </div>
-      </div>
+      </CardContent>
     </Card>
   );
 }
@@ -290,8 +311,8 @@ function SecretField({ label, value, description }: { label: string; value: stri
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium">{label}</p>
-      {description && <p className="text-[10px] text-muted-foreground">{description}</p>}
-      <div className="flex items-center gap-2 p-2 rounded-lg border bg-background">
+      {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
         <code className="text-xs font-mono flex-1 break-all">{show ? value : masked}</code>
         <button onClick={() => setShow(!show)} className="cursor-pointer text-muted-foreground hover:text-foreground" aria-label={show ? "隐藏" : "显示"}>
           {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -360,29 +381,33 @@ function InstallAppSection({ appId }: { appId: string }) {
       </div>
 
       {/* Install to Bot */}
-      <Card className="space-y-3">
-        <h3 className="text-sm font-medium">安装到账号</h3>
-        {bots.length === 0 ? (
-          <p className="text-sm text-muted-foreground">请先创建一个账号，然后再安装应用。</p>
-        ) : (
-        <div className="flex gap-2 items-end">
-          <div className="flex-1 space-y-1">
-            <label htmlFor="install-bot-select" className="text-xs text-muted-foreground">账号</label>
-            <select id="install-bot-select" value={botId} onChange={e => setBotId(e.target.value)}
-              className="w-full h-8 px-2 rounded-md border bg-background text-xs outline-none">
-              {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+      <Card>
+        <CardHeader>
+          <CardTitle>安装到账号</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {bots.length === 0 ? (
+            <p className="text-sm text-muted-foreground">请先创建一个账号，然后再安装应用。</p>
+          ) : (
+          <div className="flex gap-2 items-end">
+            <div className="flex-1 space-y-1">
+              <label htmlFor="install-bot-select" className="text-xs text-muted-foreground">账号</label>
+              <select id="install-bot-select" value={botId} onChange={e => setBotId(e.target.value)}
+                className="w-full h-8 px-2 rounded-md border bg-background text-xs outline-none">
+                {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div className="flex-1 space-y-1">
+              <label htmlFor="install-handle-input" className="text-xs text-muted-foreground">Handle</label>
+              <Input id="install-handle-input" value={handle} onChange={e => setHandle(e.target.value)} placeholder="如 notify" className="h-8 text-xs font-mono" />
+            </div>
+            <Button size="sm" onClick={handleInstall} disabled={installing || !botId || !handle.trim()} className="h-8">
+              {installing && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              安装
+            </Button>
           </div>
-          <div className="flex-1 space-y-1">
-            <label htmlFor="install-handle-input" className="text-xs text-muted-foreground">Handle</label>
-            <Input id="install-handle-input" value={handle} onChange={e => setHandle(e.target.value)} placeholder="如 notify" className="h-8 text-xs font-mono" />
-          </div>
-          <Button size="sm" onClick={handleInstall} disabled={installing || !botId || !handle.trim()} className="h-8">
-            {installing && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-            安装
-          </Button>
-        </div>
-        )}
+          )}
+        </CardContent>
       </Card>
 
       {/* Existing installations */}
@@ -391,22 +416,24 @@ function InstallAppSection({ appId }: { appId: string }) {
       ) : (
         <div className="space-y-2">
           {installations.map((ins) => (
-            <Card key={ins.id} className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{ins.bot_name || ins.bot_id}</span>
-                  {ins.handle && <Badge variant="outline" className="text-xs font-mono">@{ins.handle}</Badge>}
+            <Card key={ins.id}>
+              <CardContent className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{ins.bot_name || ins.bot_id}</span>
+                    {ins.handle && <Badge variant="outline" className="text-xs font-mono">@{ins.handle}</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground font-mono">{ins.id}</p>
                 </div>
-                <p className="text-[10px] text-muted-foreground font-mono">{ins.id}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant={ins.enabled ? "default" : "outline"}>
-                  {ins.enabled ? "启用" : "禁用"}
-                </Badge>
-                <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" aria-label="卸载" onClick={() => handleDelete(ins.id)}>
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={ins.enabled ? "default" : "outline"}>
+                    {ins.enabled ? "启用" : "禁用"}
+                  </Badge>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" aria-label="卸载" onClick={() => handleDelete(ins.id)}>
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              </CardContent>
             </Card>
           ))}
         </div>
@@ -433,9 +460,11 @@ function DistributionSection({ app, onUpdate }: { app: any; onUpdate: () => void
         <p className="text-sm text-muted-foreground mt-1">管理应用的上架状态，上架后其他用户可以搜索并安装。</p>
       </div>
 
-      <Card className="space-y-4">
-        <h3 className="text-sm font-medium">应用市场</h3>
-
+      <Card>
+        <CardHeader>
+          <CardTitle>应用市场</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
         {app.listing === "listed" ? (
           <div className="flex items-center gap-2">
             <Badge variant="default">已上架</Badge>
@@ -468,6 +497,7 @@ function DistributionSection({ app, onUpdate }: { app: any; onUpdate: () => void
             </Button>
           </div>
         )}
+        </CardContent>
       </Card>
     </div>
   );
@@ -520,40 +550,48 @@ function EventSubscriptionsSection({ app, onUpdate }: { app: any; onUpdate: () =
         <p className="text-sm text-muted-foreground mt-1">配置事件推送 URL 和订阅的事件类型。</p>
       </div>
 
-      <Card className="space-y-4">
-        <h3 className="text-sm font-medium">请求地址</h3>
-        <p className="text-xs text-muted-foreground">Hub 会将事件推送到此 URL，payload 中包含 installation_id 和 bot_id 以区分来源。</p>
-        <div className="flex gap-2">
-          <Input
-            placeholder="https://your-app.example.com/webhook"
-            value={webhookUrl}
-            onChange={(e) => setWebhookUrl(e.target.value)}
-            className="h-8 text-xs font-mono flex-1"
-          />
-          <Button size="sm" variant="outline" onClick={handleVerify} disabled={verifying || !webhookUrl.trim()} className="h-8">
-            {verifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3 mr-1" />}
-            验证
-          </Button>
-        </div>
-        {app.url_verified && (
-          <div className="flex items-center gap-1 text-xs text-primary">
-            <ShieldCheck className="w-3 h-3" /> URL 已验证
+      <Card>
+        <CardHeader>
+          <CardTitle>转发地址</CardTitle>
+          <CardDescription>Bot 收到的消息将 POST 到此地址</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              placeholder="https://your-app.example.com/webhook"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              className="h-8 text-xs font-mono flex-1"
+            />
+            <Button size="sm" variant="outline" onClick={handleVerify} disabled={verifying || !webhookUrl.trim()} className="h-8">
+              {verifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3 mr-1" />}
+              验证
+            </Button>
           </div>
-        )}
+          {app.url_verified && (
+            <div className="flex items-center gap-1 text-xs text-primary">
+              <ShieldCheck className="w-3 h-3" /> URL 已验证
+            </div>
+          )}
+        </CardContent>
       </Card>
 
-      <Card className="space-y-4">
-        <h3 className="text-sm font-medium">订阅事件</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {EVENT_TYPES.map((et) => (
-            <label key={et.key} className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={events.includes(et.key)} onChange={() => toggleEvent(et.key)} className="w-3.5 h-3.5 accent-primary" />
-              <span className="text-xs">{et.label}</span>
-              <span className="text-xs text-muted-foreground font-mono">{et.key}</span>
-            </label>
-          ))}
-        </div>
-        <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "..." : "保存"}</Button>
+      <Card>
+        <CardHeader>
+          <CardTitle>订阅事件</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            {EVENT_TYPES.map((et) => (
+              <label key={et.key} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={events.includes(et.key)} onChange={() => toggleEvent(et.key)} className="w-3.5 h-3.5 accent-primary" />
+                <span className="text-xs">{et.label}</span>
+                <span className="text-xs text-muted-foreground font-mono">{et.key}</span>
+              </label>
+            ))}
+          </div>
+          <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "..." : "保存"}</Button>
+        </CardContent>
       </Card>
     </div>
   );
@@ -603,24 +641,26 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
       )}
 
       {tools.map((tool, i) => (
-        <Card key={i} className="space-y-2">
-          <div className="flex items-start gap-2">
-            <div className="flex-1 space-y-1">
-              <div className="flex gap-1">
-                <Input placeholder="工具名（如 list_prs）" value={tool.name} onChange={(e) => updateTool(i, "name", e.target.value)} className="h-7 text-xs font-mono flex-1" />
-                <Input placeholder="命令触发（如 pr）" value={tool.command} onChange={(e) => updateTool(i, "command", e.target.value)} className="h-7 text-xs font-mono w-36" />
+        <Card key={i}>
+          <CardContent>
+            <div className="flex items-start gap-2">
+              <div className="flex-1 space-y-1">
+                <div className="flex gap-1">
+                  <Input placeholder="工具名（如 list_prs）" value={tool.name} onChange={(e) => updateTool(i, "name", e.target.value)} className="h-7 text-xs font-mono flex-1" />
+                  <Input placeholder="命令触发（如 pr）" value={tool.command} onChange={(e) => updateTool(i, "command", e.target.value)} className="h-7 text-xs font-mono w-36" />
+                </div>
+                <Input placeholder="描述" value={tool.description} onChange={(e) => updateTool(i, "description", e.target.value)} className="h-7 text-xs" />
+                <textarea
+                  placeholder='参数 JSON Schema（可选）'
+                  value={tool.parameters}
+                  onChange={(e) => updateTool(i, "parameters", e.target.value)}
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 resize-none"
+                />
               </div>
-              <Input placeholder="描述" value={tool.description} onChange={(e) => updateTool(i, "description", e.target.value)} className="h-7 text-xs" />
-              <textarea
-                placeholder='参数 JSON Schema（可选）'
-                value={tool.parameters}
-                onChange={(e) => updateTool(i, "parameters", e.target.value)}
-                rows={2}
-                className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-[11px] font-mono placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 resize-none"
-              />
+              <button type="button" onClick={() => removeTool(i)} className="cursor-pointer mt-1" aria-label="删除工具"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
             </div>
-            <button onClick={() => removeTool(i)} className="cursor-pointer mt-1" aria-label="删除工具"><Trash2 className="w-3.5 h-3.5 text-destructive" /></button>
-          </div>
+          </CardContent>
         </Card>
       ))}
 
@@ -657,43 +697,46 @@ function OAuthPermissionsSection({ app, onUpdate }: { app: any; onUpdate: () => 
         <p className="text-sm text-muted-foreground mt-1">管理应用通过 Bot API 调用时所需的权限范围。</p>
       </div>
 
-      <Card className="space-y-4">
-        <h3 className="text-sm font-medium">权限范围</h3>
-        <p className="text-xs text-muted-foreground">定义应用能够访问和执行的操作。安装时用户将看到这些权限描述。</p>
+      <Card>
+        <CardHeader>
+          <CardTitle>权限范围</CardTitle>
+          <CardDescription>定义应用能够访问和执行的操作。安装时用户将看到这些权限描述。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-medium flex items-center gap-1.5">
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" /> 查看信息
+            </p>
+            {readScopes.map(s => (
+              <label key={s.key} className="flex items-start gap-3 p-2 rounded-md border bg-background cursor-pointer hover:bg-muted/30 transition-colors">
+                <input type="checkbox" checked={scopes.includes(s.key)} onChange={() => toggleScope(s.key)} className="mt-0.5 accent-primary" />
+                <div>
+                  <span className="text-sm font-medium">{s.label}</span>
+                  <span className="text-xs text-muted-foreground font-mono ml-2">{s.key}</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>
+                </div>
+              </label>
+            ))}
+          </div>
 
-        <div className="space-y-2">
-          <p className="text-xs font-medium flex items-center gap-1.5">
-            <Eye className="h-3.5 w-3.5 text-muted-foreground" /> 查看信息
-          </p>
-          {readScopes.map(s => (
-            <label key={s.key} className="flex items-start gap-3 p-2 rounded-lg border bg-background cursor-pointer hover:bg-muted/30 transition-colors">
-              <input type="checkbox" checked={scopes.includes(s.key)} onChange={() => toggleScope(s.key)} className="mt-0.5 accent-primary" />
-              <div>
-                <span className="text-sm font-medium">{s.label}</span>
-                <span className="text-xs text-muted-foreground font-mono ml-2">{s.key}</span>
-                <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>
-              </div>
-            </label>
-          ))}
-        </div>
+          <div className="space-y-2">
+            <p className="text-xs font-medium flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5 text-primary" /> 执行操作
+            </p>
+            {writeScopes.map(s => (
+              <label key={s.key} className="flex items-start gap-3 p-2 rounded-md border bg-background cursor-pointer hover:bg-muted/30 transition-colors">
+                <input type="checkbox" checked={scopes.includes(s.key)} onChange={() => toggleScope(s.key)} className="mt-0.5 accent-primary" />
+                <div>
+                  <span className="text-sm font-medium">{s.label}</span>
+                  <span className="text-xs text-muted-foreground font-mono ml-2">{s.key}</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>
+                </div>
+              </label>
+            ))}
+          </div>
 
-        <div className="space-y-2">
-          <p className="text-xs font-medium flex items-center gap-1.5">
-            <Zap className="h-3.5 w-3.5 text-primary" /> 执行操作
-          </p>
-          {writeScopes.map(s => (
-            <label key={s.key} className="flex items-start gap-3 p-2 rounded-lg border bg-background cursor-pointer hover:bg-muted/30 transition-colors">
-              <input type="checkbox" checked={scopes.includes(s.key)} onChange={() => toggleScope(s.key)} className="mt-0.5 accent-primary" />
-              <div>
-                <span className="text-sm font-medium">{s.label}</span>
-                <span className="text-xs text-muted-foreground font-mono ml-2">{s.key}</span>
-                <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>
-              </div>
-            </label>
-          ))}
-        </div>
-
-        <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "..." : "保存更改"}</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "..." : "保存更改"}</Button>
+        </CardContent>
       </Card>
     </div>
   );
