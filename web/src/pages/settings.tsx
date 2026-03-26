@@ -136,16 +136,16 @@ function ChangePasswordSection() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
           <div className="space-y-2">
-            <label className="text-xs font-medium">当前密码</label>
-            <Input type="password" autoComplete="current-password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} placeholder="••••••••" />
+            <label htmlFor="current-password" className="text-xs font-medium">当前密码</label>
+            <Input id="current-password" name="current-password" type="password" autoComplete="current-password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} placeholder="••••••••" />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium">新密码</label>
-            <Input type="password" autoComplete="new-password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="至少 8 位" />
+            <label htmlFor="new-password" className="text-xs font-medium">新密码</label>
+            <Input id="new-password" name="new-password" type="password" autoComplete="new-password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="至少 8 位" />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium">确认新密码</label>
-            <Input type="password" autoComplete="new-password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="再次输入新密码" />
+            <label htmlFor="confirm-password" className="text-xs font-medium">确认新密码</label>
+            <Input id="confirm-password" name="confirm-password" type="password" autoComplete="new-password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="再次输入新密码" />
           </div>
           
           <div className="pt-2 flex flex-col gap-3">
@@ -168,7 +168,7 @@ function PasskeySection() {
   const [error, setError] = useState("");
 
   async function load() {
-    try { setPasskeys((await api.listPasskeys()) || []); } catch {}
+    try { setPasskeys((await api.listPasskeys()) || []); } catch { setPasskeys([]); }
   }
   useEffect(() => { load(); }, []);
 
@@ -246,7 +246,7 @@ function PasskeySection() {
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={async () => {
                     if (!confirm("确定要删除此 Passkey 吗？")) return;
-                    try { await api.deletePasskey(pk.id); load(); } catch {}
+                    try { await api.deletePasskey(pk.id); load(); } catch (e: any) { setError(e.message || "删除失败"); }
                   }}
                 >
                   <Trash2 className="h-4 w-4" />
