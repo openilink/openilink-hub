@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Eye, Zap, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -15,13 +15,23 @@ import { ToolsDisplay, parseTools } from "../components/tools-display";
 
 export function InstallAppPage() {
   const { id: botId, appId } = useParams<{ id: string; appId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [app, setApp] = useState<any>(null);
   const [botName, setBotName] = useState("");
   const [loading, setLoading] = useState(true);
-  const [handle, setHandle] = useState("");
-  const [configForm, setConfigForm] = useState<Record<string, string>>({});
+  const [handle, setHandle] = useState(searchParams.get("handle") || "");
+  const [configForm, setConfigForm] = useState<Record<string, string>>(() => {
+    // Prefill config from URL search params (e.g. ?config.forward_url=https://...)
+    const prefill: Record<string, string> = {};
+    searchParams.forEach((value, key) => {
+      if (key.startsWith("config.")) {
+        prefill[key.slice(7)] = value;
+      }
+    });
+    return prefill;
+  });
   const [installing, setInstalling] = useState(false);
 
   const loadData = useCallback(async () => {
