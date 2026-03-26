@@ -322,28 +322,32 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
   }
 
   return (
-    <Card className="space-y-4">
-      <h3 className="text-sm font-medium">应用配置</h3>
-      {Object.entries(properties).map(([key, prop]: [string, any]) => (
-        <div key={key} className="space-y-1.5">
-          <label className="text-xs text-muted-foreground">{prop.title || key}</label>
-          <Input
-            value={form[key] || ""}
-            onChange={e => setForm({ ...form, [key]: e.target.value })}
-            className="h-8 text-xs font-mono"
-            placeholder={prop.description || ""}
-          />
-          {prop.description && (
-            <p className="text-[10px] text-muted-foreground">{prop.description}</p>
-          )}
+    <Card>
+      <CardHeader>
+        <CardTitle>应用配置</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {Object.entries(properties).map(([key, prop]: [string, any]) => (
+          <div key={key} className="space-y-1.5">
+            <Label className="text-muted-foreground">{prop.title || key}</Label>
+            <Input
+              value={form[key] || ""}
+              onChange={e => setForm({ ...form, [key]: e.target.value })}
+              className="h-8 text-xs font-mono"
+              placeholder={prop.description || ""}
+            />
+            {prop.description && (
+              <p className="text-xs text-muted-foreground">{prop.description}</p>
+            )}
+          </div>
+        ))}
+        <div className="flex items-center gap-2 pt-2 border-t">
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+            保存配置
+          </Button>
         </div>
-      ))}
-      <div className="flex items-center gap-2 pt-2 border-t">
-        <Button size="sm" onClick={handleSave} disabled={saving}>
-          {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-          保存配置
-        </Button>
-      </div>
+      </CardContent>
     </Card>
   );
 }
