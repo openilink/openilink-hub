@@ -60,10 +60,8 @@ export function DeveloperAppsPage() {
   }
 
   function handleDialogClose(open: boolean) {
-    if (!open) {
-      setDialogOpen(false);
-      setNewName("");
-    }
+    setDialogOpen(open);
+    if (!open) setNewName("");
   }
 
   async function handleCreate() {
@@ -87,6 +85,7 @@ export function DeveloperAppsPage() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (creating) return;
     if (e.key === "Enter") {
       handleCreate();
     }
@@ -132,8 +131,11 @@ export function DeveloperAppsPage() {
           {apps.map((app) => (
             <div
               key={app.id}
+              role="button"
+              tabIndex={0}
               className="group flex items-center gap-4 px-4 py-3.5 bg-card hover:bg-muted/40 transition-colors cursor-pointer"
               onClick={() => navigate(`/dashboard/apps/${app.id}`)}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && navigate(`/dashboard/apps/${app.id}`)}
             >
               <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-9 w-9" />
               <div className="flex-1 min-w-0">
@@ -157,6 +159,7 @@ export function DeveloperAppsPage() {
           <div className="space-y-4 pt-2">
             <Input
               placeholder="应用名称"
+              aria-label="应用名称"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={handleKeyDown}
