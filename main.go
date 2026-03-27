@@ -33,6 +33,7 @@ import (
 	// Register builtin apps
 	_ "github.com/openilink/openilink-hub/internal/builtin/bridge"
 	_ "github.com/openilink/openilink-hub/internal/builtin/openclaw"
+	_ "github.com/openilink/openilink-hub/internal/builtin/runner"
 )
 
 // Set by goreleaser ldflags.
