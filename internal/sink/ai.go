@@ -414,7 +414,8 @@ func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequ
 		span.SetAttr("tool.result", truncateStr(result.Reply, 500))
 	}
 
-	// Handle image replies: send image to user AND pass to LLM as multimodal content
+	// Handle image replies: send image to user directly.
+	// When all tool results in a round contain images, the caller skips LLM continuation.
 	if result.ReplyType == "image" {
 		images := s.resolveToolMedia(ctx, d.BotDBID, result)
 		// Only include images that were actually delivered to the user.
