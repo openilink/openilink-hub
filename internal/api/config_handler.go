@@ -194,6 +194,8 @@ func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 	s.Store.DeleteConfig("ai.base_url")
 	s.Store.DeleteConfig("ai.api_key")
 	s.Store.DeleteConfig("ai.model")
+	s.Store.DeleteConfig("ai.system_prompt")
+	s.Store.DeleteConfig("ai.max_history")
 	s.Store.DeleteConfig("ai.hide_thinking")
 	s.Store.DeleteConfig("ai.strip_markdown")
 	s.Store.DeleteConfig("ai.available_models")

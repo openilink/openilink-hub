@@ -460,7 +460,7 @@ func TestComplete_UsageParsed(t *testing.T) {
 	defer srv.Close()
 
 	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
-	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -496,7 +496,7 @@ func TestComplete_UsageNilWhenMissing(t *testing.T) {
 	defer srv.Close()
 
 	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
-	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -524,7 +524,7 @@ func TestComplete_UsagePartialDetails(t *testing.T) {
 	defer srv.Close()
 
 	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
-	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -570,7 +570,7 @@ func TestComplete_UsageOnToolCallResponse(t *testing.T) {
 	defer srv.Close()
 
 	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
-	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}

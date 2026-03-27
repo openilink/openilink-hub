@@ -352,6 +352,8 @@ func (s *AI) reply(d Delivery) {
 		}
 	}
 
+	// StripMarkdown runs after thinking is prepended, so both the thinking
+	// content and the main reply are stripped when HideThinking=false.
 	if cfg.StripMarkdown {
 		reply = ai.StripMarkdown(reply)
 	}
