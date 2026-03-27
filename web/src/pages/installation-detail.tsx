@@ -11,7 +11,6 @@ import {
   Trash2,
   RefreshCw,
   Key,
-  Settings,
   ScrollText,
   Terminal,
   Sliders,
@@ -23,7 +22,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardAction,
   CardContent,
   CardDescription,
 } from "../components/ui/card";
@@ -73,7 +71,7 @@ function buildNavSections(app: any, inst?: any) {
       items.push({ key: "app-config", label: "应用配置", icon: Sliders });
     }
   }
-  items.push({ key: "config", label: "危险操作", icon: Settings });
+  items.push({ key: "config", label: "危险操作", icon: Trash2 });
   items.push({ key: "event-logs", label: "事件日志", icon: ScrollText });
   items.push({ key: "api-logs", label: "API 日志", icon: ScrollText });
   return items;
@@ -92,6 +90,7 @@ export function InstallationDetailPage() {
   const [section, setSection] = useState<SectionKey>("token");
   const [handle, setHandle] = useState("");
   const [enabled, setEnabled] = useState(true);
+  const [enablingPending, setEnablingPending] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -158,6 +157,8 @@ export function InstallationDetailPage() {
   }
 
   async function handleToggleEnabled(val: boolean) {
+    if (enablingPending) return;
+    setEnablingPending(true);
     setEnabled(val);
     try {
       await api.updateInstallation(inst.app_id, inst.id, { enabled: val });
@@ -165,6 +166,8 @@ export function InstallationDetailPage() {
     } catch (e: any) {
       setEnabled(!val);
       toast({ variant: "destructive", title: "保存失败", description: e.message });
+    } finally {
+      setEnablingPending(false);
     }
   }
 
@@ -211,6 +214,7 @@ export function InstallationDetailPage() {
                 <Switch
                   checked={enabled}
                   onCheckedChange={handleToggleEnabled}
+                  disabled={enablingPending}
                   aria-label="启用状态"
                 />
                 <span className="text-sm text-muted-foreground">
@@ -349,6 +353,11 @@ function InlineHandleEditor({
 
   function commit() {
     if (committingRef.current || cancelledRef.current) return;
+    // Keep editor open on empty input so user can correct it
+    if (!draft.trim()) {
+      onSave(draft);
+      return;
+    }
     committingRef.current = true;
     setEditing(false);
     onSave(draft);
