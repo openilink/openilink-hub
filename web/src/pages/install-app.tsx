@@ -304,121 +304,118 @@ export function InstallAppPage() {
 
             {/* Tab content */}
             <div className="flex-1 min-w-0">
-            {activeTab === "permissions" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-base font-semibold">权限</h2>
-                  <p className="text-sm text-muted-foreground mt-1">安装后此应用将获得以下权限。</p>
+              {activeTab === "permissions" && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-base font-semibold">权限</h2>
+                    <p className="text-sm text-muted-foreground mt-1">安装后此应用将获得以下权限。</p>
+                  </div>
+                  <Card>
+                    <CardContent className="pt-6 space-y-4">
+                      {readScopes.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">读取权限</p>
+                          <div className="space-y-1.5">
+                            {readScopes.map((scope: string) => (
+                              <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Eye className="h-3.5 w-3.5 shrink-0" />
+                                <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                                <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {writeScopes.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">写入权限</p>
+                          <div className="space-y-1.5">
+                            {writeScopes.map((scope: string) => (
+                              <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Zap className="h-3.5 w-3.5 shrink-0" />
+                                <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                                <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {otherScopes.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">其他权限</p>
+                          <div className="space-y-1.5">
+                            {otherScopes.map((scope: string) => (
+                              <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                                <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                                <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {events.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {events.map((event: string) => {
+                              const found = EVENT_TYPES.find((e) => e.key === event);
+                              return (
+                                <Badge key={event} variant="outline" className="text-xs">
+                                  {found ? found.label : event}
+                                  {found && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
-                <Card>
-                  <CardContent className="pt-6 space-y-4">
-                    {readScopes.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">读取权限</p>
-                        <div className="space-y-1.5">
-                          {readScopes.map((scope: string) => (
-                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Eye className="h-3.5 w-3.5 shrink-0" />
-                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {writeScopes.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">写入权限</p>
-                        <div className="space-y-1.5">
-                          {writeScopes.map((scope: string) => (
-                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Zap className="h-3.5 w-3.5 shrink-0" />
-                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {otherScopes.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">其他权限</p>
-                        <div className="space-y-1.5">
-                          {otherScopes.map((scope: string) => (
-                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {events.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {events.map((event: string) => {
-                            const found = EVENT_TYPES.find((e) => e.key === event);
-                            return (
-                              <Badge key={event} variant="outline" className="text-xs">
-                                {found ? found.label : event}
-                                {found && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
-                              </Badge>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    {!hasPermissions && (
-                      <p className="text-sm text-muted-foreground">此应用未申请任何权限。</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+              )}
 
-            {activeTab === "tools" && tools.length > 0 && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-base font-semibold">命令 / 工具</h2>
-                  <p className="text-sm text-muted-foreground mt-1">此应用提供的命令和工具。</p>
+              {activeTab === "tools" && tools.length > 0 && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-base font-semibold">命令 / 工具</h2>
+                    <p className="text-sm text-muted-foreground mt-1">此应用提供的命令和工具。</p>
+                  </div>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <ToolsDisplay tools={tools} />
+                    </CardContent>
+                  </Card>
                 </div>
-                <Card>
-                  <CardContent className="pt-6">
-                    <ToolsDisplay tools={tools} />
-                  </CardContent>
-                </Card>
-              </div>
-            )}
+              )}
 
-            {activeTab === "config" && Object.keys(schemaProperties).length > 0 && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-base font-semibold">应用配置</h2>
-                  <p className="text-sm text-muted-foreground mt-1">安装前填写此应用所需的配置。</p>
+              {activeTab === "config" && Object.keys(schemaProperties).length > 0 && (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-base font-semibold">应用配置</h2>
+                    <p className="text-sm text-muted-foreground mt-1">安装前填写此应用所需的配置。</p>
+                  </div>
+                  <Card>
+                    <CardContent className="space-y-4 pt-6">
+                      {Object.entries(schemaProperties).map(([key, prop]: [string, any]) => (
+                        <div key={key} className="space-y-1.5">
+                          <Label className="text-muted-foreground">{prop.title || key}</Label>
+                          <Input
+                            value={configForm[key] || ""}
+                            onChange={(e) => setConfigForm({ ...configForm, [key]: e.target.value })}
+                            className="h-8 text-xs font-mono"
+                            placeholder={prop.description || ""}
+                          />
+                          {prop.description && (
+                            <p className="text-xs text-muted-foreground">{prop.description}</p>
+                          )}
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
                 </div>
-                <Card>
-                  <CardContent className="space-y-4 pt-6">
-                    {Object.entries(schemaProperties).map(([key, prop]: [string, any]) => (
-                      <div key={key} className="space-y-1.5">
-                        <Label className="text-muted-foreground">{prop.title || key}</Label>
-                        <Input
-                          value={configForm[key] || ""}
-                          onChange={(e) => setConfigForm({ ...configForm, [key]: e.target.value })}
-                          className="h-8 text-xs font-mono"
-                          placeholder={prop.description || ""}
-                        />
-                        {prop.description && (
-                          <p className="text-xs text-muted-foreground">{prop.description}</p>
-                        )}
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
           </div>
         </div>}
       </div>
