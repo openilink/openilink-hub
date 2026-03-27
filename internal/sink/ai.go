@@ -207,6 +207,23 @@ func (s *AI) reply(d Delivery) {
 			toolResults = append(toolResults, toolResult)
 		}
 
+		// If all tool results returned images (already sent to user), skip LLM continuation.
+		allImages := true
+		for _, tr := range toolResults {
+			if len(tr.Images) == 0 {
+				allImages = false
+				break
+			}
+		}
+		if allImages {
+			if span != nil {
+				span.SetAttr("reply.content", "(tool returned images)")
+				span.End()
+			}
+			s.stopTyping(d, typingTicket)
+			return
+		}
+
 		// Continue conversation with tool results
 		var nextErr error
 		result, messages, nextErr = ai.ContinueWithToolResults(ctx, cfg, messages, toolResults, tools)
