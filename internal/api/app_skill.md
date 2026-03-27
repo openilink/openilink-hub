@@ -161,7 +161,7 @@ All events share this envelope format:
     "timestamp": 1711234567,
     "data": {
       "message_id": 12345,
-      "sender": {"id": "wxid_abc", "name": "wxid_abc", "role": "user"},
+      "sender": {"id": "wxid_abc", "role": "user"},
       "group": null,
       "content": "hello",
       "msg_type": "text",
@@ -173,7 +173,7 @@ All events share this envelope format:
 
 Group messages include `group`:
 ```json
-"group": {"id": "group_xxx", "name": "Tech Team"}
+"group": {"id": "group_xxx"}
 ```
 
 ### Command Events
@@ -187,7 +187,7 @@ User-triggered:
       "command": "pr",
       "text": "openilink/openilink-hub open",
       "args": null,
-      "sender": {"id": "wxid_abc", "name": "wxid_abc", "role": "user"},
+      "sender": {"id": "wxid_abc", "role": "user"},
       "group": null
     }
   }
@@ -203,7 +203,7 @@ AI Agent-triggered:
       "command": "pr",
       "text": "",
       "args": {"repo": "openilink/openilink-hub", "state": "open"},
-      "sender": {"id": "wxid_abc", "name": "wxid_abc", "role": "agent"},
+      "sender": {"id": "wxid_abc", "role": "agent"},
       "group": null
     }
   }

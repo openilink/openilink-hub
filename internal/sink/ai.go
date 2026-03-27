@@ -402,7 +402,7 @@ func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequ
 
 	// Build event (same format as command events).
 	// sender is the real user; sender.role indicates AI Agent initiated the call.
-	senderInfo := map[string]any{"id": d.Message.Sender, "name": d.Message.Sender, "role": "agent"}
+	senderInfo := map[string]any{"id": d.Message.Sender, "role": "agent"}
 	var groupInfo any
 	if d.Message.GroupID != "" {
 		groupInfo = map[string]any{"id": d.Message.GroupID, "name": d.Message.GroupID}
