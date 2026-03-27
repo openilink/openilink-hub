@@ -2,55 +2,74 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: openilink
-      POSTGRES_PASSWORD: openilink
-      POSTGRES_DB: openilink
+      POSTGRES_USER: ${POSTGRES_USER:-openilink}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openilink}
+      POSTGRES_DB: ${POSTGRES_DB:-openilink}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U openilink -d openilink"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openilink} -d ${POSTGRES_DB:-openilink}"]
       interval: 5s
       timeout: 5s
       retries: 10
     ports:
-      - "15432:5432"
+      - "${POSTGRES_PORT:-15432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: ${RESTART_POLICY:-on-failure}
+    networks:
+      - default
 
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: openilink
-      MINIO_ROOT_PASSWORD: openilink
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-openilink}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-openilink}
     ports:
-      - "19000:9000"
-      - "19001:9001"
+      - "${MINIO_API_PORT:-19000}:9000"
+      - "${MINIO_CONSOLE_PORT:-19001}:9001"
     volumes:
       - miniodata:/data
+    restart: ${RESTART_POLICY:-on-failure}
+    networks:
+      - default
 
   hub:
     build: .
-    restart: on-failure
+    restart: ${RESTART_POLICY:-on-failure}
     ports:
-      - "9800:9800"
+      - "${HUB_PORT:-9800}:9800"
     environment:
-      DATABASE_URL: postgres://openilink:openilink@postgres:5432/openilink?sslmode=disable
-      RP_ORIGIN: http://localhost:9800
-      RP_ID: localhost
+      DATABASE_URL: postgres://${POSTGRES_USER:-openilink}:${POSTGRES_PASSWORD:-openilink}@postgres:5432/${POSTGRES_DB:-openilink}?sslmode=disable
+      RP_ORIGIN: ${RP_ORIGIN:-http://localhost:9800}
+      RP_ID: ${RP_ID:-localhost}
       STORAGE_ENDPOINT: minio:9000
-      STORAGE_ACCESS_KEY: openilink
-      STORAGE_SECRET_KEY: openilink
-      STORAGE_BUCKET: openilink
-      # STORAGE_PUBLIC_URL: https://s3.example.com/openilink
-      # GITHUB_CLIENT_ID:
-      # GITHUB_CLIENT_SECRET:
-      # LINUXDO_CLIENT_ID:
-      # LINUXDO_CLIENT_SECRET:
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-openilink}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-openilink}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-openilink}
+      STORAGE_PUBLIC_URL: ${STORAGE_PUBLIC_URL:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      LINUXDO_CLIENT_ID: ${LINUXDO_CLIENT_ID:-}
+      LINUXDO_CLIENT_SECRET: ${LINUXDO_CLIENT_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_started
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE:-false}
+      - traefik.http.routers.hub.rule=Host(`${RP_ID:-localhost}`)
+      - traefik.http.routers.hub.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.hub.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      - traefik.http.services.hub.loadbalancer.server.port=9800
+    networks:
+      - default
 
 volumes:
   pgdata:
   miniodata:
+
+networks:
+  default:
+    name: ${NETWORK_NAME:-openilink-hub_default}
+    external: ${NETWORK_EXTERNAL:-false}
