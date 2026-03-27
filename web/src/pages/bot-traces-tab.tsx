@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { api } from "../lib/api";
-import { RefreshCw, Activity } from "lucide-react";
+import { RefreshCw, Activity, ChevronRight } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -62,6 +62,7 @@ export function BotTracesTab({ botId }: { botId: string }) {
               <TableHead className="text-right">Tokens</TableHead>
               <TableHead className="text-right">耗时</TableHead>
               <TableHead className="text-right">时间</TableHead>
+              <TableHead className="w-8" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -78,7 +79,7 @@ export function BotTracesTab({ botId }: { botId: string }) {
               ))
             ) : rootSpans.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground italic">
                   暂无记录
                 </TableCell>
               </TableRow>
@@ -91,8 +92,11 @@ export function BotTracesTab({ botId }: { botId: string }) {
                 return (
                   <TableRow
                     key={root.id}
-                    className="cursor-pointer group hover:bg-muted/50"
+                    className="cursor-pointer group"
+                    role="link"
+                    tabIndex={0}
                     onClick={() => navigate(`/dashboard/accounts/${botId}/traces/${root.trace_id}`)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/dashboard/accounts/${botId}/traces/${root.trace_id}`); } }}
                   >
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -116,6 +120,9 @@ export function BotTracesTab({ botId }: { botId: string }) {
                     </TableCell>
                     <TableCell className="text-right text-[10px] text-muted-foreground">
                       {new Date(root.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </TableCell>
+                    <TableCell className="w-8 px-2">
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </TableCell>
                   </TableRow>
                 );
