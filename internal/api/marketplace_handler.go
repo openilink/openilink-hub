@@ -125,6 +125,7 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 			Scopes:           regApp.Scopes,
 			Registry:         regApp.RegistryURL,
 			Version:          regApp.Version,
+			Readme:           regApp.Readme,
 			Guide:            regApp.Guide,
 		})
 		if err != nil {
