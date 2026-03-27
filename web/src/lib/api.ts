@@ -142,6 +142,7 @@ export const api = {
     system_prompt?: string;
     max_history?: string;
     hide_thinking?: string;
+    available_models?: string;
   }) => request("/api/admin/config/ai", { method: "PUT", body: JSON.stringify(data) }),
   deleteAIConfig: () => request("/api/admin/config/ai", { method: "DELETE" }),
 
