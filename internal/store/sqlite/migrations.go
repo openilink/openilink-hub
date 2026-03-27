@@ -15,7 +15,7 @@ var migrationsFS embed.FS
 func runMigrations(db *sql.DB) error {
 	// Migrate from old schema_version table to goose if needed
 	if err := migrateFromLegacy(db); err != nil {
-		slog.Warn("legacy migration check", "err", err)
+		return fmt.Errorf("legacy migration failed: %w", err)
 	}
 
 	goose.SetBaseFS(migrationsFS)
