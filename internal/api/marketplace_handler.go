@@ -87,7 +87,7 @@ func (s *Server) handleBuiltinApps(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-// POST /api/marketplace/sync/{slug} — update a marketplace app to latest version from registry
+// POST /api/marketplace/sync/{slug} — sync a marketplace app from registry (create or update)
 func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	if slug == "" {
@@ -107,16 +107,39 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the local app (must be a marketplace app with registry set)
+	// Find or create the local app
 	localApp, err := s.Store.GetAppBySlug(slug, regApp.RegistryURL)
-	if err != nil || localApp == nil || localApp.Registry == "" {
-		jsonError(w, "app not installed from marketplace", http.StatusNotFound)
+	if err != nil || localApp == nil {
+		// First install: create local app from registry data
+		localApp, err = s.Store.CreateApp(&store.App{
+			Name:             regApp.Name,
+			Slug:             regApp.Slug,
+			Description:      regApp.Description,
+			IconURL:          regApp.IconURL,
+			Homepage:         regApp.Homepage,
+			WebhookURL:       regApp.WebhookURL,
+			OAuthSetupURL:    regApp.OAuthSetupURL,
+			OAuthRedirectURL: regApp.OAuthRedirectURL,
+			Tools:            regApp.Tools,
+			Events:           regApp.Events,
+			Scopes:           regApp.Scopes,
+			Registry:         regApp.RegistryURL,
+			Version:          regApp.Version,
+			Guide:            regApp.Guide,
+		})
+		if err != nil {
+			jsonError(w, "create app failed", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(localApp)
 		return
 	}
 
-	// Compare versions
+	// Already installed and up to date
 	if regApp.Version != "" && regApp.Version == localApp.Version {
-		jsonOK(w)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(localApp)
 		return
 	}
 
@@ -140,5 +163,8 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonOK(w)
+	// Return updated app
+	localApp, _ = s.Store.GetApp(localApp.ID)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(localApp)
 }
