@@ -202,7 +202,8 @@ export function InstallAppPage() {
   if (Object.keys(schemaProperties).length > 0) {
     tabs.push({ key: "config", label: "配置", icon: Sliders });
   }
-  const activeTab = tabs.find((t) => t.key === tab) ? tab : tabs[0]?.key ?? "permissions";
+  const activeTab = tabs.find((t) => t.key === tab) ? tab : tabs[0]?.key;
+  const hasTabs = tabs.length > 0;
 
   return (
     <div className="space-y-6">
@@ -229,9 +230,9 @@ export function InstallAppPage() {
             {app.description && (
               <p className="text-sm text-muted-foreground">{app.description}</p>
             )}
-            {app.homepage_url && (
+            {app.homepage && (
               <a
-                href={app.homepage_url}
+                href={app.homepage}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
@@ -266,7 +267,7 @@ export function InstallAppPage() {
         </div>
 
         {/* Right: Tabs */}
-        <div className="flex-1 min-w-0 space-y-4">
+        {hasTabs && <div className="flex-1 min-w-0 space-y-4">
           {/* Mobile tab select */}
           <div className="md:hidden">
             <select
@@ -419,7 +420,7 @@ export function InstallAppPage() {
             )}
           </div>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );
