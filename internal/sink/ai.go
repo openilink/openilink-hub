@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +90,14 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	// Accumulate token usage across all rounds
+	var totalPrompt, totalCompletion, totalTokens int
+	if result.Usage != nil {
+		totalPrompt += result.Usage.PromptTokens
+		totalCompletion += result.Usage.CompletionTokens
+		totalTokens += result.Usage.TotalTokens
+	}
+
 	// Build installationID → appName map for status messages
 	toolAppNames := make(map[string]string)
 	for _, t := range tools {
@@ -145,6 +154,20 @@ func (s *AI) reply(d Delivery) {
 			s.stopTyping(d, typingTicket)
 			return
 		}
+
+		// Accumulate token usage from this round
+		if result.Usage != nil {
+			totalPrompt += result.Usage.PromptTokens
+			totalCompletion += result.Usage.CompletionTokens
+			totalTokens += result.Usage.TotalTokens
+		}
+	}
+
+	// Set token usage attributes on span
+	if span != nil && totalTokens > 0 {
+		span.SetAttr("ai.tokens.prompt", strconv.Itoa(totalPrompt))
+		span.SetAttr("ai.tokens.completion", strconv.Itoa(totalCompletion))
+		span.SetAttr("ai.tokens.total", strconv.Itoa(totalTokens))
 	}
 
 	s.stopTyping(d, typingTicket)

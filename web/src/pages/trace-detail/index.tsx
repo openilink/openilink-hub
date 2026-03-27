@@ -87,6 +87,11 @@ export function TraceDetailPage() {
               <span className="text-xs text-muted-foreground font-mono">
                 {formatDuration(totalDuration)}
               </span>
+              {rootSpan.attributes?.["ai.tokens.total"] && (
+                <Badge variant="outline" className="text-[10px] h-4 px-1.5 leading-none font-mono">
+                  {rootSpan.attributes["ai.tokens.total"]} tokens
+                </Badge>
+              )}
             </div>
           )}
         </div>

@@ -59,6 +59,7 @@ export function BotTracesTab({ botId }: { botId: string }) {
               <TableHead className="w-[100px]">状态</TableHead>
               <TableHead>发送者</TableHead>
               <TableHead className="hidden md:table-cell">核心事件</TableHead>
+              <TableHead className="text-right">Tokens</TableHead>
               <TableHead className="text-right">耗时</TableHead>
               <TableHead className="text-right">时间</TableHead>
             </TableRow>
@@ -70,13 +71,14 @@ export function BotTracesTab({ botId }: { botId: string }) {
                   <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-full" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-10 ml-auto" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
                 </TableRow>
               ))
             ) : rootSpans.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic">
                   暂无记录
                 </TableCell>
               </TableRow>
@@ -105,6 +107,9 @@ export function BotTracesTab({ botId }: { botId: string }) {
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">
                       {content}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-[10px] text-muted-foreground">
+                      {root.attributes?.["ai.tokens.total"] || "\u2014"}
                     </TableCell>
                     <TableCell className="text-right font-mono text-[10px] text-muted-foreground">
                       {dur > 0 ? `${dur}ms` : "<1ms"}

@@ -15,7 +15,7 @@ import {
   formatDuration,
   StatusIcon,
 } from "@/lib/trace-utils";
-import { Clock, Tag, Zap } from "lucide-react";
+import { Clock, Tag, Zap, Coins } from "lucide-react";
 
 interface SpanDetailProps {
   span: TraceSpan | null;
@@ -120,6 +120,26 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
                 </div>
               </div>
             </Section>
+
+            {/* Token Usage */}
+            {displaySpan.attributes?.["ai.tokens.total"] && (
+              <Section title="Token Usage" icon={<Coins className="w-3 h-3" />}>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="space-y-0.5">
+                    <div className="text-muted-foreground">Prompt</div>
+                    <div className="font-mono font-medium">{displaySpan.attributes["ai.tokens.prompt"] || "0"}</div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-muted-foreground">Completion</div>
+                    <div className="font-mono font-medium">{displaySpan.attributes["ai.tokens.completion"] || "0"}</div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="text-muted-foreground">Total</div>
+                    <div className="font-mono font-medium">{displaySpan.attributes["ai.tokens.total"]}</div>
+                  </div>
+                </div>
+              </Section>
+            )}
 
             {/* Attributes */}
             {attrs.length > 0 && (

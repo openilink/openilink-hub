@@ -437,6 +437,62 @@ func TestComplete_MaxToolRoundsExceeded(t *testing.T) {
 	}
 }
 
+func TestComplete_UsageParsed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "Hi!"}, "finish_reason": "stop"},
+			},
+			"usage": map[string]any{
+				"prompt_tokens":     10,
+				"completion_tokens": 5,
+				"total_tokens":      15,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if result.Usage == nil {
+		t.Fatal("expected usage to be set")
+	}
+	if result.Usage.PromptTokens != 10 {
+		t.Errorf("prompt_tokens = %d, want 10", result.Usage.PromptTokens)
+	}
+	if result.Usage.CompletionTokens != 5 {
+		t.Errorf("completion_tokens = %d, want 5", result.Usage.CompletionTokens)
+	}
+	if result.Usage.TotalTokens != 15 {
+		t.Errorf("total_tokens = %d, want 15", result.Usage.TotalTokens)
+	}
+}
+
+func TestComplete_UsageNilWhenMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "Hi!"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if result.Usage != nil {
+		t.Errorf("expected usage to be nil when not in response, got %+v", result.Usage)
+	}
+}
+
 // ==================== Real API test (skipped unless env vars set) ====================
 
 func TestCompleteWithRealAPI(t *testing.T) {
