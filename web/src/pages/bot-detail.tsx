@@ -170,10 +170,10 @@ export function BotDetailPage() {
                       await api.updateBot(bot.id, { display_name: displayNameDraft });
                       setBot({ ...bot, display_name: displayNameDraft });
                       toast({ title: "已保存" });
+                      setEditingDisplayName(false);
                     } catch (err: any) {
                       toast({ variant: "destructive", title: "保存失败", description: err.message });
                     }
-                    setEditingDisplayName(false);
                   }}
                 >
                   <Input

@@ -5,7 +5,6 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/pressly/goose/v3"
 )
@@ -32,24 +31,11 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("goose up: %w", err)
 	}
 
-	// Run idempotent post-migration fixups.
-	// SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN,
-	// so we apply column additions here with error suppression.
-	applyColumnIfMissing(db, "bots", "display_name", "TEXT NOT NULL DEFAULT ''")
-
 	after, _ := goose.GetDBVersion(db)
 	if after > before {
 		slog.Info("migrations complete", "from", before, "to", after)
 	}
 	return nil
-}
-
-// applyColumnIfMissing adds a column to a table, ignoring "duplicate column" errors.
-func applyColumnIfMissing(db *sql.DB, table, column, definition string) {
-	_, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
-	if err != nil && !strings.Contains(err.Error(), "duplicate column") {
-		slog.Warn("column migration failed", "table", table, "column", column, "err", err)
-	}
 }
 
 // migrateFromLegacy converts the old schema_version table to goose_db_version.
