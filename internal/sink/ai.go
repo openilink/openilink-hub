@@ -123,9 +123,9 @@ func (s *AI) reply(d Delivery) {
 		}
 	}
 
-	// Build messages and do initial completion
+	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
-	result, err := ai.Complete(ctx, cfg, s.Store, d.Channel.ID, sender, text, tools, currentImages, resolver)
+	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
 		if span != nil {

@@ -122,6 +122,14 @@ type CompletionResult struct {
 // resolver reads image data from storage for history messages (may be nil).
 // Returns text content or tool call requests.
 func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, tools []Tool, currentImages []ImageData, resolver MediaResolver) (*CompletionResult, error) {
+	messages := BuildMessages(cfg, s, channelID, sender, text, currentImages, resolver)
+	return CompleteMessages(ctx, cfg, messages, tools)
+}
+
+// CompleteMessages calls the LLM with pre-built messages. Use this when you
+// already have a messages slice (e.g. from BuildMessages) and want to avoid
+// rebuilding it.
+func CompleteMessages(ctx context.Context, cfg store.AIConfig, messages []Message, tools []Tool) (*CompletionResult, error) {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
@@ -130,8 +138,6 @@ func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, cha
 	if model == "" {
 		model = defaultModel
 	}
-
-	messages := BuildMessages(cfg, s, channelID, sender, text, currentImages, resolver)
 	return callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools)
 }
 
