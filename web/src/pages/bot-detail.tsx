@@ -299,8 +299,17 @@ export function BotDetailPage() {
               <Select
                 value={bot.ai_model || ""}
                 onValueChange={async (model) => {
-                  await api.setBotAIModel(id!, model);
-                  setBot({ ...bot, ai_model: model });
+                  try {
+                    await api.setBotAIModel(id!, model);
+                    setBot({ ...bot, ai_model: model });
+                    toast({ title: model ? `已切换到模型：${model}` : "已恢复全局默认模型" });
+                  } catch (err: any) {
+                    toast({
+                      variant: "destructive",
+                      title: "操作失败",
+                      description: err.message,
+                    });
+                  }
                 }}
               >
                 <SelectTrigger className="h-7 text-xs w-48">
