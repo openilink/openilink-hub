@@ -1660,4 +1660,44 @@ func TestScopeSnapshotAtInstall(t *testing.T) {
 			t.Error("reauthorized installation should have tools:write")
 		}
 	})
+
+	t.Run("widening scopes beyond app is rejected", func(t *testing.T) {
+		bot2 := createTestBot(t, env.store, env.user.ID, "widen-bot")
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install",
+			map[string]any{
+				"bot_id": bot2.ID,
+				"handle": "scope-widen-test",
+				"scopes": []string{"message:write", "message:read", "tools:write", "admin:write"},
+			}, withCookie(env.cookie))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400 for widened scopes, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("narrowing scopes is allowed", func(t *testing.T) {
+		bot3 := createTestBot(t, env.store, env.user.ID, "narrow-bot")
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install",
+			map[string]any{
+				"bot_id": bot3.ID,
+				"handle": "scope-narrow-test",
+				"scopes": []string{"message:write"},
+			}, withCookie(env.cookie))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			body := decodeJSON(t, resp)
+			t.Fatalf("expected 201 for narrowed scopes, got %d: %v", resp.StatusCode, body)
+		}
+
+		body := decodeJSON(t, resp)
+		instID := body["id"].(string)
+		inst, _ := env.store.GetInstallation(instID)
+		var instScopes []string
+		json.Unmarshal(inst.Scopes, &instScopes)
+		if len(instScopes) != 1 || instScopes[0] != "message:write" {
+			t.Errorf("expected [message:write], got %v", instScopes)
+		}
+	})
 }

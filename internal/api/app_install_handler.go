@@ -422,10 +422,28 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set handle and scopes — snapshot app scopes at install time (Slack model)
+	// Set handle and scopes — snapshot at install time (Slack model).
+	// App scopes are the upper bound; request can narrow but not widen.
 	scopes := req.Scopes
 	if scopes == nil || string(scopes) == "" || string(scopes) == "[]" || string(scopes) == "null" {
+		// No scopes specified — grant all app scopes
 		scopes = app.Scopes
+	} else {
+		// Validate requested scopes are a subset of app scopes
+		var requested []string
+		var allowed []string
+		json.Unmarshal(scopes, &requested)
+		json.Unmarshal(app.Scopes, &allowed)
+		allowedSet := make(map[string]bool, len(allowed))
+		for _, s := range allowed {
+			allowedSet[s] = true
+		}
+		for _, s := range requested {
+			if !allowedSet[s] {
+				jsonError(w, "scope "+s+" not declared by this app", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 	if err := s.Store.UpdateInstallation(inst.ID, req.Handle, inst.Config, scopes, inst.Enabled); err != nil {
 		slog.Error("install: set handle/scopes failed", "inst", inst.ID, "err", err)
