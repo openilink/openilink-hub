@@ -17,6 +17,8 @@ type Delivery struct {
 	MsgType      string
 	Content      string
 	AIEnabled    bool
+	Tracer       *store.Tracer
+	RootSpan     *store.SpanBuilder
 }
 
 // Sink processes messages delivered to a channel.

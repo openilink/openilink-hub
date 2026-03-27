@@ -36,6 +36,16 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	// Start trace span
+	var span *store.SpanBuilder
+	if d.Tracer != nil && d.RootSpan != nil {
+		span = d.Tracer.StartChild(d.RootSpan, "ai_completion", store.SpanKindClient, map[string]any{
+			"ai.model":  cfg.Model,
+			"ai.source": cfg.Source,
+			"reply.to":  d.Message.Sender,
+		})
+	}
+
 	ctx := context.Background()
 	sender := d.Message.Sender
 
@@ -59,11 +69,23 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	if err != nil {
-		slog.Error("ai completion failed", "channel", d.Channel.ID, "err", err)
+		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
+		if span != nil {
+			span.SetStatus(store.StatusError, err.Error())
+			span.End()
+		}
 		return
 	}
 	if reply == "" {
+		if span != nil {
+			span.SetAttr("reply.content", "(empty)")
+			span.End()
+		}
 		return
+	}
+
+	if span != nil {
+		span.SetAttr("reply.content", reply)
 	}
 
 	_, err = d.Provider.Send(ctx, provider.OutboundMessage{
@@ -71,8 +93,16 @@ func (s *AI) reply(d Delivery) {
 		Text:      reply,
 	})
 	if err != nil {
-		slog.Error("ai reply send failed", "channel", d.Channel.ID, "err", err)
+		slog.Error("ai reply send failed", "bot", d.BotDBID, "err", err)
+		if span != nil {
+			span.SetStatus(store.StatusError, "send failed: "+err.Error())
+			span.End()
+		}
 		return
+	}
+
+	if span != nil {
+		span.End()
 	}
 
 	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": reply}})

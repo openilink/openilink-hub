@@ -350,7 +350,7 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 	typingDone := m.startTyping(inst, msg)
 
 	// Phase 3: Deliver to sinks
-	m.deliverToChannels(inst, msg, parsed, matched, msgID)
+	m.deliverToChannels(inst, msg, parsed, matched, msgID, tracer, rootSpan)
 
 	// Phase 4: Deliver to Apps (with trace)
 	m.deliverToApps(inst, msg, parsed, tracer, rootSpan)
@@ -535,13 +535,13 @@ func (m *Manager) recoverUnprocessed(inst *Instance) {
 
 		// Route + deliver
 		matched := m.matchChannels(inst.DBID, msg.Sender, parsed)
-		m.deliverToChannels(inst, msg, parsed, matched, msgs[i].ID)
 
 		tracer := store.NewTracer(m.store, inst.DBID)
 		rootSpan := tracer.Start("recover_message", store.SpanKindInternal, map[string]any{
 			"message.db_id": msgs[i].ID,
 			"message.id":    msg.ExternalID,
 		})
+		m.deliverToChannels(inst, msg, parsed, matched, msgs[i].ID, tracer, rootSpan)
 		m.deliverToApps(inst, msg, parsed, tracer, rootSpan)
 		rootSpan.End()
 		tracer.Flush()
@@ -662,7 +662,7 @@ func (m *Manager) matchChannels(botDBID, sender string, p parsedMessage) []store
 
 // deliverToChannels fans out to matched channels' sinks concurrently.
 // Uses the global msgID as seqID — no per-channel message copies.
-func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage, p parsedMessage, matched []store.Channel, msgID int64) {
+func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage, p parsedMessage, matched []store.Channel, msgID int64, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
 	if len(matched) == 0 {
 		return
 	}
@@ -692,6 +692,7 @@ func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage,
 			Message: msg, Envelope: env, SeqID: msgID,
 			MsgType: p.msgType, Content: deliveryContent,
 			AIEnabled: inst.AIEnabled,
+			Tracer: tracer, RootSpan: rootSpan,
 		}
 		for _, s := range m.sinks {
 			wg.Add(1)
