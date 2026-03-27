@@ -17,90 +17,6 @@ import (
 	"github.com/openilink/openilink-hub/internal/store"
 )
 
-// POST /api/apps/{id}/install
-func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
-	app := s.requireAppForInstall(w, r)
-	if app == nil {
-		return
-	}
-	userID := auth.UserIDFromContext(r.Context())
-
-	var req struct {
-		BotID  string          `json:"bot_id"`
-		Handle string          `json:"handle"`
-		Scopes json.RawMessage `json:"scopes"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.BotID == "" {
-		jsonError(w, "bot_id required", http.StatusBadRequest)
-		return
-	}
-
-	handle := req.Handle
-
-	// Verify user owns the bot
-	bot, err := s.Store.GetBot(req.BotID)
-	if err != nil || bot.UserID != userID {
-		jsonError(w, "bot not found", http.StatusNotFound)
-		return
-	}
-
-	// Check handle uniqueness on this bot (only if handle is set)
-	if handle != "" {
-		existing, _ := s.Store.GetInstallationByHandle(req.BotID, handle)
-		if existing != nil {
-			jsonError(w, "handle @"+handle+" already in use on this bot", http.StatusConflict)
-			return
-		}
-	}
-
-	// If app has OAuth setup URL, don't create installation now — redirect to OAuth.
-	// The OAuth exchange will create the installation.
-	if app.OAuthSetupURL != "" {
-		oauthRedirectURL := fmt.Sprintf("%s/api/apps/%s/oauth/setup?bot_id=%s", s.Config.RPOrigin, app.ID, req.BotID)
-		slog.Info("install: redirecting to OAuth", "app", app.Slug, "bot", req.BotID, "url", oauthRedirectURL)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"needs_oauth":      true,
-			"oauth_redirect":   oauthRedirectURL,
-		})
-		return
-	}
-
-	slog.Info("install: creating", "app", app.Slug, "bot", req.BotID, "handle", handle)
-
-	inst, err := s.Store.InstallApp(app.ID, req.BotID)
-	if err != nil {
-		slog.Error("install: db insert failed", "app", app.ID, "bot", req.BotID, "err", err)
-		jsonError(w, "install failed", http.StatusInternalServerError)
-		return
-	}
-	slog.Info("install: created", "inst", inst.ID, "app_token", inst.AppToken[:8]+"...")
-
-	// Set handle and scopes
-	scopes := inst.Scopes
-	if req.Scopes != nil {
-		scopes = req.Scopes
-	}
-	if err := s.Store.UpdateInstallation(inst.ID, handle, inst.Config, scopes, inst.Enabled); err != nil {
-		slog.Error("install: set handle failed", "inst", inst.ID, "err", err)
-	}
-	inst.Handle = handle
-	inst.Scopes = scopes
-
-	// Auto-notify App via oauth_redirect_url (for apps without oauth_setup_url)
-	if app.OAuthRedirectURL != "" {
-		slog.Info("install: notifying app", "inst", inst.ID, "oauth_redirect_url", app.OAuthRedirectURL)
-		s.notifyAppInstalled(app, inst)
-		if updated, err := s.Store.GetInstallation(inst.ID); err == nil {
-			inst = updated
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(inst)
-}
-
 // GET /api/apps/{id}/installations
 func (s *Server) handleListInstallations(w http.ResponseWriter, r *http.Request) {
 	app := s.requireAppForInstall(w, r)
@@ -382,6 +298,27 @@ func (s *Server) handleListBotApps(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(installations)
 }
 
+// POST /api/apps/{id}/installations/{iid}/reauthorize
+// Updates installation scopes to the current app scopes.
+// This is the mechanism for users to grant new scopes after an app adds them.
+func (s *Server) handleReauthorize(w http.ResponseWriter, r *http.Request) {
+	app := s.requireAppForInstall(w, r)
+	if app == nil {
+		return
+	}
+	inst := s.requireInstallation(w, r, app.ID)
+	if inst == nil {
+		return
+	}
+
+	// Update installation scopes to current app scopes
+	if err := s.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled); err != nil {
+		jsonError(w, "reauthorize failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w)
+}
+
 // notifyAppInstalled POSTs installation credentials to the App's oauth_redirect_url.
 // The App responds with its webhook_url, which Hub auto-sets and verifies.
 func (s *Server) notifyAppInstalled(app *store.App, inst *store.AppInstallation) {
@@ -432,125 +369,68 @@ func (s *Server) notifyAppInstalled(app *store.App, inst *store.AppInstallation)
 	s.autoVerifyURL(app.ID, result.WebhookURL)
 }
 
-// POST /api/bots/{id}/apps -- unified install endpoint
-// Supports three modes:
-//   - {"app_id": "uuid"} -- install existing app
-//   - {"marketplace_slug": "github"} -- install from marketplace
-//   - {"template_slug": "websocket-app", "scopes": [...]} -- install from template (creates App if needed)
-func (s *Server) handleUnifiedInstall(w http.ResponseWriter, r *http.Request) {
+// POST /api/apps/{id}/install — install an App to a Bot.
+func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
+	app := s.requireAppForInstall(w, r)
+	if app == nil {
+		return
+	}
 	userID := auth.UserIDFromContext(r.Context())
-	botID := r.PathValue("id")
+
+	var req struct {
+		BotID  string          `json:"bot_id"`
+		Handle string          `json:"handle"`
+		Scopes json.RawMessage `json:"scopes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.BotID == "" {
+		jsonError(w, "bot_id required", http.StatusBadRequest)
+		return
+	}
 
 	// Verify user owns the bot
-	bot, err := s.Store.GetBot(botID)
+	bot, err := s.Store.GetBot(req.BotID)
 	if err != nil || bot.UserID != userID {
 		jsonError(w, "bot not found", http.StatusNotFound)
 		return
 	}
 
-	var req struct {
-		AppID           string          `json:"app_id"`
-		MarketplaceSlug string          `json:"marketplace_slug"`
-		TemplateSlug    string          `json:"template_slug"`
-		Handle          string          `json:"handle"`
-		Scopes          json.RawMessage `json:"scopes"`
-		// Template-only fields (used when creating app from template)
-		Name        string          `json:"name"`
-		Description string          `json:"description"`
-		Icon        string          `json:"icon"`
-		Events      json.RawMessage `json:"events"`
-		Readme      string          `json:"readme"`
-		Guide       string          `json:"guide"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonError(w, "invalid request", http.StatusBadRequest)
-		return
-	}
-
 	// Check handle uniqueness
 	if req.Handle != "" {
-		if existing, _ := s.Store.GetInstallationByHandle(botID, req.Handle); existing != nil {
+		if existing, _ := s.Store.GetInstallationByHandle(req.BotID, req.Handle); existing != nil {
 			jsonError(w, "handle @"+req.Handle+" already in use on this bot", http.StatusConflict)
 			return
 		}
 	}
 
-	var app *store.App
-
-	if req.AppID != "" {
-		// Mode 1: install existing app by ID
-		app, err = s.Store.GetApp(req.AppID)
-		if err != nil {
-			jsonError(w, "app not found", http.StatusNotFound)
-			return
-		}
-	} else if req.MarketplaceSlug != "" {
-		// Mode 2: install from marketplace
-		if s.Registry == nil {
-			jsonError(w, "marketplace not configured", http.StatusBadRequest)
-			return
-		}
-		regApp, err := s.Registry.GetApp(req.MarketplaceSlug)
-		if err != nil || regApp == nil {
-			jsonError(w, "app not found in marketplace", http.StatusNotFound)
-			return
-		}
-		// Find or create local app record
-		app, _ = s.Store.GetAppBySlug(req.MarketplaceSlug, regApp.RegistryURL)
-		if app == nil {
-			app, err = s.Store.CreateApp(&store.App{
-				Name:             regApp.Name,
-				Slug:             regApp.Slug,
-				Description:      regApp.Description,
-				IconURL:          regApp.IconURL,
-				Homepage:         regApp.Homepage,
-				WebhookURL:       regApp.WebhookURL,
-				OAuthSetupURL:    regApp.OAuthSetupURL,
-				OAuthRedirectURL: regApp.OAuthRedirectURL,
-				Tools:            regApp.Tools,
-				Events:           regApp.Events,
-				Scopes:           regApp.Scopes,
-				Registry:         regApp.RegistryURL,
-				Version:          regApp.Version,
-				Readme:           regApp.Readme,
-				Guide:            regApp.Guide,
-			})
-			if err != nil {
-				jsonError(w, "create marketplace app failed", http.StatusInternalServerError)
-				return
-			}
-		}
-	} else if req.TemplateSlug != "" {
-		// Mode 3: install from template (reuse existing App or create)
-		app, _ = s.Store.GetAppBySlug(req.TemplateSlug, "builtin")
-		if app == nil {
-			// First time this template is used on this Hub -- create the App
-			app, err = s.Store.CreateApp(&store.App{
-				OwnerID:     userID,
-				Name:        req.Name,
-				Slug:        req.TemplateSlug,
-				Description: req.Description,
-				Icon:        req.Icon,
-				Events:      req.Events,
-				Scopes:      req.Scopes,
-				Registry:    "builtin",
-				Readme:      req.Readme,
-				Guide:       req.Guide,
-			})
-			if err != nil {
-				jsonError(w, "create template app failed", http.StatusInternalServerError)
-				return
-			}
-		}
+	// Resolve scopes BEFORE creating installation (Slack model).
+	// App scopes are the upper bound; request can narrow but not widen.
+	scopes := req.Scopes
+	if scopes == nil || string(scopes) == "" || string(scopes) == "[]" || string(scopes) == "null" {
+		scopes = app.Scopes
 	} else {
-		jsonError(w, "app_id, marketplace_slug, or template_slug required", http.StatusBadRequest)
-		return
+		var requested []string
+		if err := json.Unmarshal(scopes, &requested); err != nil {
+			jsonError(w, "invalid scopes format", http.StatusBadRequest)
+			return
+		}
+		var allowed []string
+		json.Unmarshal(app.Scopes, &allowed)
+		allowedSet := make(map[string]bool, len(allowed))
+		for _, s := range allowed {
+			allowedSet[s] = true
+		}
+		for _, s := range requested {
+			if !allowedSet[s] {
+				jsonError(w, "scope "+s+" not declared by this app", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	// If app has OAuth setup URL, don't create installation — redirect to OAuth.
 	if app.OAuthSetupURL != "" {
-		oauthRedirectURL := fmt.Sprintf("%s/api/apps/%s/oauth/setup?bot_id=%s", s.Config.RPOrigin, app.ID, botID)
-		slog.Info("unified install: redirecting to OAuth", "app", app.Slug, "bot", botID)
+		oauthRedirectURL := fmt.Sprintf("%s/api/apps/%s/oauth/setup?bot_id=%s", s.Config.RPOrigin, app.ID, req.BotID)
+		slog.Info("install: redirecting to OAuth", "app", app.Slug, "bot", req.BotID)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"needs_oauth":    true,
@@ -559,29 +439,23 @@ func (s *Server) handleUnifiedInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create installation
-	inst, err := s.Store.InstallApp(app.ID, botID)
+	// Create installation (scopes already validated)
+	inst, err := s.Store.InstallApp(app.ID, req.BotID)
 	if err != nil {
+		slog.Error("install: db insert failed", "app", app.ID, "bot", req.BotID, "err", err)
 		jsonError(w, "install failed", http.StatusInternalServerError)
 		return
 	}
-
-	// Set handle and scopes
-	handle := req.Handle
-	scopes := req.Scopes
-	if scopes == nil {
-		scopes = inst.Scopes
+	if err := s.Store.UpdateInstallation(inst.ID, req.Handle, inst.Config, scopes, inst.Enabled); err != nil {
+		slog.Error("install: set handle/scopes failed", "inst", inst.ID, "err", err)
 	}
-	if handle != "" || scopes != nil {
-		s.Store.UpdateInstallation(inst.ID, handle, inst.Config, scopes, inst.Enabled)
-		inst.Handle = handle
-		inst.Scopes = scopes
-	}
+	inst.Handle = req.Handle
+	inst.Scopes = scopes
 
-	// Auto-notify for apps with redirect URL
+	// Auto-notify App via oauth_redirect_url
 	if app.OAuthRedirectURL != "" {
 		s.notifyAppInstalled(app, inst)
-		if updated, _ := s.Store.GetInstallation(inst.ID); updated != nil {
+		if updated, err := s.Store.GetInstallation(inst.ID); err == nil {
 			inst = updated
 		}
 	}

@@ -32,6 +32,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		Status             string          `json:"status"`
 		CanSend            bool            `json:"can_send"`
 		SendDisabledReason string          `json:"send_disabled_reason,omitempty"`
+		AIEnabled          bool            `json:"ai_enabled"`
 		MsgCount           int64           `json:"msg_count"`
 		ReminderHours      int             `json:"reminder_hours"`
 		CreatedAt          int64           `json:"created_at"`
@@ -55,6 +56,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		result = append(result, botResp{
 			ID: b.ID, Name: b.Name, Provider: b.Provider,
 			Status: status, CanSend: canSend, SendDisabledReason: reason,
+			AIEnabled: b.AIEnabled,
 			MsgCount: b.MsgCount, ReminderHours: b.ReminderHours,
 			CreatedAt: b.CreatedAt, Extra: extra,
 		})
@@ -540,6 +542,10 @@ func (s *Server) handleSetBotAI(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.UpdateBotAIEnabled(botID, req.Enabled); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
+	}
+	// Sync to in-memory instance so it takes effect immediately
+	if inst, ok := s.BotManager.GetInstance(botID); ok {
+		inst.AIEnabled = req.Enabled
 	}
 	jsonOK(w)
 }

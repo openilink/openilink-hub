@@ -178,10 +178,13 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		})
 		event.TraceID = tracer.TraceID()
 
-		// Builtin apps: route to internal handler
+		// Builtin apps with internal handler: route directly
 		if installation.AppRegistry == "builtin" {
-			m.deliverBuiltinMention(inst, installation, event, msg.Sender, tracer, rootSpan)
-			return true
+			if h := builtin.Get(installation.AppSlug); h != nil {
+				m.deliverBuiltinMention(inst, installation, event, msg.Sender, tracer, rootSpan)
+				return true
+			}
+			// No internal handler — fall through to WebSocket/webhook
 		}
 
 		m.deliverToInstallation(inst, installation, event, msg.Sender, tracer, rootSpan)
@@ -194,10 +197,13 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 	})
 	event.TraceID = tracer.TraceID()
 
-	// Builtin apps: route to internal handler
+	// Builtin apps with internal handler: route directly
 	if installation.AppRegistry == "builtin" {
-		m.deliverBuiltinMention(inst, installation, event, msg.Sender, tracer, rootSpan)
-		return true
+		if h := builtin.Get(installation.AppSlug); h != nil {
+			m.deliverBuiltinMention(inst, installation, event, msg.Sender, tracer, rootSpan)
+			return true
+		}
+		// No internal handler — fall through to WebSocket/webhook
 	}
 
 	m.deliverToInstallation(inst, installation, event, msg.Sender, tracer, rootSpan)

@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strconv"
-	"strings"
-	"time"
 	"sync"
+	"time"
 
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/provider"
@@ -19,20 +17,6 @@ import (
 	"github.com/openilink/openilink-hub/internal/store"
 )
 
-var mentionRe = regexp.MustCompile(`@(\S+)`)
-
-func parseMentions(text string) []string {
-	matches := mentionRe.FindAllStringSubmatch(text, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	var handles []string
-	for _, m := range matches {
-		handles = append(handles, m[1])
-	}
-	return handles
-}
-
 const maxConcurrentDownloads = 5
 
 // Manager manages all active bot instances.
@@ -41,7 +25,7 @@ type Manager struct {
 	instances map[string]*Instance
 	store     store.Store
 	hub       *relay.Hub
-	sinks     []sink.Sink
+	aiSink    *sink.AI            // AI sink (bot-level)
 	storage   *storage.Storage    // optional, for media files
 	baseURL   string              // Hub origin for proxy URLs
 	dlSem     chan struct{}        // semaphore for concurrent media downloads
@@ -49,12 +33,12 @@ type Manager struct {
 	appWSHub  *appdelivery.WSHub      // app WebSocket connections
 }
 
-func NewManager(s store.Store, hub *relay.Hub, sinks []sink.Sink, st *storage.Storage, baseURL string) *Manager {
+func NewManager(s store.Store, hub *relay.Hub, aiSink *sink.AI, st *storage.Storage, baseURL string) *Manager {
 	return &Manager{
 		instances: make(map[string]*Instance),
 		store:     s,
 		hub:       hub,
-		sinks:     sinks,
+		aiSink:    aiSink,
 		storage:   st,
 		baseURL:   baseURL,
 		dlSem:     make(chan struct{}, maxConcurrentDownloads),
@@ -332,28 +316,23 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 		rootSpan.AddEvent("media_download_started", nil)
 	}
 
-	// Phase 2: Route to channels
-	matched := m.matchChannels(inst.DBID, msg.Sender, parsed)
-	if len(matched) > 0 {
-		names := make([]string, len(matched))
-		for i, ch := range matched {
-			names[i] = ch.Name
-		}
-		matchSpan := tracer.StartChild(rootSpan, "match_channel", store.SpanKindInternal, map[string]any{
-			"match.count":    len(matched),
-			"match.channels": strings.Join(names, ", "),
-		})
-		matchSpan.End()
-	}
 
-	// Show typing indicator while delivering to sinks and apps.
+	// Show typing indicator while delivering.
 	typingDone := m.startTyping(inst, msg)
 
-	// Phase 3: Deliver to sinks
-	m.deliverToChannels(inst, msg, parsed, matched, msgID, tracer, rootSpan)
-
-	// Phase 4: Deliver to Apps (with trace)
-	m.deliverToApps(inst, msg, parsed, tracer, rootSpan)
+	// Phase 3: AI + Apps concurrently
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		m.deliverToAI(inst, msg, parsed, msgID, tracer, rootSpan)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		m.deliverToApps(inst, msg, parsed, tracer, rootSpan)
+	}()
+	wg.Wait()
 
 	// Stop typing indicator
 	typingDone()
@@ -533,16 +512,17 @@ func (m *Manager) recoverUnprocessed(inst *Instance) {
 			go m.downloadMedia(inst, msg, msgs[i].ID)
 		}
 
-		// Route + deliver
-		matched := m.matchChannels(inst.DBID, msg.Sender, parsed)
-
 		tracer := store.NewTracer(m.store, inst.DBID)
 		rootSpan := tracer.Start("recover_message", store.SpanKindInternal, map[string]any{
 			"message.db_id": msgs[i].ID,
 			"message.id":    msg.ExternalID,
 		})
-		m.deliverToChannels(inst, msg, parsed, matched, msgs[i].ID, tracer, rootSpan)
-		m.deliverToApps(inst, msg, parsed, tracer, rootSpan)
+		var rwg sync.WaitGroup
+		rwg.Add(1)
+		go func() { defer rwg.Done(); m.deliverToAI(inst, msg, parsed, msgs[i].ID, tracer, rootSpan) }()
+		rwg.Add(1)
+		go func() { defer rwg.Done(); m.deliverToApps(inst, msg, parsed, tracer, rootSpan) }()
+		rwg.Wait()
 		rootSpan.End()
 		tracer.Flush()
 
@@ -630,88 +610,31 @@ func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msg
 	slog.Info("media download done", "bot", inst.DBID, "msg", msg.ExternalID, "status", status)
 }
 
-// matchChannels finds channels that should receive this message.
-func (m *Manager) matchChannels(botDBID, sender string, p parsedMessage) []store.Channel {
-	channels, err := m.store.ListChannelsByBot(botDBID)
-	if err != nil {
-		slog.Error("load channels failed", "bot", botDBID, "err", err)
-		return nil
-	}
 
-	var matched []store.Channel
-	mentioned := parseMentions(p.content)
-	mentionMatched := make(map[string]bool)
-
-	for _, ch := range channels {
-		if ch.Handle == "" {
-			if matchFilter(ch.FilterRule, sender, p.content, p.msgType) {
-				matched = append(matched, ch)
-			}
-		} else if len(mentioned) > 0 && !mentionMatched[strings.ToLower(ch.Handle)] {
-			for _, m := range mentioned {
-				if strings.EqualFold(m, ch.Handle) {
-					matched = append(matched, ch)
-					mentionMatched[strings.ToLower(ch.Handle)] = true
-					break
-				}
-			}
-		}
-	}
-	return matched
-}
-
-// deliverToChannels fans out to matched channels' sinks concurrently.
-// Uses the global msgID as seqID — no per-channel message copies.
-func (m *Manager) deliverToChannels(inst *Instance, msg provider.InboundMessage, p parsedMessage, matched []store.Channel, msgID int64, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
-	if len(matched) == 0 {
+// deliverToAI runs the AI sink at bot level, independent of channel matching.
+func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p parsedMessage, msgID int64, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
+	if m.aiSink == nil || !inst.AIEnabled {
 		return
 	}
-
-	var wg sync.WaitGroup
-	for _, ch := range matched {
-		if err := m.store.UpdateChannelLastSeq(ch.ID, msgID); err != nil {
-			slog.Error("update channel last_seq failed", "channel", ch.ID, "err", err)
-		}
-
-		// Strip @handle prefix from content for this channel's delivery
-		deliveryContent := p.content
-		if ch.Handle != "" {
-			deliveryContent = strings.TrimSpace(strings.TrimPrefix(
-				strings.TrimSpace(deliveryContent), "@"+ch.Handle))
-		}
-
-		env := relay.NewEnvelope("message", relay.MessageData{
-			SeqID: msgID, ExternalID: msg.ExternalID,
-			Sender: msg.Sender, Recipient: msg.Recipient, GroupID: msg.GroupID,
-			Timestamp: msg.Timestamp, MessageState: msg.MessageState,
-			Items: p.relayItems, ContextToken: msg.ContextToken, SessionID: msg.SessionID,
-		})
-
-		d := sink.Delivery{
-			BotDBID: inst.DBID, Provider: inst.Provider, Channel: ch,
-			Message: msg, Envelope: env, SeqID: msgID,
-			MsgType: p.msgType, Content: deliveryContent,
-			AIEnabled: inst.AIEnabled,
-			Tracer: tracer, RootSpan: rootSpan,
-		}
-		for _, s := range m.sinks {
-			wg.Add(1)
-			go func(sk sink.Sink, delivery sink.Delivery) {
-				defer wg.Done()
-				defer func() {
-					if r := recover(); r != nil {
-						slog.Error("sink panic", "sink", sk.Name(), "bot", delivery.BotDBID,
-							"channel", delivery.Channel.ID, "err", r)
-					}
-				}()
-				sk.Handle(delivery)
-			}(s, d)
-		}
+	d := sink.Delivery{
+		BotDBID:   inst.DBID,
+		Provider:  inst.Provider,
+		Message:   msg,
+		SeqID:     msgID,
+		MsgType:   p.msgType,
+		Content:   p.content,
+		AIEnabled: true,
+		Tracer:    tracer,
+		RootSpan:  rootSpan,
 	}
-	wg.Wait()
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("ai sink panic", "bot", inst.DBID, "err", r)
+		}
+	}()
+	m.aiSink.Handle(d)
 }
 
-// matchFilter checks if a message passes the channel's filter rule.
 // processMedia handles media items:
 // - With MinIO: download → store → set URL to MinIO
 // - Without MinIO: set URL to Hub proxy endpoint
@@ -846,49 +769,6 @@ func mediaContentType(itemType string) string {
 	}
 }
 
-func matchFilter(rule store.FilterRule, sender, text, msgType string) bool {
-	if len(rule.UserIDs) > 0 {
-		found := false
-		for _, uid := range rule.UserIDs {
-			if uid == sender {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-
-	if len(rule.MessageTypes) > 0 {
-		found := false
-		for _, mt := range rule.MessageTypes {
-			if mt == msgType {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-
-	if len(rule.Keywords) > 0 {
-		found := false
-		lower := strings.ToLower(text)
-		for _, kw := range rule.Keywords {
-			if strings.Contains(lower, strings.ToLower(kw)) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-
-	return true
-}
 
 func convertRelayItem(item provider.MessageItem) relay.MessageItem {
 	ri := relay.MessageItem{

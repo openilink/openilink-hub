@@ -492,6 +492,14 @@ Single connection receives events for ALL installations of this app. See **WebSo
 
 Declare only the scopes your App needs. Users see the requested scopes when installing.
 
+**Scope locking (Slack model):** Scopes are snapshotted at installation time. If you add new scopes to your App later, existing installations are **not** automatically updated. Users must explicitly re-authorize to grant new scopes:
+
+```
+POST /api/apps/{id}/installations/{iid}/reauthorize
+```
+
+This updates the installation's scopes to the App's current scopes.
+
 ## Marketplace
 
 ### Installing from a Registry
@@ -596,7 +604,7 @@ PUT /api/admin/config/registry
 | GET | `/api/apps/{id}` | Get App detail |
 | PUT | `/api/apps/{id}` | Update App |
 | DELETE | `/api/apps/{id}` | Delete App |
-| POST | `/api/apps/{id}/install` | Install to Bot |
+| POST | `/api/bots/{id}/apps` | Install App to Bot (unified) |
 | POST | `/api/apps/{id}/request-listing` | Request listing review |
 | POST | `/api/apps/{id}/withdraw-listing` | Withdraw pending listing request |
 | POST | `/api/apps/{id}/verify-url` | Verify webhook URL |
@@ -605,6 +613,7 @@ PUT /api/admin/config/registry
 | PUT | `/api/apps/{id}/installations/{iid}` | Update installation |
 | DELETE | `/api/apps/{id}/installations/{iid}` | Uninstall |
 | POST | `/api/apps/{id}/installations/{iid}/regenerate-token` | Regenerate token |
+| POST | `/api/apps/{id}/installations/{iid}/reauthorize` | Re-authorize (update scopes to current app scopes) |
 | GET | `/api/apps/{id}/installations/{iid}/event-logs` | Event delivery logs |
 | GET | `/api/apps/{id}/installations/{iid}/api-logs` | API call logs |
 

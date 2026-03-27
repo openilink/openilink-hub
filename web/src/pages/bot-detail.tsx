@@ -11,6 +11,7 @@ import {
   Blocks,
   Download,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -164,6 +165,26 @@ export function BotDetailPage() {
              <Activity className="h-3.5 w-3.5" />
              消息追踪
            </Button>
+           <Separator orientation="vertical" className="h-5" />
+           <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground select-none cursor-pointer">
+             <Sparkles className="h-3.5 w-3.5 text-primary" />
+             AI 回复
+             <input
+               type="checkbox"
+               checked={bot.ai_enabled || false}
+               onChange={async (e) => {
+                 const enabled = e.target.checked;
+                 try {
+                   await api.setBotAI(id!, enabled);
+                   setBot({ ...bot, ai_enabled: enabled });
+                   toast({ title: enabled ? "AI 回复已开启" : "AI 回复已关闭" });
+                 } catch (err: any) {
+                   toast({ variant: "destructive", title: "操作失败", description: err.message });
+                 }
+               }}
+               className="h-4 w-4 accent-primary cursor-pointer"
+             />
+           </label>
            <Separator orientation="vertical" className="h-5" />
            <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground select-none">
              自动续期

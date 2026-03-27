@@ -66,7 +66,7 @@ export function OnboardingPage() {
   async function handleInstall(app: any) {
     setInstallingId(app.id);
     try {
-      await api.installApp(app.id, { bot_id: botId, handle: app.slug || app.name });
+      await api.installApp(app.id, { bot_id: botId!, handle: app.slug || app.name });
       setInstalledIds(prev => new Set(prev).add(app.id));
       toast({ title: "安装成功", description: `已安装 ${app.name}` });
     } catch (e: any) {

@@ -318,7 +318,7 @@ func TestMatchEvent_Success(t *testing.T) {
 	scopes, _ := json.Marshal([]string{"message:read"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com", Scopes: scopes},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Events: events, Scopes: scopes},
@@ -340,7 +340,7 @@ func TestMatchEvent_NoSubscription(t *testing.T) {
 	scopes, _ := json.Marshal([]string{"message:read"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://example.com", Scopes: scopes},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Events: events, Scopes: scopes},
@@ -362,7 +362,7 @@ func TestMatchEvent_DisabledExcluded(t *testing.T) {
 	scopes, _ := json.Marshal([]string{"message:read"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppWebhookURL: "http://example.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: false, AppWebhookURL: "http://example.com", Scopes: scopes},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Events: events, Scopes: scopes},
@@ -509,8 +509,8 @@ func TestMatchEvent_MultipleInstallations(t *testing.T) {
 	scopes2, _ := json.Marshal([]string{"message:read"})
 	store := &mockAppStore{
 		installations: []store.AppInstallation{
-			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://a.com"},
-			{ID: "i2", AppID: "a2", BotID: "b1", Enabled: true, AppWebhookURL: "http://b.com"},
+			{ID: "i1", AppID: "a1", BotID: "b1", Enabled: true, AppWebhookURL: "http://a.com", Scopes: scopes1},
+			{ID: "i2", AppID: "a2", BotID: "b1", Enabled: true, AppWebhookURL: "http://b.com", Scopes: scopes2},
 		},
 		apps: map[string]*store.App{
 			"a1": {ID: "a1", Events: events1, Scopes: scopes1},

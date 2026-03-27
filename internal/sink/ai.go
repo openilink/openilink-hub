@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/ai"
@@ -26,6 +27,11 @@ func (s *AI) Name() string { return "ai" }
 
 func (s *AI) Handle(d Delivery) {
 	if !d.AIEnabled || d.MsgType != "text" || d.Content == "" {
+		return
+	}
+	// Skip messages targeted at specific apps (commands and @mentions)
+	trimmed := strings.TrimSpace(d.Content)
+	if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "@") {
 		return
 	}
 	s.reply(d)
@@ -67,10 +73,6 @@ func (s *AI) reply(d Delivery) {
 	// Collect tools from installed apps
 	tools := s.collectTools(d.BotDBID)
 	if span != nil && len(tools) > 0 {
-		var names []string
-		for _, t := range tools {
-			names = append(names, t.Function.Name)
-		}
 		span.SetAttr("ai.tools_count", len(tools))
 	}
 
@@ -87,8 +89,40 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	// Build installationID → appName map for status messages
+	toolAppNames := make(map[string]string)
+	for _, t := range tools {
+		if idx := strings.Index(t.Function.Name, "__"); idx >= 0 {
+			instID := t.Function.Name[:idx]
+			// Extract app name from description "[AppName] ..."
+			desc := t.Function.Description
+			if len(desc) > 1 && desc[0] == '[' {
+				if end := strings.Index(desc, "]"); end > 0 {
+					toolAppNames[instID] = desc[1:end]
+				}
+			}
+		}
+	}
+
 	// Tool call loop
 	for round := 0; round < ai.MaxToolRounds && len(result.ToolCalls) > 0; round++ {
+		// Send status message to user about tool calls
+		for _, tc := range result.ToolCalls {
+			toolName := tc.Name
+			appName := ""
+			if idx := strings.Index(tc.Name, "__"); idx >= 0 {
+				appName = toolAppNames[tc.Name[:idx]]
+				toolName = tc.Name[idx+2:]
+			}
+			status := fmt.Sprintf("🔧 调用 %s ...", toolName)
+			if appName != "" {
+				status = fmt.Sprintf("🔧 调用 %s 的 %s ...", appName, toolName)
+			}
+			d.Provider.Send(ctx, provider.OutboundMessage{
+				Recipient: sender, Text: status,
+			})
+		}
+
 		// Record assistant's tool_calls in messages
 		messages = ai.AppendAssistantToolCalls(messages, result.ToolCalls)
 
@@ -185,10 +219,11 @@ func (s *AI) collectTools(botID string) []ai.Tool {
 			if len(params) == 0 {
 				params = json.RawMessage(`{"type":"object","properties":{}}`)
 			}
+			// Use installation ID as prefix for unique routing
 			tools = append(tools, ai.Tool{
 				Type: "function",
 				Function: ai.ToolFunction{
-					Name:        inst.Handle + "." + t.Name,
+					Name:        inst.ID + "__" + t.Name,
 					Description: fmt.Sprintf("[%s] %s", inst.AppName, t.Description),
 					Parameters:  params,
 				},
@@ -200,22 +235,21 @@ func (s *AI) collectTools(botID string) []ai.Tool {
 
 // executeToolCall delivers a tool call to the corresponding app and returns the result.
 func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequest, parentSpan *store.SpanBuilder) ai.ToolCallResult {
-	// Parse "handle.tool_name" format
+	// Parse "installationID__tool_name" format
 	name := tc.Name
-	handle := ""
+	instID := ""
 	toolName := name
-	if idx := findDot(name); idx >= 0 {
-		handle = name[:idx]
-		toolName = name[idx+1:]
+	if idx := strings.Index(name, "__"); idx >= 0 {
+		instID = name[:idx]
+		toolName = name[idx+2:]
 	}
 
 	// Create child span for this tool call
 	var span *store.SpanBuilder
 	if d.Tracer != nil && parentSpan != nil {
 		span = d.Tracer.StartChild(parentSpan, "tool_call:"+toolName, store.SpanKindClient, map[string]any{
-			"tool.name":   toolName,
-			"tool.handle": handle,
-			"tool.args":   string(tc.Arguments),
+			"tool.name": toolName,
+			"tool.args": string(tc.Arguments),
 		})
 	}
 
@@ -223,11 +257,11 @@ func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequ
 	var args map[string]any
 	json.Unmarshal(tc.Arguments, &args)
 
-	// Find the installation by handle
-	installation, err := s.Store.GetInstallationByHandle(d.BotDBID, handle)
-	if err != nil || installation == nil || !installation.Enabled {
-		errMsg := fmt.Sprintf("tool %q not found (handle=%q)", toolName, handle)
-		slog.Warn("ai tool call: installation not found", "bot", d.BotDBID, "tool", name)
+	// Find the installation by ID
+	installation, err := s.Store.GetInstallation(instID)
+	if err != nil || installation == nil || !installation.Enabled || installation.BotID != d.BotDBID {
+		errMsg := fmt.Sprintf("tool %q not found", toolName)
+		slog.Warn("ai tool call: installation not found", "bot", d.BotDBID, "inst", instID, "tool", toolName)
 		if span != nil {
 			span.EndWithError(errMsg)
 		}
@@ -295,14 +329,6 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	return cfg
 }
 
-func findDot(s string) int {
-	for i, c := range s {
-		if c == '.' {
-			return i
-		}
-	}
-	return -1
-}
 
 func truncateStr(s string, max int) string {
 	if len(s) <= max {

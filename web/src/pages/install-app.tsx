@@ -93,8 +93,8 @@ export function InstallAppPage() {
   async function handleInstall() {
     setInstalling(true);
     try {
-      const result = await api.unifiedInstall(botId!, {
-        app_id: appId,
+      const result = await api.installApp(appId!, {
+        bot_id: botId,
         handle: handle.trim(),
         scopes: app.scopes || [],
       });

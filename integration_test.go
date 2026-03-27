@@ -84,12 +84,8 @@ func setup(t *testing.T) *testEnv {
 	}
 
 	hub := relay.NewHub(server.SetupUpstreamHandler())
-	sinks := []sink.Sink{
-		&sink.WS{Hub: hub},
-		&sink.AI{Store: db},
-		&sink.Webhook{Store: db},
-	}
-	mgr := bot.NewManager(db, hub, sinks, nil, "http://localhost")
+	aiSink := &sink.AI{Store: db}
+	mgr := bot.NewManager(db, hub, aiSink, nil, "http://localhost")
 	server.BotManager = mgr
 	server.Hub = hub
 
@@ -2112,8 +2108,8 @@ func TestMediaStorageAndProxy(t *testing.T) {
 		OAuthStates: api.SetupOAuth(cfg), ObjectStore: objStore,
 	}
 	hub := relay.NewHub(server.SetupUpstreamHandler())
-	sinks := []sink.Sink{&sink.WS{Hub: hub}, &sink.AI{Store: db}, &sink.Webhook{Store: db}}
-	mgr := bot.NewManager(db, hub, sinks, objStore, "http://localhost")
+	aiSink := &sink.AI{Store: db}
+	mgr := bot.NewManager(db, hub, aiSink, objStore, "http://localhost")
 	server.BotManager = mgr
 	server.Hub = hub
 	ts := httptest.NewServer(server.Handler())

@@ -143,12 +143,19 @@ func createTestApp(t *testing.T, s store.Store, ownerID, name, slug string, scop
 	return app
 }
 
-// installTestApp installs an app on a bot via the store and returns the installation.
+// installTestApp installs an app on a bot via the store and snapshots the app's
+// scopes onto the installation (matching the Slack-model install flow).
 func installTestApp(t *testing.T, s store.Store, appID, botID string) *store.AppInstallation {
 	t.Helper()
 	inst, err := s.InstallApp(appID, botID)
 	if err != nil {
 		t.Fatalf("InstallApp: %v", err)
+	}
+	// Snapshot app scopes at install time (Slack model)
+	app, err := s.GetApp(appID)
+	if err == nil && app != nil && len(app.Scopes) > 0 {
+		_ = s.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled)
+		inst.Scopes = app.Scopes
 	}
 	return inst
 }
@@ -404,71 +411,19 @@ func TestAppAPI_CRUD(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Unified install endpoint (POST /api/bots/{id}/apps)
+// Test: Install endpoint (POST /api/apps/{id}/install)
 // ---------------------------------------------------------------------------
 
-func TestUnifiedInstall(t *testing.T) {
+func TestInstallApp(t *testing.T) {
 	env := setupTestEnv(t)
 	bot := createTestBot(t, env.store, env.user.ID, "install-bot")
-
-	t.Run("template install creates builtin app", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"template_slug": "ws-test-app",
-			"name":          "WS Test App",
-			"description":   "A test app",
-			"scopes":        []string{"message:write"},
-		}, withCookie(env.cookie))
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			body := decodeJSON(t, resp)
-			t.Fatalf("expected 201, got %d: %v", resp.StatusCode, body)
-		}
-		body := decodeJSON(t, resp)
-
-		// Verify the created app has registry=builtin.
-		appID, _ := body["app_id"].(string)
-		if appID == "" {
-			t.Fatal("installation has no app_id")
-		}
-		app, err := env.store.GetApp(appID)
-		if err != nil {
-			t.Fatalf("GetApp: %v", err)
-		}
-		if app.Registry != "builtin" {
-			t.Errorf("registry = %q, want %q", app.Registry, "builtin")
-		}
-		if app.Slug != "ws-test-app" {
-			t.Errorf("slug = %q, want %q", app.Slug, "ws-test-app")
-		}
-	})
-
-	t.Run("second template install reuses same app", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"template_slug": "ws-test-app",
-			"name":          "WS Test App",
-			"scopes":        []string{"message:write"},
-		}, withCookie(env.cookie))
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			body := decodeJSON(t, resp)
-			t.Fatalf("expected 201, got %d: %v", resp.StatusCode, body)
-		}
-
-		// There should be only one app with slug "ws-test-app" and registry "builtin".
-		app, _ := env.store.GetAppBySlug("ws-test-app", "builtin")
-		if app == nil {
-			t.Fatal("app not found by slug")
-		}
-	})
 
 	t.Run("install by app_id", func(t *testing.T) {
 		app := createTestApp(t, env.store, env.user.ID, "Direct App", "direct-app",
 			[]string{"message:write"})
 
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"app_id": app.ID,
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install", map[string]any{
+			"bot_id": bot.ID,
 		}, withCookie(env.cookie))
 		defer resp.Body.Close()
 
@@ -483,8 +438,8 @@ func TestUnifiedInstall(t *testing.T) {
 			[]string{"message:write"})
 
 		// First install with a handle.
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"app_id": app.ID,
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install", map[string]any{
+			"bot_id": bot.ID,
 			"handle": "myhandle",
 		}, withCookie(env.cookie))
 		resp.Body.Close()
@@ -495,8 +450,8 @@ func TestUnifiedInstall(t *testing.T) {
 		// Second install with the same handle should conflict.
 		app2 := createTestApp(t, env.store, env.user.ID, "Handle App2", "handle-app2",
 			[]string{"message:write"})
-		resp2 := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"app_id": app2.ID,
+		resp2 := doJSON(t, env.ts, "POST", "/api/apps/"+app2.ID+"/install", map[string]any{
+			"bot_id": bot.ID,
 			"handle": "myhandle",
 		}, withCookie(env.cookie))
 		defer resp2.Body.Close()
@@ -506,8 +461,11 @@ func TestUnifiedInstall(t *testing.T) {
 		}
 	})
 
-	t.Run("missing all IDs returns 400", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{},
+	t.Run("missing bot_id returns 400", func(t *testing.T) {
+		app := createTestApp(t, env.store, env.user.ID, "NoBotID App", "nobotid-app",
+			[]string{"message:write"})
+
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install", map[string]any{},
 			withCookie(env.cookie))
 		defer resp.Body.Close()
 
@@ -517,9 +475,11 @@ func TestUnifiedInstall(t *testing.T) {
 	})
 
 	t.Run("nonexistent bot returns 404", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/nonexistent-id/apps", map[string]any{
-			"template_slug": "ws-test-app",
-			"name":          "X",
+		app := createTestApp(t, env.store, env.user.ID, "Good App", "good-app",
+			[]string{"message:write"})
+
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install", map[string]any{
+			"bot_id": "nonexistent-id",
 		}, withCookie(env.cookie))
 		defer resp.Body.Close()
 
@@ -1395,13 +1355,13 @@ func TestAppAPI_FullListingLifecycle(t *testing.T) {
 		}
 	})
 
-	// Step 11f: Unified install endpoint works for marketplace-style install.
+	// Step 11f: Install endpoint works for marketplace-style install.
 	// Admin user installs the same listed app to their own bot via
-	// POST /api/bots/{id}/apps with app_id.
+	// POST /api/apps/{id}/install with bot_id.
 	adminBot := createTestBot(t, env.store, env.user.ID, "Admin Lifecycle Bot")
-	t.Run("11f_unified_install_endpoint", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+adminBot.ID+"/apps", map[string]any{
-			"app_id": appID,
+	t.Run("11f_install_endpoint", func(t *testing.T) {
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+appID+"/install", map[string]any{
+			"bot_id": adminBot.ID,
 			"handle": "unified-test",
 		}, withCookie(env.cookie))
 		defer resp.Body.Close()
@@ -1610,4 +1570,134 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// Test: Scope snapshot at install time (Slack model)
+// ---------------------------------------------------------------------------
+
+func TestScopeSnapshotAtInstall(t *testing.T) {
+	env := setupTestEnv(t)
+
+	// Create app with initial scopes
+	app := createTestApp(t, env.store, env.user.ID, "Scope Test App", "scope-test",
+		[]string{"message:write", "message:read"})
+
+	bot := createTestBot(t, env.store, env.user.ID, "scope-bot-2")
+
+	t.Run("installation gets app scopes snapshot", func(t *testing.T) {
+		// Install without specifying scopes via the API
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install",
+			map[string]any{"bot_id": bot.ID, "handle": "scope-test"},
+			withCookie(env.cookie))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			body := decodeJSON(t, resp)
+			t.Fatalf("expected 201, got %d: %v", resp.StatusCode, body)
+		}
+
+		body := decodeJSON(t, resp)
+		instID, _ := body["id"].(string)
+
+		// Verify installation has scopes
+		inst, err := env.store.GetInstallation(instID)
+		if err != nil {
+			t.Fatalf("GetInstallation: %v", err)
+		}
+		var instScopes []string
+		json.Unmarshal(inst.Scopes, &instScopes)
+		if len(instScopes) != 2 {
+			t.Fatalf("expected 2 scopes, got %d: %v", len(instScopes), instScopes)
+		}
+	})
+
+	t.Run("app scope change does not affect existing installation", func(t *testing.T) {
+		// Update app scopes (add tools:write)
+		newScopes, _ := json.Marshal([]string{"message:write", "message:read", "tools:write"})
+		env.store.UpdateApp(app.ID, app.Name, app.Description, app.Icon, app.IconURL,
+			app.Homepage, app.OAuthSetupURL, app.OAuthRedirectURL, app.ConfigSchema,
+			app.Tools, app.Events, newScopes)
+
+		// Existing installation should still have old scopes
+		installations, _ := env.store.ListInstallationsByApp(app.ID)
+		for _, inst := range installations {
+			var instScopes []string
+			json.Unmarshal(inst.Scopes, &instScopes)
+			for _, s := range instScopes {
+				if s == "tools:write" {
+					t.Error("existing installation should not have new scope tools:write")
+				}
+			}
+		}
+	})
+
+	t.Run("reauthorize updates scopes", func(t *testing.T) {
+		installations, _ := env.store.ListInstallationsByApp(app.ID)
+		inst := installations[0]
+
+		resp := doJSON(t, env.ts, "POST",
+			"/api/apps/"+app.ID+"/installations/"+inst.ID+"/reauthorize",
+			nil, withCookie(env.cookie))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body := decodeJSON(t, resp)
+			t.Fatalf("expected 200, got %d: %v", resp.StatusCode, body)
+		}
+
+		// Now should have new scope
+		updated, _ := env.store.GetInstallation(inst.ID)
+		var updatedScopes []string
+		json.Unmarshal(updated.Scopes, &updatedScopes)
+		found := false
+		for _, s := range updatedScopes {
+			if s == "tools:write" {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("reauthorized installation should have tools:write")
+		}
+	})
+
+	t.Run("widening scopes beyond app is rejected", func(t *testing.T) {
+		bot2 := createTestBot(t, env.store, env.user.ID, "widen-bot")
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install",
+			map[string]any{
+				"bot_id": bot2.ID,
+				"handle": "scope-widen-test",
+				"scopes": []string{"message:write", "message:read", "tools:write", "admin:write"},
+			}, withCookie(env.cookie))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400 for widened scopes, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("narrowing scopes is allowed", func(t *testing.T) {
+		bot3 := createTestBot(t, env.store, env.user.ID, "narrow-bot")
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install",
+			map[string]any{
+				"bot_id": bot3.ID,
+				"handle": "scope-narrow-test",
+				"scopes": []string{"message:write"},
+			}, withCookie(env.cookie))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			body := decodeJSON(t, resp)
+			t.Fatalf("expected 201 for narrowed scopes, got %d: %v", resp.StatusCode, body)
+		}
+
+		body := decodeJSON(t, resp)
+		instID := body["id"].(string)
+		inst, _ := env.store.GetInstallation(instID)
+		var instScopes []string
+		json.Unmarshal(inst.Scopes, &instScopes)
+		if len(instScopes) != 1 || instScopes[0] != "message:write" {
+			t.Errorf("expected [message:write], got %v", instScopes)
+		}
+	})
 }

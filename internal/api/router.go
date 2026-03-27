@@ -132,7 +132,6 @@ func (s *Server) Handler() http.Handler {
 
 	// Bot app installations
 	protected.HandleFunc("GET /api/bots/{id}/apps", s.handleListBotApps)
-	protected.HandleFunc("POST /api/bots/{id}/apps", s.handleUnifiedInstall)
 
 	// Channels (under bots)
 	protected.HandleFunc("GET /api/bots/{id}/channels", s.handleListChannels)
@@ -174,6 +173,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("PUT /api/apps/{id}/installations/{iid}", s.handleUpdateInstallation)
 	protected.HandleFunc("DELETE /api/apps/{id}/installations/{iid}", s.handleDeleteInstallation)
 	protected.HandleFunc("POST /api/apps/{id}/installations/{iid}/regenerate-token", s.handleRegenerateToken)
+	protected.HandleFunc("POST /api/apps/{id}/installations/{iid}/reauthorize", s.handleReauthorize)
 	protected.HandleFunc("POST /api/apps/{id}/verify-url", s.handleVerifyURL)
 	protected.HandleFunc("GET /api/apps/{id}/installations/{iid}/event-logs", s.handleAppEventLogs)
 	protected.HandleFunc("GET /api/apps/{id}/installations/{iid}/api-logs", s.handleAppAPILogs)
