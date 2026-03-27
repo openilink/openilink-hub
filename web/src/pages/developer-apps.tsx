@@ -117,7 +117,12 @@ export function DeveloperAppsPage() {
               tabIndex={0}
               className="group flex items-center gap-4 px-4 py-3.5 bg-card hover:bg-muted/40 transition-colors cursor-pointer"
               onClick={() => navigate(`/dashboard/apps/${app.id}`)}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && navigate(`/dashboard/apps/${app.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  navigate(`/dashboard/apps/${app.id}`);
+                }
+              }}
             >
               <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-9 w-9" />
               <div className="flex-1 min-w-0">
