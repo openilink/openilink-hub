@@ -405,7 +405,7 @@ func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequ
 	senderInfo := map[string]any{"id": d.Message.Sender, "role": "agent"}
 	var groupInfo any
 	if d.Message.GroupID != "" {
-		groupInfo = map[string]any{"id": d.Message.GroupID, "name": d.Message.GroupID}
+		groupInfo = map[string]any{"id": d.Message.GroupID}
 	}
 	event := appdelivery.NewEvent("command", map[string]any{
 		"command": toolName,
