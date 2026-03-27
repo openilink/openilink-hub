@@ -586,9 +586,7 @@ func (s *Server) handleSetBotAIModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.BotManager != nil {
-		if inst, ok := s.BotManager.GetInstance(botID); ok {
-			inst.AIModel = req.Model
-		}
+		s.BotManager.SetBotAIModel(botID, req.Model)
 	}
 	jsonOK(w)
 }
