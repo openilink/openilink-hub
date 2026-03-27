@@ -67,10 +67,6 @@ func (s *AI) reply(d Delivery) {
 	// Collect tools from installed apps
 	tools := s.collectTools(d.BotDBID)
 	if span != nil && len(tools) > 0 {
-		var names []string
-		for _, t := range tools {
-			names = append(names, t.Function.Name)
-		}
 		span.SetAttr("ai.tools_count", len(tools))
 	}
 
