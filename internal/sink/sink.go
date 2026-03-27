@@ -17,6 +17,7 @@ type Delivery struct {
 	MsgType      string
 	Content      string
 	AIEnabled    bool
+	AIModel      string
 	Tracer       *store.Tracer
 	RootSpan     *store.SpanBuilder
 }

@@ -142,6 +142,16 @@ func (m *Manager) GetInstance(botDBID string) (*Instance, bool) {
 	return inst, ok
 }
 
+// SetBotAIModel updates the in-memory AIModel for a running bot instance.
+// It satisfies the sink.BotModelSyncer interface without creating an import cycle.
+func (m *Manager) SetBotAIModel(botDBID, model string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if inst, ok := m.instances[botDBID]; ok {
+		inst.AIModel = model
+	}
+}
+
 func (m *Manager) StopAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -625,6 +635,7 @@ func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p par
 		MsgType:   p.msgType,
 		Content:   p.content,
 		AIEnabled: true,
+		AIModel:   inst.AIModel,
 		Tracer:    tracer,
 		RootSpan:  rootSpan,
 	}

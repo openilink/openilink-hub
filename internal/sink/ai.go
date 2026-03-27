@@ -23,12 +23,19 @@ import (
 const typingTimeout = 30 * time.Second
 const maxImageBytes = 20 * 1024 * 1024 // 20MB
 
+// BotModelSyncer allows the AI sink to sync an in-memory bot's model after a
+// /model switch without importing the bot package (which would create a cycle).
+type BotModelSyncer interface {
+	SetBotAIModel(botDBID, model string)
+}
+
 // AI calls an OpenAI-compatible chat completion API and sends the reply
 // back through the bot. Supports tool calling via installed App tools.
 type AI struct {
 	Store      store.Store
 	AppDisp    *appdelivery.Dispatcher
 	Storage    *storage.Storage
+	BotManager BotModelSyncer
 }
 
 func (s *AI) Name() string { return "ai" }
@@ -48,15 +55,93 @@ func (s *AI) Handle(d Delivery) {
 	// is checked after extraction in reply().
 	if d.MsgType == "text" {
 		trimmed := strings.TrimSpace(d.Content)
-		if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "@") {
+		if strings.HasPrefix(trimmed, "@") {
+			return
+		}
+		if strings.HasPrefix(trimmed, "/") {
+			s.handleCommand(d, trimmed)
 			return
 		}
 	}
 	s.reply(d)
 }
 
-func (s *AI) reply(d Delivery) {
+func (s *AI) handleCommand(d Delivery, cmd string) {
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 || parts[0] != "/model" {
+		return
+	}
+
+	global, _ := s.Store.ListConfigByPrefix("ai.")
+	availableRaw := global["ai.available_models"]
+	var available []string
+	if availableRaw != "" {
+		json.Unmarshal([]byte(availableRaw), &available)
+	}
+
+	sendText := func(text string) {
+		d.Provider.Send(context.Background(), provider.OutboundMessage{
+			Recipient: d.Message.Sender,
+			Text:      text,
+		})
+	}
+
+	if len(parts) == 1 {
+		// List models
+		if len(available) == 0 {
+			sendText("没有可用的模型列表，请联系管理员配置。")
+			return
+		}
+		current := d.AIModel
+		if current == "" {
+			current = global["ai.model"]
+		}
+		var lines []string
+		for _, m := range available {
+			mark := "  "
+			if m == current {
+				mark = "✓ "
+			}
+			lines = append(lines, mark+m)
+		}
+		sendText("可用模型：\n" + strings.Join(lines, "\n"))
+		return
+	}
+
+	// Switch model
+	requested := parts[1]
+	valid := false
+	for _, m := range available {
+		if m == requested {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		sendText("模型不在可用列表中，请用 /model 查看可用模型。")
+		return
+	}
+
+	if err := s.Store.UpdateBotAIModel(d.BotDBID, requested); err != nil {
+		sendText("切换失败，请稍后重试。")
+		return
+	}
+	if s.BotManager != nil {
+		s.BotManager.SetBotAIModel(d.BotDBID, requested)
+	}
+	sendText("已切换到模型：" + requested)
+}
+
+func (s *AI) resolveConfig(botModel string) store.AIConfig {
 	cfg := s.resolveGlobalConfig()
+	if botModel != "" {
+		cfg.Model = botModel
+	}
+	return cfg
+}
+
+func (s *AI) reply(d Delivery) {
+	cfg := s.resolveConfig(d.AIModel)
 	if cfg.APIKey == "" {
 		slog.Warn("ai reply skipped: no api key", "bot", d.BotDBID)
 		return

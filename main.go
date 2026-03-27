@@ -165,6 +165,7 @@ func main() {
 	appDisp := appdelivery.NewDispatcher(s)
 	aiSink := &sink.AI{Store: s, AppDisp: appDisp, Storage: objStore}
 	mgr := bot.NewManager(s, hub, aiSink, objStore, cfg.RPOrigin)
+	aiSink.BotManager = mgr
 	srv.BotManager = mgr
 	srv.Hub = hub
 	srv.AppWSHub = api.NewAppWSHub()
