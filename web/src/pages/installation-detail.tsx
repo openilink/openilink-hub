@@ -142,14 +142,17 @@ export function InstallationDetailPage() {
 
   async function handleSaveHandle(newHandle: string) {
     const trimmed = newHandle.trim();
-    if (trimmed === (inst.handle || "")) return;
+    if (trimmed === handle) return;
+    if (!trimmed) {
+      toast({ variant: "destructive", title: "Handle 不能为空" });
+      return;
+    }
     try {
       await api.updateInstallation(inst.app_id, inst.id, { handle: trimmed });
       setHandle(trimmed);
+      setInst((prev: any) => ({ ...prev, handle: trimmed }));
       toast({ title: "Handle 已保存" });
-      loadData();
     } catch (e: any) {
-      setHandle(inst.handle || "");
       toast({ variant: "destructive", title: "保存失败", description: e.message });
     }
   }
@@ -192,7 +195,6 @@ export function InstallationDetailPage() {
               <h1 className="text-2xl font-bold tracking-tight">{inst.app_name || app.name}</h1>
               <InlineHandleEditor
                 value={handle}
-                onChange={setHandle}
                 onSave={handleSaveHandle}
               />
               <Badge
@@ -297,7 +299,6 @@ export function InstallationDetailPage() {
           {section === "app-config" && <AppConfigForm app={app} inst={inst} onUpdate={loadData} />}
           {section === "config" && (
             <ConfigSection
-              app={app}
               inst={inst}
               onUninstall={() => navigate(`/dashboard/accounts/${botId}`)}
             />
@@ -314,29 +315,46 @@ export function InstallationDetailPage() {
 
 function InlineHandleEditor({
   value,
-  onChange,
   onSave,
 }: {
   value: string;
-  onChange: (v: string) => void;
   onSave: (v: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
+  const committingRef = useRef(false);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
+
+  // Keep draft in sync when external value changes (e.g. after save)
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
 
   function startEdit() {
+    setDraft(value);
     setEditing(true);
-    setTimeout(() => inputRef.current?.select(), 0);
   }
 
   function commit() {
+    if (committingRef.current) return;
+    committingRef.current = true;
     setEditing(false);
-    onSave(value);
+    onSave(draft);
+    setTimeout(() => { committingRef.current = false; }, 0);
+  }
+
+  function cancel() {
+    setEditing(false);
+    setDraft(value);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") commit();
-    if (e.key === "Escape") setEditing(false);
+    if (e.key === "Escape") cancel();
   }
 
   if (editing) {
@@ -345,8 +363,8 @@ function InlineHandleEditor({
         <span className="text-sm text-muted-foreground font-mono">@</span>
         <input
           ref={inputRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={handleKeyDown}
           className="h-6 w-32 text-sm font-mono bg-transparent border-b border-primary outline-none px-0"
@@ -360,10 +378,12 @@ function InlineHandleEditor({
   return (
     <button
       onClick={startEdit}
-      className="text-sm text-muted-foreground font-mono hover:text-foreground transition-colors cursor-text"
+      className={`text-sm font-mono transition-colors cursor-text hover:text-foreground ${
+        value ? "text-muted-foreground" : "text-muted-foreground/50 italic"
+      }`}
       title="点击编辑 handle"
     >
-      @{value || "handle"}
+      {value ? `@${value}` : "添加 handle"}
     </button>
   );
 }
@@ -579,11 +599,9 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
 // ==================== Config Section ====================
 
 function ConfigSection({
-  app,
   inst,
   onUninstall,
 }: {
-  app: any;
   inst: any;
   onUninstall: () => void;
 }) {
