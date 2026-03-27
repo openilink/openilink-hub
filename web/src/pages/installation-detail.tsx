@@ -73,7 +73,7 @@ function buildNavSections(app: any, inst?: any) {
       items.push({ key: "app-config", label: "应用配置", icon: Sliders });
     }
   }
-  items.push({ key: "config", label: "安装设置", icon: Settings });
+  items.push({ key: "config", label: "危险操作", icon: Settings });
   items.push({ key: "event-logs", label: "事件日志", icon: ScrollText });
   items.push({ key: "api-logs", label: "API 日志", icon: ScrollText });
   return items;
@@ -161,7 +161,7 @@ export function InstallationDetailPage() {
     setEnabled(val);
     try {
       await api.updateInstallation(inst.app_id, inst.id, { enabled: val });
-      loadData();
+      setInst((prev: any) => ({ ...prev, enabled: val }));
     } catch (e: any) {
       setEnabled(!val);
       toast({ variant: "destructive", title: "保存失败", description: e.message });
@@ -197,12 +197,6 @@ export function InstallationDetailPage() {
                 value={handle}
                 onSave={handleSaveHandle}
               />
-              <Badge
-                variant={enabled ? "default" : "secondary"}
-                className="rounded-full font-bold"
-              >
-                {enabled ? "运行中" : "已停用"}
-              </Badge>
               {app.registry && app.registry !== "builtin" ? (
                 <Badge variant="outline" className="rounded-full font-bold">
                   来自应用市场
@@ -213,11 +207,16 @@ export function InstallationDetailPage() {
                   内置应用
                 </Badge>
               ) : null}
-              <Switch
-                checked={enabled}
-                onCheckedChange={handleToggleEnabled}
-                aria-label="启用状态"
-              />
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={enabled}
+                  onCheckedChange={handleToggleEnabled}
+                  aria-label="启用状态"
+                />
+                <span className="text-sm text-muted-foreground">
+                  {enabled ? "运行中" : "已停用"}
+                </span>
+              </div>
             </div>
             {app.description ? (
               <p className="text-sm text-muted-foreground">{app.description}</p>
@@ -323,13 +322,22 @@ function InlineHandleEditor({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Prevents Enter keydown + subsequent onBlur from both calling onSave
   const committingRef = useRef(false);
+  // Prevents Escape-triggered onBlur from calling onSave
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
+    // Select all text when entering edit mode (autoFocus handles focus)
     if (editing) inputRef.current?.select();
+    // Reset guards when editing state settles
+    if (!editing) {
+      committingRef.current = false;
+      cancelledRef.current = false;
+    }
   }, [editing]);
 
-  // Keep draft in sync when external value changes (e.g. after save)
+  // Keep draft in sync when external value changes (e.g. after save round-trip)
   useEffect(() => {
     if (!editing) setDraft(value);
   }, [value, editing]);
@@ -340,14 +348,14 @@ function InlineHandleEditor({
   }
 
   function commit() {
-    if (committingRef.current) return;
+    if (committingRef.current || cancelledRef.current) return;
     committingRef.current = true;
     setEditing(false);
     onSave(draft);
-    setTimeout(() => { committingRef.current = false; }, 0);
   }
 
   function cancel() {
+    cancelledRef.current = true;
     setEditing(false);
     setDraft(value);
   }
@@ -367,8 +375,9 @@ function InlineHandleEditor({
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={handleKeyDown}
-          className="h-6 w-32 text-sm font-mono bg-transparent border-b border-primary outline-none px-0"
+          className="h-6 min-w-[8rem] max-w-[20rem] text-sm font-mono bg-transparent border-b border-primary outline-none px-0"
           placeholder="handle"
+          aria-label="编辑 handle"
           autoFocus
         />
       </div>
@@ -625,8 +634,8 @@ function ConfigSection({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold">安装设置</h2>
-        <p className="text-sm text-muted-foreground mt-1">管理此安装实例的生命周期。</p>
+        <h2 className="text-base font-semibold">危险操作</h2>
+        <p className="text-sm text-muted-foreground mt-1">以下操作不可撤销，请谨慎操作。</p>
       </div>
 
       <Card>
