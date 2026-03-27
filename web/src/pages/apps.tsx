@@ -173,7 +173,7 @@ export function AppsPage() {
                 <SelectContent>
                   {bots.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
-                      {b.name}
+                      {b.display_name || b.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

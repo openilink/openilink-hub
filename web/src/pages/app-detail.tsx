@@ -503,7 +503,7 @@ function InstallAppSection({ appId }: { appId: string }) {
                 >
                   {bots.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.name}
+                      {b.display_name || b.name}
                     </option>
                   ))}
                 </select>

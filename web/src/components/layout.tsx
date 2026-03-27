@@ -327,7 +327,7 @@ export function Layout() {
                             <Circle
                               className={`size-2 ${statusColors[b.status] || "text-muted-foreground"}`}
                             />
-                            <span className="truncate">{b.name}</span>
+                            <span className="truncate">{b.display_name || b.name}</span>
                           </Link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

@@ -104,7 +104,7 @@ export function OnboardingPage() {
             </div>
             <h1 className="text-2xl font-bold">账号添加成功！</h1>
             <p className="text-muted-foreground">
-              {bot?.name ? `"${bot.name}" 已就绪` : "你的账号已就绪"}，接下来做一些基础设置。
+              {(bot?.display_name || bot?.name) ? `"${bot.display_name || bot.name}" 已就绪` : "你的账号已就绪"}，接下来做一些基础设置。
             </p>
           </div>
 

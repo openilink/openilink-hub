@@ -101,7 +101,7 @@ export function InstallationDetailPage() {
       const [appData, bots] = await Promise.all([api.getApp(found.app_id), api.listBots()]);
       setApp(appData);
       const bot = (bots || []).find((b: any) => b.id === botId);
-      if (bot) setBotName(bot.name);
+      if (bot) setBotName(bot.display_name || bot.name);
     } catch (e: any) {
       toast({ variant: "destructive", title: "加载失败", description: e.message });
     } finally {
