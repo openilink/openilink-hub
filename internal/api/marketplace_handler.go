@@ -164,7 +164,11 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return updated app
-	localApp, _ = s.Store.GetApp(localApp.ID)
+	localApp, err = s.Store.GetApp(localApp.ID)
+	if err != nil {
+		jsonError(w, "fetch updated app failed", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(localApp)
 }
