@@ -106,20 +106,22 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 						"data":      event.Data,
 					},
 				}
-				// Write event log for WebSocket delivery (consistent with deliverToInstallation)
-				envJSON, _ := json.Marshal(envelope)
-				m.appDisp.Store.CreateEventLog(&store.AppEventLog{
-					InstallationID: installations[i].ID,
-					TraceID:        event.TraceID,
-					EventType:      event.Type,
-					EventID:        event.ID,
-					RequestBody:    string(envJSON),
-				})
 				if err := wsConn.SendJSON(envelope); err != nil {
 					slog.Warn("ws delivery failed, falling back to webhook", "inst", installations[i].ID, "app", installations[i].AppSlug, "err", err)
 					span.EndWithError("ws send: " + err.Error())
 					// Fall through to webhook delivery below
 				} else {
+					// Write event log only on successful WS delivery to avoid
+					// duplicates when falling through to webhook (DeliverWithRetry
+					// writes its own log).
+					envJSON, _ := json.Marshal(envelope)
+					m.appDisp.Store.CreateEventLog(&store.AppEventLog{
+						InstallationID: installations[i].ID,
+						TraceID:        event.TraceID,
+						EventType:      event.Type,
+						EventID:        event.ID,
+						RequestBody:    string(envJSON),
+					})
 					slog.Info("event delivered via ws", "inst", installations[i].ID, "app", installations[i].AppSlug, "event", event.Type, "event_id", event.ID)
 					span.End()
 					continue
@@ -252,20 +254,21 @@ func (m *Manager) deliverToInstallation(inst *Instance, installation *store.AppI
 					"data":      event.Data,
 				},
 			}
-			// Write event log for WebSocket delivery
-			envJSON, _ := json.Marshal(envelope)
-			m.appDisp.Store.CreateEventLog(&store.AppEventLog{
-				InstallationID: installation.ID,
-				TraceID:        event.TraceID,
-				EventType:      event.Type,
-				EventID:        event.ID,
-				RequestBody:    string(envJSON),
-			})
 			if err := wsConn.SendJSON(envelope); err != nil {
 				slog.Warn("ws delivery failed, falling back to webhook", "inst", installation.ID, "app", installation.AppSlug, "err", err)
 				span.EndWithError("ws send: " + err.Error())
 				// Fall through to webhook
 			} else {
+				// Write event log after successful send to avoid duplicates
+				// when falling through to webhook (DeliverWithRetry writes its own).
+				envJSON, _ := json.Marshal(envelope)
+				m.appDisp.Store.CreateEventLog(&store.AppEventLog{
+					InstallationID: installation.ID,
+					TraceID:        event.TraceID,
+					EventType:      event.Type,
+					EventID:        event.ID,
+					RequestBody:    string(envJSON),
+				})
 				slog.Info("event delivered via ws", "inst", installation.ID, "app", installation.AppSlug, "event", event.Type, "event_id", event.ID)
 				span.End()
 				return
