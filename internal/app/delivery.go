@@ -44,6 +44,7 @@ type DeliveryResult struct {
 	ReplyURL    string `json:"reply_url,omitempty"`    // media URL (platform downloads)
 	ReplyBase64 string `json:"reply_base64,omitempty"` // media as base64 (direct)
 	ReplyName   string `json:"reply_name,omitempty"`   // filename
+	ReplyAsync  bool   `json:"reply_async,omitempty"`  // true = result will be pushed later via Bot API
 	StatusCode  int    `json:"status_code"`
 
 	// Trace data (for observability)
@@ -72,6 +73,7 @@ type syncReply struct {
 	ReplyURL    string `json:"reply_url"`
 	ReplyBase64 string `json:"reply_base64"`
 	ReplyName   string `json:"reply_name"`
+	ReplyAsync  bool   `json:"reply_async"`
 }
 
 // eventLogger is the interface used for event logging operations.
@@ -203,14 +205,18 @@ func (d *Dispatcher) DeliverEvent(inst *store.AppInstallation, event *Event) (*D
 	// Parse optional sync reply.
 	if len(respBody) > 0 {
 		var sr syncReply
-		if json.Unmarshal(respBody, &sr) == nil && (sr.Reply != "" || sr.ReplyURL != "" || sr.ReplyBase64 != "") {
-			result.Reply = sr.Reply
-			result.ReplyType = sr.ReplyType
-			result.ReplyURL = sr.ReplyURL
-			result.ReplyBase64 = sr.ReplyBase64
-			result.ReplyName = sr.ReplyName
-			if result.ReplyType == "" {
-				result.ReplyType = "text"
+		if json.Unmarshal(respBody, &sr) == nil {
+			if sr.ReplyAsync {
+				result.ReplyAsync = true
+			} else if sr.Reply != "" || sr.ReplyURL != "" || sr.ReplyBase64 != "" {
+				result.Reply = sr.Reply
+				result.ReplyType = sr.ReplyType
+				result.ReplyURL = sr.ReplyURL
+				result.ReplyBase64 = sr.ReplyBase64
+				result.ReplyName = sr.ReplyName
+				if result.ReplyType == "" {
+					result.ReplyType = "text"
+				}
 			}
 		}
 	}

@@ -125,6 +125,7 @@ type ToolCallResult struct {
 	Name    string      // function name
 	Content string      // result text to feed back to LLM
 	Images  []ImageData // optional images to include as multimodal content
+	Async   bool        // true = result will be pushed to user later, skip LLM continuation
 }
 
 // Usage holds token usage statistics from the API response.

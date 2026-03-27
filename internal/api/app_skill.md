@@ -231,8 +231,30 @@ AI Agent-triggered:
 | `reply_url` | No | URL to media file |
 | `reply_base64` | No | Base64-encoded media data |
 | `reply_name` | No | Filename for the media |
+| `reply_async` | No | `true` = result will be pushed later via Bot API (see below) |
 
-#### Method 2: Asynchronous Reply (via Bot API)
+#### Method 2: Async Handoff (`reply_async`)
+
+If your App cannot complete within the 3-second sync window, respond with:
+
+```json
+{"reply_async": true}
+```
+
+This tells the platform: "I'll push the result later via the Bot API." The platform will **not** treat this as a final reply -- it will skip any further processing (e.g., AI Agent will not generate a follow-up response based on a "processing" placeholder).
+
+Your App is then responsible for pushing the actual result asynchronously:
+
+```python
+requests.post(f"{HUB}/bot/v1/message/send", headers=headers,
+    json={"type": "image", "base64": "data:image/png;base64,...", "to": sender_id, "trace_id": trace_id})
+```
+
+This is preferred over returning a text placeholder like "processing..." because:
+- **AI Agent tool calls**: A placeholder would be fed back to the LLM, causing nonsensical responses
+- **User experience**: No confusing intermediate messages
+
+#### Method 3: Asynchronous Reply (via Bot API)
 
 For replies that take longer than 3 seconds:
 

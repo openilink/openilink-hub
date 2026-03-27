@@ -207,18 +207,19 @@ func (s *AI) reply(d Delivery) {
 			toolResults = append(toolResults, toolResult)
 		}
 
-		// If all tool results returned images (already sent to user), skip LLM continuation.
-		allImages := true
+		// If all tool results are handled directly (images already sent, or async),
+		// skip LLM continuation — the user will receive results without LLM involvement.
+		skipLLM := true
 		for _, tr := range toolResults {
-			if len(tr.Images) == 0 {
-				allImages = false
+			if len(tr.Images) == 0 && !tr.Async {
+				skipLLM = false
 				break
 			}
 		}
-		if allImages {
+		if skipLLM {
 			s.setTokenUsage(span, d.RootSpan, totalPrompt, totalCompletion, totalTokens, totalCached, totalReasoning)
 			if span != nil {
-				span.SetAttr("reply.content", "(tool returned images)")
+				span.SetAttr("reply.content", "(tool handled directly)")
 				span.End()
 			}
 			s.stopTyping(d, typingTicket)
@@ -412,6 +413,15 @@ func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequ
 	if span != nil {
 		span.SetAttr("http.status_code", result.StatusCode)
 		span.SetAttr("tool.result", truncateStr(result.Reply, 500))
+	}
+
+	// Handle async replies: app will push the result later via Bot API.
+	if result.ReplyAsync {
+		if span != nil {
+			span.SetAttr("tool.reply_async", true)
+			span.End()
+		}
+		return ai.ToolCallResult{ID: tc.ID, Name: tc.Name, Async: true}
 	}
 
 	// Handle image replies: send image to user directly.
