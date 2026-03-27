@@ -421,7 +421,7 @@ func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequ
 			span.SetAttr("tool.reply_async", true)
 			span.End()
 		}
-		return ai.ToolCallResult{ID: tc.ID, Name: tc.Name, Async: true}
+		return ai.ToolCallResult{ID: tc.ID, Name: tc.Name, Content: "result pending, will be delivered asynchronously", Async: true}
 	}
 
 	// Handle image replies: send image to user directly.
