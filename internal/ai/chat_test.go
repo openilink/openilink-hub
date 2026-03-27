@@ -445,9 +445,15 @@ func TestComplete_UsageParsed(t *testing.T) {
 				{"message": map[string]any{"role": "assistant", "content": "Hi!"}, "finish_reason": "stop"},
 			},
 			"usage": map[string]any{
-				"prompt_tokens":     10,
-				"completion_tokens": 5,
-				"total_tokens":      15,
+				"prompt_tokens":     100,
+				"completion_tokens": 50,
+				"total_tokens":      150,
+				"prompt_tokens_details": map[string]any{
+					"cached_tokens": 30,
+				},
+				"completion_tokens_details": map[string]any{
+					"reasoning_tokens": 20,
+				},
 			},
 		})
 	}))
@@ -461,14 +467,20 @@ func TestComplete_UsageParsed(t *testing.T) {
 	if result.Usage == nil {
 		t.Fatal("expected usage to be set")
 	}
-	if result.Usage.PromptTokens != 10 {
-		t.Errorf("prompt_tokens = %d, want 10", result.Usage.PromptTokens)
+	if result.Usage.PromptTokens != 100 {
+		t.Errorf("prompt_tokens = %d, want 100", result.Usage.PromptTokens)
 	}
-	if result.Usage.CompletionTokens != 5 {
-		t.Errorf("completion_tokens = %d, want 5", result.Usage.CompletionTokens)
+	if result.Usage.CompletionTokens != 50 {
+		t.Errorf("completion_tokens = %d, want 50", result.Usage.CompletionTokens)
 	}
-	if result.Usage.TotalTokens != 15 {
-		t.Errorf("total_tokens = %d, want 15", result.Usage.TotalTokens)
+	if result.Usage.TotalTokens != 150 {
+		t.Errorf("total_tokens = %d, want 150", result.Usage.TotalTokens)
+	}
+	if result.Usage.CachedTokens != 30 {
+		t.Errorf("cached_tokens = %d, want 30", result.Usage.CachedTokens)
+	}
+	if result.Usage.ReasoningTokens != 20 {
+		t.Errorf("reasoning_tokens = %d, want 20", result.Usage.ReasoningTokens)
 	}
 }
 

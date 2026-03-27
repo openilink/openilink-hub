@@ -91,11 +91,13 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	// Accumulate token usage across all rounds
-	var totalPrompt, totalCompletion, totalTokens int
+	var totalPrompt, totalCompletion, totalTokens, totalCached, totalReasoning int
 	if result.Usage != nil {
 		totalPrompt += result.Usage.PromptTokens
 		totalCompletion += result.Usage.CompletionTokens
 		totalTokens += result.Usage.TotalTokens
+		totalCached += result.Usage.CachedTokens
+		totalReasoning += result.Usage.ReasoningTokens
 	}
 
 	// Build installationID → appName map for status messages
@@ -160,6 +162,8 @@ func (s *AI) reply(d Delivery) {
 			totalPrompt += result.Usage.PromptTokens
 			totalCompletion += result.Usage.CompletionTokens
 			totalTokens += result.Usage.TotalTokens
+			totalCached += result.Usage.CachedTokens
+			totalReasoning += result.Usage.ReasoningTokens
 		}
 	}
 
@@ -168,6 +172,12 @@ func (s *AI) reply(d Delivery) {
 		span.SetAttr("ai.tokens.prompt", strconv.Itoa(totalPrompt))
 		span.SetAttr("ai.tokens.completion", strconv.Itoa(totalCompletion))
 		span.SetAttr("ai.tokens.total", strconv.Itoa(totalTokens))
+		if totalCached > 0 {
+			span.SetAttr("ai.tokens.cached", strconv.Itoa(totalCached))
+		}
+		if totalReasoning > 0 {
+			span.SetAttr("ai.tokens.reasoning", strconv.Itoa(totalReasoning))
+		}
 	}
 
 	s.stopTyping(d, typingTicket)

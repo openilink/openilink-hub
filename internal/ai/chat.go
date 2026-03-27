@@ -56,9 +56,15 @@ type chatRequest struct {
 }
 
 type chatUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens        int              `json:"prompt_tokens"`
+	CompletionTokens    int              `json:"completion_tokens"`
+	TotalTokens         int              `json:"total_tokens"`
+	PromptTokensDetails *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details,omitempty"`
 }
 
 type chatResponse struct {
@@ -99,6 +105,8 @@ type Usage struct {
 	PromptTokens     int
 	CompletionTokens int
 	TotalTokens      int
+	CachedTokens     int
+	ReasoningTokens  int
 }
 
 // CompletionResult holds the outcome of a completion call.
@@ -275,6 +283,12 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,
 			TotalTokens:      result.Usage.TotalTokens,
+		}
+		if result.Usage.PromptTokensDetails != nil {
+			usage.CachedTokens = result.Usage.PromptTokensDetails.CachedTokens
+		}
+		if result.Usage.CompletionTokensDetails != nil {
+			usage.ReasoningTokens = result.Usage.CompletionTokensDetails.ReasoningTokens
 		}
 	}
 
