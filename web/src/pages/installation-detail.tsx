@@ -63,9 +63,9 @@ function buildNavSections(app: any, inst?: any) {
   if (parseTools(app?.tools).length > 0 || parseTools(inst?.tools).length > 0) {
     items.push({ key: "tools", label: "命令 / 工具", icon: Terminal });
   }
-  const scopes: string[] = app?.scopes || [];
+  const instScopes: string[] = inst?.scopes || [];
   const events: string[] = app?.events || [];
-  if (scopes.length > 0 || events.length > 0) {
+  if (instScopes.length > 0 || events.length > 0) {
     items.push({ key: "permissions", label: "权限", icon: ShieldCheck });
   }
   if (app?.config_schema) {
@@ -308,7 +308,7 @@ export function InstallationDetailPage() {
                 </div>
               );
             })()}
-          {section === "permissions" && <PermissionsSection app={app} />}
+          {section === "permissions" && <PermissionsSection app={app} inst={inst} />}
           {section === "app-config" && <AppConfigForm app={app} inst={inst} onUpdate={loadData} />}
           {section === "config" && (
             <ConfigSection
@@ -912,8 +912,8 @@ function ApiLogsSection({ appId, instId }: { appId: string; instId: string }) {
 
 // ==================== Permissions Section ====================
 
-function PermissionsSection({ app }: { app: any }) {
-  const scopes: string[] = app?.scopes || [];
+function PermissionsSection({ app, inst }: { app: any; inst: any }) {
+  const scopes: string[] = inst?.scopes || [];
   const events: string[] = app?.events || [];
   const readScopes = scopes.filter((s: string) => s.endsWith(":read"));
   const writeScopes = scopes.filter((s: string) => s.endsWith(":write"));
@@ -921,8 +921,9 @@ function PermissionsSection({ app }: { app: any }) {
     (s: string) => !s.endsWith(":read") && !s.endsWith(":write")
   );
 
-  function eventLabel(key: string): string {
-    return EVENT_TYPES.find((e) => e.key === key)?.label ?? key;
+  function eventLabelEntry(key: string): { label: string; showKey: boolean } {
+    const found = EVENT_TYPES.find((e) => e.key === key);
+    return found ? { label: found.label, showKey: true } : { label: key, showKey: false };
   }
 
   return (
@@ -983,12 +984,15 @@ function PermissionsSection({ app }: { app: any }) {
             <div className="space-y-2">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
               <div className="flex flex-wrap gap-1.5">
-                {events.map((event: string) => (
-                  <Badge key={event} variant="outline" className="text-xs">
-                    {eventLabel(event)}
-                    <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>
-                  </Badge>
-                ))}
+                {events.map((event: string) => {
+                  const { label, showKey } = eventLabelEntry(event);
+                  return (
+                    <Badge key={event} variant="outline" className="text-xs">
+                      {label}
+                      {showKey && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
+                    </Badge>
+                  );
+                })}
               </div>
             </div>
           )}
