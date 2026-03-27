@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Eye, Zap, Loader2, ExternalLink } from "lucide-react";
+import { ArrowLeft, Eye, Zap, Loader2, ExternalLink, ShieldCheck } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
@@ -10,7 +10,7 @@ import { Label } from "../components/ui/label";
 import { api, botDisplayName } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
-import { SCOPE_DESCRIPTIONS } from "../lib/constants";
+import { SCOPE_DESCRIPTIONS, EVENT_TYPES } from "../lib/constants";
 import { ToolsDisplay, parseTools } from "../components/tools-display";
 
 export function InstallAppPage() {
@@ -173,6 +173,7 @@ export function InstallAppPage() {
   const scopes: string[] = app.scopes || [];
   const readScopes = scopes.filter((s: string) => s.endsWith(":read"));
   const writeScopes = scopes.filter((s: string) => s.endsWith(":write"));
+  const otherScopes = scopes.filter((s: string) => !s.endsWith(":read") && !s.endsWith(":write"));
   const events: string[] = app.events || [];
 
   // Parse config_schema
@@ -189,7 +190,7 @@ export function InstallAppPage() {
   }
 
   const tools = parseTools(app.tools);
-  const hasPermissions = readScopes.length > 0 || writeScopes.length > 0 || events.length > 0;
+  const hasPermissions = readScopes.length > 0 || writeScopes.length > 0 || otherScopes.length > 0 || events.length > 0;
 
   return (
     <div className="space-y-8">
@@ -272,15 +273,30 @@ export function InstallAppPage() {
                     </div>
                   )}
 
+                  {otherScopes.length > 0 && (
+                    <div className="space-y-1.5">
+                      {otherScopes.map((scope: string) => (
+                        <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                          <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {events.length > 0 && (
                     <div className="space-y-1.5">
                       <p className="text-xs text-muted-foreground">订阅事件：</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {events.map((event: string) => (
-                          <Badge key={event} variant="outline" className="font-mono text-xs">
-                            {event}
-                          </Badge>
-                        ))}
+                        {events.map((event: string) => {
+                          const found = EVENT_TYPES.find((e) => e.key === event);
+                          return (
+                            <Badge key={event} variant="outline" className="text-xs">
+                              {found ? found.label : event}
+                              {found && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
+                            </Badge>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
