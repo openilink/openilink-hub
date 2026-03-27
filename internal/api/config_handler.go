@@ -124,6 +124,7 @@ func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		"model":         dbConf["ai.model"],
 		"system_prompt": dbConf["ai.system_prompt"],
 		"max_history":   dbConf["ai.max_history"],
+		"hide_thinking": dbConf["ai.hide_thinking"],
 	}
 	if dbConf["ai.api_key"] != "" {
 		result["enabled"] = "true"
@@ -140,6 +141,7 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 		Model        string `json:"model"`
 		SystemPrompt string `json:"system_prompt"`
 		MaxHistory   string `json:"max_history"`
+		HideThinking string `json:"hide_thinking"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -160,6 +162,9 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if req.MaxHistory != "" {
 		s.Store.SetConfig("ai.max_history", req.MaxHistory)
 	}
+	if req.HideThinking != "" {
+		s.Store.SetConfig("ai.hide_thinking", req.HideThinking)
+	}
 	jsonOK(w)
 }
 
@@ -168,6 +173,7 @@ func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 	s.Store.DeleteConfig("ai.base_url")
 	s.Store.DeleteConfig("ai.api_key")
 	s.Store.DeleteConfig("ai.model")
+	s.Store.DeleteConfig("ai.hide_thinking")
 	jsonOK(w)
 }
 
