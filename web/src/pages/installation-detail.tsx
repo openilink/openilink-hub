@@ -47,7 +47,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
 import { api, botDisplayName } from "../lib/api";
-import { SCOPE_DESCRIPTIONS } from "../lib/constants";
+import { SCOPE_DESCRIPTIONS, EVENT_TYPES } from "../lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 import { ToolsDisplay, parseTools } from "../components/tools-display";
@@ -917,6 +917,13 @@ function PermissionsSection({ app }: { app: any }) {
   const events: string[] = app?.events || [];
   const readScopes = scopes.filter((s: string) => s.endsWith(":read"));
   const writeScopes = scopes.filter((s: string) => s.endsWith(":write"));
+  const otherScopes = scopes.filter(
+    (s: string) => !s.endsWith(":read") && !s.endsWith(":write")
+  );
+
+  function eventLabel(key: string): string {
+    return EVENT_TYPES.find((e) => e.key === key)?.label ?? key;
+  }
 
   return (
     <div className="space-y-6">
@@ -957,21 +964,33 @@ function PermissionsSection({ app }: { app: any }) {
             </div>
           )}
 
-          {events.length > 0 && (
+          {otherScopes.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
-              <div className="flex flex-wrap gap-1.5">
-                {events.map((event: string) => (
-                  <Badge key={event} variant="outline" className="font-mono text-xs">
-                    {event}
-                  </Badge>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">其他权限</p>
+              <div className="space-y-1.5">
+                {otherScopes.map((scope: string) => (
+                  <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                    <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                    <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                  </div>
                 ))}
               </div>
             </div>
           )}
 
-          {scopes.length === 0 && events.length === 0 && (
-            <p className="text-sm text-muted-foreground">此应用未申请任何权限。</p>
+          {events.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
+              <div className="flex flex-wrap gap-1.5">
+                {events.map((event: string) => (
+                  <Badge key={event} variant="outline" className="text-xs">
+                    {eventLabel(event)}
+                    <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>
+                  </Badge>
+                ))}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
