@@ -314,18 +314,18 @@ func (m *Manager) deliverBuiltinMention(inst *Instance, installation *store.AppI
 func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string, tracer *store.Tracer, rootSpan *store.SpanBuilder) bool {
 	installations, command, args, err := m.appDisp.MatchCommand(inst.DBID, content)
 	if err != nil {
-		slog.Error("match command error", "bot", inst.DBID, "content", content, "err", err)
+		slog.Error("match command error", "bot", inst.DBID, "err", err)
 		rootSpan.AddEvent("match_command_error", map[string]any{"error": err.Error()})
 		return false
 	}
 	if len(installations) == 0 {
 		if command != "" {
-			slog.Info("command not matched", "bot", inst.DBID, "command", command)
+			slog.Debug("command not matched", "bot", inst.DBID, "command", command)
 		}
 		return false
 	}
 
-	slog.Info("command matched", "bot", inst.DBID, "command", command, "args", args, "installations", len(installations))
+	slog.Info("command matched", "bot", inst.DBID, "command", command, "installations", len(installations))
 
 	rootSpan.AddEvent("match_command", map[string]any{
 		"command": command,
