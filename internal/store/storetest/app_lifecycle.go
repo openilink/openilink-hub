@@ -497,6 +497,30 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("UpdateInstallationTools", func(t *testing.T) {
+		tools, _ := json.Marshal([]store.AppTool{
+			{Name: "hn", Command: "hn", Description: "Hacker News"},
+			{Name: "weather", Command: "weather", Description: "Weather report"},
+		})
+		if err := s.UpdateInstallationTools(instID, tools); err != nil {
+			t.Fatalf("UpdateInstallationTools: %v", err)
+		}
+		got, err := s.GetInstallation(instID)
+		if err != nil {
+			t.Fatalf("GetInstallation after UpdateInstallationTools: %v", err)
+		}
+		var gotTools []store.AppTool
+		if err := json.Unmarshal(got.Tools, &gotTools); err != nil {
+			t.Fatalf("unmarshal tools: %v", err)
+		}
+		if len(gotTools) != 2 {
+			t.Errorf("expected 2 tools, got %d", len(gotTools))
+		}
+		if gotTools[0].Command != "hn" {
+			t.Errorf("first tool command = %q, want %q", gotTools[0].Command, "hn")
+		}
+	})
+
 	t.Run("GetInstallationByHandle", func(t *testing.T) {
 		got, err := s.GetInstallationByHandle(b.ID, "my-app-handle")
 		if err != nil {

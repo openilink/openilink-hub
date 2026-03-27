@@ -49,6 +49,7 @@ type AppInstallation struct {
 	Handle    string          `json:"handle,omitempty"`
 	Config    json.RawMessage `json:"config"`
 	Scopes    json.RawMessage `json:"scopes"`
+	Tools     json.RawMessage `json:"tools,omitempty"`
 	Enabled   bool            `json:"enabled"`
 	CreatedAt int64           `json:"created_at"`
 	UpdatedAt int64           `json:"updated_at"`
@@ -96,4 +97,5 @@ type AppStore interface {
 	WithdrawListing(id string) error
 	SetListing(id, listing string) error
 	UpdateAppTools(id string, tools json.RawMessage) error
+	UpdateInstallationTools(id string, tools json.RawMessage) error
 }

@@ -84,6 +84,12 @@ func (d *Dispatcher) MatchCommand(botID string, content string) ([]store.AppInst
 
 		if appHasCommand(app, command) {
 			matched = append(matched, inst)
+			continue
+		}
+
+		// Check installation-level tools
+		if instHasCommand(&inst, command) {
+			matched = append(matched, inst)
 		}
 	}
 
@@ -188,6 +194,26 @@ func appHasCommand(app *store.App, commandName string) bool {
 			continue
 		}
 		if strings.ToLower(tool.Command) == strings.ToLower(commandName) {
+			return true
+		}
+	}
+	return false
+}
+
+// instHasCommand checks whether an installation has a tool with a matching Command trigger.
+func instHasCommand(inst *store.AppInstallation, commandName string) bool {
+	if len(inst.Tools) == 0 || string(inst.Tools) == "[]" {
+		return false
+	}
+	var tools []store.AppTool
+	if err := json.Unmarshal(inst.Tools, &tools); err != nil {
+		return false
+	}
+	for _, t := range tools {
+		if t.Command == "" {
+			continue
+		}
+		if strings.ToLower(t.Command) == strings.ToLower(commandName) {
 			return true
 		}
 	}

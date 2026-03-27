@@ -1701,3 +1701,99 @@ func TestScopeSnapshotAtInstall(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Test: Bot API update installation tools
+// ---------------------------------------------------------------------------
+
+func TestBotAPI_UpdateInstallationTools(t *testing.T) {
+	env := setupTestEnv(t)
+	bot := createTestBot(t, env.store, env.user.ID, "inst-tools-bot")
+
+	// App with tools:write scope.
+	appWithScope := createTestApp(t, env.store, env.user.ID, "tools-app", "tools-app",
+		[]string{"tools:write"})
+	instWithScope := installTestApp(t, env.store, appWithScope.ID, bot.ID)
+
+	// App without tools:write scope.
+	appNoScope := createTestApp(t, env.store, env.user.ID, "no-tools-app", "no-tools-app",
+		[]string{"message:write"})
+	instNoScope := installTestApp(t, env.store, appNoScope.ID, bot.ID)
+
+	t.Run("update installation tools succeeds", func(t *testing.T) {
+		tools := []map[string]string{
+			{"name": "hn", "description": "Hacker News", "command": "hn"},
+			{"name": "weather", "description": "Weather report", "command": "weather"},
+		}
+		resp := doJSON(t, env.ts, "PUT", "/bot/v1/installation/tools",
+			map[string]any{"tools": tools},
+			withBearer(instWithScope.AppToken))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body := decodeJSON(t, resp)
+			t.Fatalf("expected 200, got %d: %v", resp.StatusCode, body)
+		}
+		body := decodeJSON(t, resp)
+		if body["ok"] != true {
+			t.Errorf("expected ok=true, got %v", body["ok"])
+		}
+		if tc, _ := body["tool_count"].(float64); tc != 2 {
+			t.Errorf("expected tool_count=2, got %v", tc)
+		}
+
+		// Verify tools stored on installation (not app).
+		inst, err := env.store.GetInstallation(instWithScope.ID)
+		if err != nil {
+			t.Fatalf("GetInstallation: %v", err)
+		}
+		var storedTools []store.AppTool
+		if err := json.Unmarshal(inst.Tools, &storedTools); err != nil {
+			t.Fatalf("unmarshal tools: %v", err)
+		}
+		if len(storedTools) != 2 {
+			t.Errorf("expected 2 tools on installation, got %d", len(storedTools))
+		}
+
+		// App-level tools should remain unchanged (empty).
+		app, _ := env.store.GetApp(appWithScope.ID)
+		var appTools []store.AppTool
+		json.Unmarshal(app.Tools, &appTools)
+		if len(appTools) != 0 {
+			t.Errorf("app tools should be empty, got %d", len(appTools))
+		}
+	})
+
+	t.Run("missing tools:write scope returns 403", func(t *testing.T) {
+		resp := doJSON(t, env.ts, "PUT", "/bot/v1/installation/tools",
+			map[string]any{"tools": []any{}},
+			withBearer(instNoScope.AppToken))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("expected 403, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("invalid tools format returns 400", func(t *testing.T) {
+		resp := doJSON(t, env.ts, "PUT", "/bot/v1/installation/tools",
+			map[string]any{"tools": "not-an-array"},
+			withBearer(instWithScope.AppToken))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("missing tools field returns 400", func(t *testing.T) {
+		resp := doJSON(t, env.ts, "PUT", "/bot/v1/installation/tools",
+			map[string]any{},
+			withBearer(instWithScope.AppToken))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", resp.StatusCode)
+		}
+	})
+}

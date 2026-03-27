@@ -220,6 +220,7 @@ CREATE TABLE IF NOT EXISTS app_installations (
     handle          TEXT NOT NULL DEFAULT '',
     config          TEXT NOT NULL DEFAULT '{}',
     scopes          TEXT NOT NULL DEFAULT '[]',
+    tools           TEXT NOT NULL DEFAULT '[]',
     enabled         INTEGER NOT NULL DEFAULT 1,
     created_at      INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at      INTEGER NOT NULL DEFAULT (unixepoch())

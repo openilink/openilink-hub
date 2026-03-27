@@ -430,14 +430,14 @@ Response:
 }
 ```
 
-### Update Tools
+### Update App Tools
 
 ```
 PUT /bot/v1/app/tools
 Authorization: Bearer {app_token}
 ```
 
-Dynamically update the app's tools/commands at runtime. Requires `tools:write` scope. Only works for local apps (not marketplace or builtin).
+Dynamically update the **app-level** tools/commands at runtime. Requires `tools:write` scope. Only works for local apps (not marketplace or builtin). App-level tools are shared across all installations of the app.
 
 | Field | Required | Description |
 |---|---|---|
@@ -446,6 +446,37 @@ Dynamically update the app's tools/commands at runtime. Requires `tools:write` s
 Response:
 ```json
 {"ok": true, "tool_count": 5}
+```
+
+### Update Installation Tools
+
+```
+PUT /bot/v1/installation/tools
+Authorization: Bearer {app_token}
+```
+
+Update **per-installation** tools/commands. Requires `tools:write` scope. Installation-level tools supplement the app-level tools -- during command matching, both sets are checked.
+
+Use this when different installations of the same app need different commands. For example, one installation might expose `/hn` while another exposes `/weather`.
+
+| Field | Required | Description |
+|---|---|---|
+| `tools` | Yes | JSON array of tool definitions |
+
+Response:
+```json
+{"ok": true, "tool_count": 2}
+```
+
+#### App-level vs Installation-level Tools
+
+```
+App.Tools = [/echo, /ping]              -- shared by all installations
+Installation.Tools = [/hn, /weather]     -- per-installation only
+
+Command matching merges both sets:
+  /echo    -> matched (from App)
+  /weather -> matched (from Installation)
 ```
 
 ### WebSocket (Per-Installation)
@@ -640,7 +671,8 @@ PUT /api/admin/config/registry
 | POST | `/bot/v1/message/send` | `message:write` | Send message |
 | GET | `/bot/v1/contact` | `contact:read` | List contacts |
 | GET | `/bot/v1/info` | `bot:read` | Get bot info |
-| PUT | `/bot/v1/app/tools` | `tools:write` | Update app tools dynamically |
+| PUT | `/bot/v1/app/tools` | `tools:write` | Update app-level tools dynamically |
+| PUT | `/bot/v1/installation/tools` | `tools:write` | Update per-installation tools |
 | GET | `/bot/v1/ws` | - | WebSocket (per-installation) |
 | GET | `/bot/v1/app/ws` | - | WebSocket (per-app, all installations) |
 

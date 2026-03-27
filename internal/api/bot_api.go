@@ -422,6 +422,45 @@ func (s *Server) handleBotAPIUpdateTools(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]any{"ok": true, "tool_count": len(toolsCheck)})
 }
 
+// handleBotAPIUpdateInstallationTools handles PUT /bot/v1/installation/tools.
+// Updates this installation's per-installation tools. Requires tools:write scope.
+func (s *Server) handleBotAPIUpdateInstallationTools(w http.ResponseWriter, r *http.Request) {
+	inst := installationFromContext(r.Context())
+	if inst == nil {
+		botAPIError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if !s.requireScope(inst, "tools:write") {
+		botAPIError(w, "missing scope: tools:write", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		Tools json.RawMessage `json:"tools"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Tools == nil {
+		botAPIError(w, "tools required", http.StatusBadRequest)
+		return
+	}
+
+	var toolsCheck []any
+	if err := json.Unmarshal(req.Tools, &toolsCheck); err != nil {
+		botAPIError(w, "tools must be a JSON array", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.Store.UpdateInstallationTools(inst.ID, req.Tools); err != nil {
+		botAPIError(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("installation tools updated", "inst_id", inst.ID, "tool_count", len(toolsCheck))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "tool_count": len(toolsCheck)})
+}
+
 func downloadURL(ctx context.Context, url string) ([]byte, string, error) {
 	dlCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
