@@ -30,5 +30,8 @@ docs/plans/
 .env
 .env.*
 
+# Runner config (contains app tokens)
+runner.yaml
+
 # Build output
 dist/
