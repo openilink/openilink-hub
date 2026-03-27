@@ -395,6 +395,9 @@ func buildCurrentContent(text string, images []ImageData) any {
 			ImageURL: &imageURL{URL: "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(img.Data)},
 		})
 	}
+	if len(parts) == 0 {
+		return text
+	}
 	return parts
 }
 

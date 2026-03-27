@@ -450,6 +450,10 @@ func (s *AI) resolveToolMedia(ctx context.Context, botID string, result *appdeli
 			return nil
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			slog.Error("ai tool media: download returned non-200", "bot", botID, "url", result.ReplyURL, "status", resp.StatusCode)
+			return nil
+		}
 		data, err = io.ReadAll(io.LimitReader(resp.Body, int64(maxImageBytes)+1))
 		if err != nil {
 			slog.Error("ai tool media: read failed", "bot", botID, "err", err)
@@ -501,7 +505,6 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	}
 	return cfg
 }
-
 
 func truncateStr(s string, max int) string {
 	if len(s) <= max {
