@@ -12,7 +12,6 @@ import {
   Sun,
   Moon,
   ChevronsUpDown,
-  Home,
   Zap,
   Settings2,
   Search,
@@ -120,11 +119,13 @@ export function Layout() {
   const isActive = (path: string) => location.pathname.startsWith(path);
 
   // Business-driven Breadcrumbs mapping
-  const pathSegments = location.pathname.split("/").filter(Boolean);
+  const pathSegments = location.pathname
+    .split("/")
+    .filter((s) => Boolean(s) && s !== "dashboard")
+    .filter(Boolean);
   const breadcrumbs = pathSegments.map((segment: string, index: number) => {
-    const path = `/${pathSegments.slice(0, index + 1).join("/")}`;
+    const path = `/dashboard/${pathSegments.slice(0, index + 1).join("/")}`;
     const labels: Record<string, string> = {
-      dashboard: "控制台",
       accounts: "账号管理",
       apps: "应用",
       overview: "概览",
@@ -374,16 +375,9 @@ export function Layout() {
             <Separator orientation="vertical" className="h-4 opacity-50" />
             <Breadcrumb>
               <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink asChild>
-                    <Link to="/dashboard/overview" className="hover:text-primary transition-colors">
-                      <Home className="h-4 w-4" />
-                    </Link>
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                {breadcrumbs.map((bc, _i) => (
+                {breadcrumbs.map((bc, i) => (
                   <React.Fragment key={bc.path}>
-                    <BreadcrumbSeparator className="hidden md:block opacity-30" />
+                    {i > 0 && <BreadcrumbSeparator className="hidden md:block opacity-30" />}
                     <BreadcrumbItem>
                       {bc.isLast ? (
                         <BreadcrumbPage className="font-bold text-foreground">
