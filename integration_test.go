@@ -2646,7 +2646,7 @@ func TestAIToolImageReply(t *testing.T) {
 	// --- Mock LLM server ---
 	var llmCallCount atomic.Int32
 	var gotMultimodalUserImage atomic.Bool
-	var instIDForLLM string // set after InstallApp, read by LLM handler
+	var instIDForLLM atomic.Value // set after InstallApp, read by LLM handler
 
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -2668,7 +2668,7 @@ func TestAIToolImageReply(t *testing.T) {
 							"id":   "call_img",
 							"type": "function",
 							"function": map[string]any{
-								"name":      instIDForLLM + "__generate_chart",
+								"name":      instIDForLLM.Load().(string) + "__generate_chart",
 								"arguments": `{"metric":"cpu"}`,
 							},
 						}},
@@ -2774,7 +2774,7 @@ func TestAIToolImageReply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallApp: %v", err)
 	}
-	instIDForLLM = inst.ID
+	instIDForLLM.Store(inst.ID)
 
 	// Start bot
 	if err := mgr.StartBot(context.Background(), botObj); err != nil {

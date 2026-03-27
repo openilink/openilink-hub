@@ -468,10 +468,6 @@ func (s *AI) resolveToolMedia(ctx context.Context, botID string, result *appdeli
 			slog.Error("ai tool media: invalid url scheme", "bot", botID, "url", result.ReplyURL)
 			return nil
 		}
-		if isPrivateHost(u.Host) {
-			slog.Error("ai tool media: private/internal url blocked", "bot", botID, "url", result.ReplyURL)
-			return nil
-		}
 		dlCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, result.ReplyURL, nil)
@@ -479,7 +475,7 @@ func (s *AI) resolveToolMedia(ctx context.Context, botID string, result *appdeli
 			slog.Error("ai tool media: bad url", "bot", botID, "url", result.ReplyURL, "err", err)
 			return nil
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := safeHTTPClient.Do(req)
 		if err != nil {
 			slog.Error("ai tool media: download failed", "bot", botID, "url", result.ReplyURL, "err", err)
 			return nil
@@ -541,23 +537,29 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	return cfg
 }
 
-// isPrivateHost returns true if the host resolves to a private/loopback/link-local IP.
-func isPrivateHost(host string) bool {
-	// Strip port
-	h := host
-	if idx := strings.LastIndex(h, ":"); idx >= 0 {
-		h = h[:idx]
-	}
-	ip := net.ParseIP(h)
-	if ip == nil {
-		// Try resolving hostname
-		addrs, err := net.LookupIP(h)
-		if err != nil || len(addrs) == 0 {
-			return true // block if can't resolve
-		}
-		ip = addrs[0]
-	}
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+// safeHTTPClient blocks connections to private/internal IPs at the dial level,
+// preventing SSRF via redirects and DNS rebinding.
+var safeHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, fmt.Errorf("ssrf: invalid addr %q", addr)
+			}
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, fmt.Errorf("ssrf: dns lookup failed: %w", err)
+			}
+			for _, ip := range ips {
+				if ip.IP.IsLoopback() || ip.IP.IsPrivate() || ip.IP.IsLinkLocalUnicast() || ip.IP.IsLinkLocalMulticast() {
+					return nil, fmt.Errorf("ssrf: blocked private ip %s for host %s", ip.IP, host)
+				}
+			}
+			// Connect to the first allowed IP
+			d := &net.Dialer{}
+			return d.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+		},
+	},
 }
 
 func truncateStr(s string, max int) string {
