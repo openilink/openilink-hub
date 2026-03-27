@@ -365,9 +365,13 @@ func (s *Server) findOrCreateOAuthUser(provider, providerID, username, email, av
 
 	// Create new user if not found
 	if user == nil {
+		// Check registration gate (always allow first user for bootstrap)
+		count, _ := s.Store.UserCount()
+		if count > 0 && !s.registrationEnabled() {
+			return nil, fmt.Errorf("registration is disabled")
+		}
 		displayName := username
 		role := store.RoleMember
-		count, _ := s.Store.UserCount()
 		if count == 0 {
 			role = store.RoleSuperAdmin
 		}

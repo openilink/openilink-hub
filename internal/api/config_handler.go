@@ -175,10 +175,57 @@ func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	globalAI, _ := s.Store.ListConfigByPrefix("ai.")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{
-		"ai":      globalAI["ai.api_key"] != "",
-		"storage": s.Config.StorageEndpoint != "",
+	json.NewEncoder(w).Encode(map[string]any{
+		"ai":                   globalAI["ai.api_key"] != "",
+		"storage":              s.Config.StorageEndpoint != "",
+		"registration_enabled": s.registrationEnabled(),
 	})
+}
+
+// registrationEnabled returns true if public registration is allowed.
+// Default is enabled (key absent or != "false").
+func (s *Server) registrationEnabled() bool {
+	val, err := s.Store.GetConfig("registration.enabled")
+	if err != nil || val != "false" {
+		return true
+	}
+	return false
+}
+
+// GET /api/admin/config/registration — get registration config
+func (s *Server) handleGetRegistrationConfig(w http.ResponseWriter, r *http.Request) {
+	enabled, err := s.Store.GetConfig("registration.enabled")
+	if err != nil {
+		slog.Error("failed to get registration config", "err", err)
+	}
+	// Default to "true" when key is absent
+	if enabled == "" {
+		enabled = "true"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"enabled": enabled,
+	})
+}
+
+// PUT /api/admin/config/registration — set registration config
+func (s *Server) handleSetRegistrationConfig(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled string `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.Enabled != "true" && req.Enabled != "false" {
+		jsonError(w, "enabled must be 'true' or 'false'", http.StatusBadRequest)
+		return
+	}
+	if err := s.Store.SetConfig("registration.enabled", req.Enabled); err != nil {
+		jsonError(w, "save failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w)
 }
 
 // GET /api/admin/config/registry — get registry config

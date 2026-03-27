@@ -54,8 +54,18 @@ export function LoginPage() {
   // OAuth
   const [oauthProviders, setOauthProviders] = useState<string[]>([]);
 
+  // Registration enabled flag (from /api/info)
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
+
   useEffect(() => {
     api.oauthProviders().then((data) => setOauthProviders(data.providers || [])).catch(() => {});
+    api.info().then((data) => {
+      if (data.registration_enabled === false) {
+        setRegistrationEnabled(false);
+        // If user was in register mode, switch back to login
+        setMode("login");
+      }
+    }).catch(() => {});
   }, []);
 
   // Auto-start scan login on mount
@@ -306,7 +316,7 @@ export function LoginPage() {
             <Collapsible open={showPassword} onOpenChange={setShowPassword}>
               <CollapsibleTrigger asChild>
                 <button className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
-                  <span>{mode === "login" ? "账号密码登录" : "注册新账号"}</span>
+                  <span>{mode === "login" ? "账号密码登录" : registrationEnabled ? "注册新账号" : "账号密码登录"}</span>
                   <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${showPassword ? "rotate-180" : ""}`} />
                 </button>
               </CollapsibleTrigger>
@@ -350,16 +360,18 @@ export function LoginPage() {
                   </Button>
                 </form>
 
-                <div className="text-center text-xs text-muted-foreground">
-                  {mode === "login" ? "还没有账号？" : "已经有账号了？"}
-                  <button
-                    type="button"
-                    className="ml-1 font-bold text-primary hover:underline"
-                    onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
-                  >
-                    {mode === "login" ? "立即注册" : "点击登录"}
-                  </button>
-                </div>
+                {registrationEnabled && (
+                  <div className="text-center text-xs text-muted-foreground">
+                    {mode === "login" ? "还没有账号？" : "已经有账号了？"}
+                    <button
+                      type="button"
+                      className="ml-1 font-bold text-primary hover:underline"
+                      onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
+                    >
+                      {mode === "login" ? "立即注册" : "点击登录"}
+                    </button>
+                  </div>
+                )}
               </CollapsibleContent>
             </Collapsible>
           </CardContent>

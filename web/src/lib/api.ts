@@ -33,7 +33,7 @@ export const api = {
   oauthProviders: () => request<{ providers: string[] }>("/api/auth/oauth/providers"),
   me: () =>
     request<{ id: string; username: string; display_name: string; role: string }>("/api/me"),
-  info: () => request<{ ai: boolean }>("/api/info"),
+  info: () => request<{ ai: boolean; registration_enabled: boolean }>("/api/info"),
 
   // Passkeys
   listPasskeys: () => request<any[]>("/api/me/passkeys"),
@@ -191,6 +191,10 @@ export const api = {
   // Registry config
   getRegistryConfig: () => request<any>("/api/admin/config/registry"),
   setRegistryConfig: (data: { enabled: string }) => request<any>("/api/admin/config/registry", { method: "PUT", body: JSON.stringify(data) }),
+
+  // Registration config
+  getRegistrationConfig: () => request<{ enabled: string }>("/api/admin/config/registration"),
+  setRegistrationConfig: (data: { enabled: string }) => request<any>("/api/admin/config/registration", { method: "PUT", body: JSON.stringify(data) }),
 
   // Admin: Dashboard
   adminStats: () => request<any>("/api/admin/stats"),
