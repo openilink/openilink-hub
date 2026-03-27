@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -90,6 +90,8 @@ export function InstallationDetailPage() {
   const [botName, setBotName] = useState("");
   const [loading, setLoading] = useState(true);
   const [section, setSection] = useState<SectionKey>("token");
+  const [handle, setHandle] = useState("");
+  const [enabled, setEnabled] = useState(true);
 
   const loadData = useCallback(async () => {
     try {
@@ -97,6 +99,8 @@ export function InstallationDetailPage() {
       const found = installations.find((i: any) => i.id === iid);
       if (!found) throw new Error("未找到安装实例");
       setInst(found);
+      setHandle(found.handle || "");
+      setEnabled(found.enabled ?? true);
 
       const [appData, bots] = await Promise.all([api.getApp(found.app_id), api.listBots()]);
       setApp(appData);
@@ -136,6 +140,31 @@ export function InstallationDetailPage() {
 
   const navItems = buildNavSections(app, inst);
 
+  async function handleSaveHandle(newHandle: string) {
+    const trimmed = newHandle.trim();
+    if (trimmed === (inst.handle || "")) return;
+    try {
+      await api.updateInstallation(inst.app_id, inst.id, { handle: trimmed });
+      setHandle(trimmed);
+      toast({ title: "Handle 已保存" });
+      loadData();
+    } catch (e: any) {
+      setHandle(inst.handle || "");
+      toast({ variant: "destructive", title: "保存失败", description: e.message });
+    }
+  }
+
+  async function handleToggleEnabled(val: boolean) {
+    setEnabled(val);
+    try {
+      await api.updateInstallation(inst.app_id, inst.id, { enabled: val });
+      loadData();
+    } catch (e: any) {
+      setEnabled(!val);
+      toast({ variant: "destructive", title: "保存失败", description: e.message });
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -161,14 +190,16 @@ export function InstallationDetailPage() {
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold tracking-tight">{inst.app_name || app.name}</h1>
-              {inst.handle ? (
-                <span className="text-sm text-muted-foreground font-mono">@{inst.handle}</span>
-              ) : null}
+              <InlineHandleEditor
+                value={handle}
+                onChange={setHandle}
+                onSave={handleSaveHandle}
+              />
               <Badge
-                variant={inst.enabled ? "default" : "secondary"}
+                variant={enabled ? "default" : "secondary"}
                 className="rounded-full font-bold"
               >
-                {inst.enabled ? "运行中" : "已停用"}
+                {enabled ? "运行中" : "已停用"}
               </Badge>
               {app.registry && app.registry !== "builtin" ? (
                 <Badge variant="outline" className="rounded-full font-bold">
@@ -180,6 +211,11 @@ export function InstallationDetailPage() {
                   内置应用
                 </Badge>
               ) : null}
+              <Switch
+                checked={enabled}
+                onCheckedChange={handleToggleEnabled}
+                aria-label="启用状态"
+              />
             </div>
             {app.description ? (
               <p className="text-sm text-muted-foreground">{app.description}</p>
@@ -263,8 +299,6 @@ export function InstallationDetailPage() {
             <ConfigSection
               app={app}
               inst={inst}
-              botId={botId!}
-              onUpdate={loadData}
               onUninstall={() => navigate(`/dashboard/accounts/${botId}`)}
             />
           )}
@@ -273,6 +307,64 @@ export function InstallationDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ==================== Inline Handle Editor ====================
+
+function InlineHandleEditor({
+  value,
+  onChange,
+  onSave,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSave: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function startEdit() {
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  }
+
+  function commit() {
+    setEditing(false);
+    onSave(value);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") commit();
+    if (e.key === "Escape") setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <span className="text-sm text-muted-foreground font-mono">@</span>
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={commit}
+          onKeyDown={handleKeyDown}
+          className="h-6 w-32 text-sm font-mono bg-transparent border-b border-primary outline-none px-0"
+          placeholder="handle"
+          autoFocus
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={startEdit}
+      className="text-sm text-muted-foreground font-mono hover:text-foreground transition-colors cursor-text"
+      title="点击编辑 handle"
+    >
+      @{value || "handle"}
+    </button>
   );
 }
 
@@ -489,38 +581,15 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
 function ConfigSection({
   app,
   inst,
-  botId,
-  onUpdate,
   onUninstall,
 }: {
   app: any;
   inst: any;
-  botId: string;
-  onUpdate: () => void;
   onUninstall: () => void;
 }) {
   const { toast } = useToast();
-  const [handle, setHandle] = useState(inst.handle || "");
-  const [enabled, setEnabled] = useState(inst.enabled ?? true);
-  const [saving, setSaving] = useState(false);
   const [showUninstallDialog, setShowUninstallDialog] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await api.updateInstallation(inst.app_id, inst.id, {
-        handle: handle.trim(),
-        enabled,
-      });
-      toast({ title: "已保存" });
-      onUpdate();
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "保存失败", description: e.message });
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function handleUninstall() {
     setUninstalling(true);
@@ -539,56 +608,21 @@ function ConfigSection({
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-semibold">安装设置</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          管理此安装实例的 Handle、状态和生命周期。
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">管理此安装实例的生命周期。</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Handle</CardTitle>
-          <CardDescription>用户通过 @handle 触发此应用</CardDescription>
+          <CardTitle>卸载应用</CardTitle>
+          <CardDescription>卸载后将删除此安装实例，Token 将失效，此操作不可撤销。</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2">
-            <Input
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              className="h-8 text-xs font-mono flex-1"
-              placeholder="如 notify-prod"
-            />
-            <span className="text-xs text-muted-foreground font-mono shrink-0">
-              @{handle || "handle"}
-            </span>
-          </div>
+          <Button variant="destructive" size="sm" onClick={() => setShowUninstallDialog(true)}>
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            卸载应用
+          </Button>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>启用状态</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              {enabled ? "应用正在接收事件和处理消息" : "应用已停用，不会接收任何事件"}
-            </p>
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSave} disabled={saving}>
-          {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-          保存
-        </Button>
-        <div className="flex-1" />
-        <Button variant="destructive" size="sm" onClick={() => setShowUninstallDialog(true)}>
-          <Trash2 className="h-3.5 w-3.5 mr-1" />
-          卸载应用
-        </Button>
-      </div>
 
       <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
         <DialogContent className="sm:max-w-md">
