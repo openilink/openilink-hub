@@ -3,14 +3,36 @@ package ai
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/openilink/openilink-hub/internal/store"
 )
+
+// ImageData holds image bytes for multimodal content.
+type ImageData struct {
+	Data        []byte
+	ContentType string // e.g. "image/jpeg"
+}
+
+// MediaResolver reads image data by storage key.
+type MediaResolver func(ctx context.Context, key string) ([]byte, error)
+
+// contentPart is an OpenAI multimodal content part.
+type contentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *imageURL `json:"image_url,omitempty"`
+}
+
+type imageURL struct {
+	URL string `json:"url"`
+}
 
 const defaultBaseURL = "https://api.openai.com/v1"
 const defaultModel = "gpt-4o-mini"
@@ -82,9 +104,10 @@ type ToolCallRequest struct {
 
 // ToolCallResult is the result of executing a tool call.
 type ToolCallResult struct {
-	ID      string // matches ToolCallRequest.ID
-	Name    string // function name
-	Content string // result text to feed back to LLM
+	ID      string      // matches ToolCallRequest.ID
+	Name    string      // function name
+	Content string      // result text to feed back to LLM
+	Images  []ImageData // optional images to include as multimodal content
 }
 
 // CompletionResult holds the outcome of a completion call.
@@ -95,8 +118,10 @@ type CompletionResult struct {
 
 // Complete calls the OpenAI-compatible chat completion API.
 // It builds context from recent message history for the given sender.
+// currentImages are pre-downloaded images for the current message.
+// resolver reads image data from storage for history messages (may be nil).
 // Returns text content or tool call requests.
-func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, tools []Tool) (*CompletionResult, error) {
+func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, tools []Tool, currentImages []ImageData, resolver MediaResolver) (*CompletionResult, error) {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
@@ -105,36 +130,8 @@ func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, cha
 	if model == "" {
 		model = defaultModel
 	}
-	maxHistory := cfg.MaxHistory
-	if maxHistory <= 0 {
-		maxHistory = defaultMaxHistory
-	}
 
-	// Build conversation from message history
-	var messages []Message
-
-	if cfg.SystemPrompt != "" {
-		messages = append(messages, Message{Role: "system", Content: cfg.SystemPrompt})
-	}
-
-	// Load recent history scoped to this channel
-	history, _ := s.ListChannelMessages(channelID, sender, maxHistory)
-	for i := len(history) - 1; i >= 0; i-- {
-		m := history[i]
-		content := extractTextFromItems(m.ItemList)
-		if content == "" {
-			continue
-		}
-		if m.Direction == "inbound" {
-			messages = append(messages, Message{Role: "user", Content: content})
-		} else {
-			messages = append(messages, Message{Role: "assistant", Content: content})
-		}
-	}
-
-	// Append current message
-	messages = append(messages, Message{Role: "user", Content: text})
-
+	messages := BuildMessages(cfg, s, channelID, sender, text, currentImages, resolver)
 	return callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools)
 }
 
@@ -151,11 +148,17 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 
 	// Append tool results as messages
 	for _, r := range results {
+		var content any
+		if len(r.Images) > 0 {
+			content = buildCurrentContent(r.Content, r.Images)
+		} else {
+			content = r.Content
+		}
 		messages = append(messages, Message{
 			Role:       "tool",
 			ToolCallID: r.ID,
 			Name:       r.Name,
-			Content:    r.Content,
+			Content:    content,
 		})
 	}
 
@@ -163,8 +166,8 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 	return result, messages, err
 }
 
-// GetMessages returns a copy of the messages built during Complete for continuing the conversation.
-func BuildMessages(cfg store.AIConfig, s store.MessageStore, channelID, sender, text string) []Message {
+// BuildMessages builds the conversation message list from history and the current message.
+func BuildMessages(cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, currentImages []ImageData, resolver MediaResolver) []Message {
 	maxHistory := cfg.MaxHistory
 	if maxHistory <= 0 {
 		maxHistory = defaultMaxHistory
@@ -175,20 +178,27 @@ func BuildMessages(cfg store.AIConfig, s store.MessageStore, channelID, sender, 
 		messages = append(messages, Message{Role: "system", Content: cfg.SystemPrompt})
 	}
 
+	ctx := context.Background()
 	history, _ := s.ListChannelMessages(channelID, sender, maxHistory)
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]
-		content := extractTextFromItems(m.ItemList)
-		if content == "" {
-			continue
-		}
 		if m.Direction == "inbound" {
+			content := buildHistoryContent(ctx, m.ItemList, m.MediaKeys, resolver)
+			if content == nil {
+				continue
+			}
 			messages = append(messages, Message{Role: "user", Content: content})
 		} else {
-			messages = append(messages, Message{Role: "assistant", Content: content})
+			text := extractTextFromItems(m.ItemList)
+			if text == "" {
+				continue
+			}
+			messages = append(messages, Message{Role: "assistant", Content: text})
 		}
 	}
-	messages = append(messages, Message{Role: "user", Content: text})
+
+	// Append current message (with optional images)
+	messages = append(messages, Message{Role: "user", Content: buildCurrentContent(text, currentImages)})
 	return messages
 }
 
@@ -293,4 +303,82 @@ func extractTextFromItems(itemList json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// buildHistoryContent builds content for a history message.
+// Returns a string for text-only, []contentPart for multimodal, or nil if empty.
+func buildHistoryContent(ctx context.Context, itemList, mediaKeys json.RawMessage, resolver MediaResolver) any {
+	var items []struct {
+		Type string `json:"type"`
+		Text string `json:"text,omitempty"`
+	}
+	json.Unmarshal(itemList, &items)
+
+	var keys map[string]string
+	if len(mediaKeys) > 2 {
+		json.Unmarshal(mediaKeys, &keys)
+	}
+
+	var text string
+	var imageParts []contentPart
+
+	for i, item := range items {
+		if item.Text != "" {
+			text = item.Text
+		}
+		if item.Type == "image" && resolver != nil && keys != nil {
+			key := keys[strconv.Itoa(i)]
+			if key == "" {
+				continue
+			}
+			data, err := resolver(ctx, key)
+			if err != nil || len(data) == 0 {
+				continue
+			}
+			imageParts = append(imageParts, contentPart{
+				Type:     "image_url",
+				ImageURL: &imageURL{URL: imageDataURI(data)},
+			})
+		}
+	}
+
+	if text == "" && len(imageParts) == 0 {
+		return nil
+	}
+	if len(imageParts) == 0 {
+		return text
+	}
+
+	var parts []contentPart
+	if text != "" {
+		parts = append(parts, contentPart{Type: "text", Text: text})
+	}
+	return append(parts, imageParts...)
+}
+
+// buildCurrentContent builds content for the current message with optional images.
+func buildCurrentContent(text string, images []ImageData) any {
+	if len(images) == 0 {
+		return text
+	}
+	var parts []contentPart
+	if text != "" {
+		parts = append(parts, contentPart{Type: "text", Text: text})
+	}
+	for _, img := range images {
+		ct := img.ContentType
+		if ct == "" {
+			ct = http.DetectContentType(img.Data)
+		}
+		parts = append(parts, contentPart{
+			Type:     "image_url",
+			ImageURL: &imageURL{URL: "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(img.Data)},
+		})
+	}
+	return parts
+}
+
+func imageDataURI(data []byte) string {
+	ct := http.DetectContentType(data)
+	return "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(data)
 }

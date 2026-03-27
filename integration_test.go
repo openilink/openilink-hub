@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
@@ -49,7 +50,7 @@ func testDB(t *testing.T) *postgres.DB {
 	if err != nil {
 		t.Skipf("skip: database unavailable: %v", err)
 	}
-	for _, table := range []string{"plugin_installs", "plugin_versions", "plugins", "webhook_logs", "messages", "channels", "bots", "oauth_accounts", "sessions", "credentials", "users", "system_config"} {
+	for _, table := range []string{"app_event_logs", "app_api_logs", "app_installations", "apps", "plugin_installs", "plugin_versions", "plugins", "webhook_logs", "messages", "channels", "bots", "oauth_accounts", "sessions", "credentials", "users", "system_config"} {
 		db.Exec("DELETE FROM " + table)
 	}
 	return db
@@ -2603,5 +2604,228 @@ func TestWebhookPluginInstallCountTracksUsers(t *testing.T) {
 	p = detail["plugin"].(map[string]any)
 	if p["install_count"] != float64(2) {
 		t.Errorf("count = %v, want 2", p["install_count"])
+	}
+}
+
+// ==================== AI image handling ====================
+
+// TestAIToolImageReply verifies the full flow when an AI tool call returns an image:
+// 1. User sends text → AI calls a tool
+// 2. App returns image in reply_base64
+// 3. Image is sent directly to user AND passed as multimodal content to LLM
+// 4. LLM returns final text reply
+func TestAIToolImageReply(t *testing.T) {
+	// --- PNG test image (1x1 red pixel) ---
+	pngData := []byte{
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+		0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+		0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+		0x00, 0x00, 0x03, 0x00, 0x01, 0x36, 0x28, 0x19,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+		0x44, 0xAE, 0x42, 0x60, 0x82,
+	}
+	pngBase64 := base64.StdEncoding.EncodeToString(pngData)
+
+	// --- Mock app server (returns image on tool call) ---
+	appSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"reply":        "Here is the chart",
+			"reply_type":   "image",
+			"reply_base64": "data:image/png;base64," + pngBase64,
+			"reply_name":   "chart.png",
+		})
+	}))
+	defer appSrv.Close()
+
+	// --- Mock LLM server ---
+	var llmCallCount int
+	var gotMultimodalToolResult bool
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []json.RawMessage `json:"messages"`
+			Tools    []json.RawMessage `json:"tools"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		llmCallCount++
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if llmCallCount == 1 {
+			// First call: return tool_call
+			json.NewEncoder(w).Encode(map[string]any{
+				"choices": []map[string]any{{
+					"message": map[string]any{
+						"role": "assistant",
+						"tool_calls": []map[string]any{{
+							"id":   "call_img",
+							"type": "function",
+							"function": map[string]any{
+								"name":      "generate_chart",
+								"arguments": `{"metric":"cpu"}`,
+							},
+						}},
+					},
+					"finish_reason": "tool_calls",
+				}},
+			})
+			return
+		}
+
+		// Second call: tool result should contain multimodal content
+		for _, raw := range req.Messages {
+			var msg struct {
+				Role    string `json:"role"`
+				Content any    `json:"content"`
+			}
+			json.Unmarshal(raw, &msg)
+			if msg.Role == "tool" {
+				// Check if content is array (multimodal) vs string
+				var contentArr []map[string]any
+				contentBytes, _ := json.Marshal(msg.Content)
+				if json.Unmarshal(contentBytes, &contentArr) == nil && len(contentArr) > 0 {
+					for _, part := range contentArr {
+						if part["type"] == "image_url" {
+							gotMultimodalToolResult = true
+						}
+					}
+				}
+			}
+		}
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": "The CPU chart shows normal utilization.",
+				},
+				"finish_reason": "stop",
+			}},
+		})
+	}))
+	defer llmSrv.Close()
+
+	// --- Setup environment ---
+	db := testDB(t)
+	defer db.Close()
+
+	cfg := &config.Config{RPOrigin: "http://localhost", RPID: "localhost", RPName: "Test", Secret: "test"}
+	server := &api.Server{
+		Store: db, SessionStore: auth.NewSessionStore(), Config: cfg,
+		OAuthStates: api.SetupOAuth(cfg),
+	}
+	hub := relay.NewHub(server.SetupUpstreamHandler())
+	aiSink := &sink.AI{Store: db}
+	mgr := bot.NewManager(db, hub, aiSink, nil, "http://localhost")
+	server.BotManager = mgr
+	server.Hub = hub
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+	defer mgr.StopAll()
+
+	// Configure AI to use mock LLM
+	db.SetConfig("ai.api_key", "test-key")
+	db.SetConfig("ai.base_url", llmSrv.URL)
+	db.SetConfig("ai.model", "test-model")
+
+	// Create user + bot
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	body, _ := json.Marshal(map[string]string{"username": "imguser", "password": "password123"})
+	resp, _ := client.Post(ts.URL+"/api/auth/register", "application/json", bytes.NewReader(body))
+	resp.Body.Close()
+	resp, _ = client.Get(ts.URL + "/api/me")
+	var me map[string]any
+	json.NewDecoder(resp.Body).Decode(&me)
+	resp.Body.Close()
+	userID := me["id"].(string)
+
+	botObj, _ := db.CreateBot(userID, "AIImgBot", "mock", "", mockserver.MockCredentials())
+	db.UpdateBotAIEnabled(botObj.ID, true)
+
+	// Create app with a tool
+	tools, _ := json.Marshal([]store.AppTool{{
+		Name:        "generate_chart",
+		Description: "Generate a chart image",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"metric":{"type":"string"}}}`),
+	}})
+	app, err := db.CreateApp(&store.App{
+		OwnerID:       userID,
+		Name:          "ChartApp",
+		Slug:          "chart-app",
+		Tools:         tools,
+		WebhookURL:    appSrv.URL,
+		WebhookSecret: "secret",
+		Status:        "active",
+	})
+	if err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+
+	_, err = db.InstallApp(app.ID, botObj.ID)
+	if err != nil {
+		t.Fatalf("InstallApp: %v", err)
+	}
+
+	// Start bot
+	if err := mgr.StartBot(context.Background(), botObj); err != nil {
+		t.Fatalf("StartBot: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	// Get mock engine
+	botInst, ok := mgr.GetInstance(botObj.ID)
+	if !ok {
+		t.Fatal("bot instance not found")
+	}
+	engine := botInst.Provider.(*mockserver.Provider).Engine()
+
+	// --- Inject inbound text message ---
+	engine.InjectInbound(mockserver.InboundRequest{
+		Sender: "user@wechat",
+		Text:   "show me cpu chart",
+	})
+
+	// Wait for all replies: status msg + image + text reply
+	time.Sleep(3 * time.Second)
+	sent := engine.SentMessages()
+
+	// --- Verify results ---
+
+	// Should have at least 3 messages: tool status, image, and text reply
+	if len(sent) < 3 {
+		t.Fatalf("expected >= 3 sent messages, got %d: %+v", len(sent), sent)
+	}
+
+	// Find the image message (has MediaData)
+	var hasImage, hasTextReply bool
+	for _, msg := range sent {
+		if len(msg.MediaData) > 0 {
+			hasImage = true
+			// Verify it's the PNG we sent
+			if !bytes.HasPrefix(msg.MediaData, []byte{0x89, 0x50, 0x4E, 0x47}) {
+				t.Error("image data is not a valid PNG")
+			}
+		}
+		if msg.Text == "The CPU chart shows normal utilization." {
+			hasTextReply = true
+		}
+	}
+
+	if !hasImage {
+		t.Error("image was not sent to user")
+	}
+	if !hasTextReply {
+		t.Error("final text reply was not sent")
+	}
+	if !gotMultimodalToolResult {
+		t.Error("LLM did not receive multimodal image content in tool result")
+	}
+	if llmCallCount != 2 {
+		t.Errorf("LLM called %d times, want 2", llmCallCount)
 	}
 }

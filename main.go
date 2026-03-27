@@ -163,7 +163,7 @@ func main() {
 
 	hub := relay.NewHub(srv.SetupUpstreamHandler())
 	appDisp := appdelivery.NewDispatcher(s)
-	aiSink := &sink.AI{Store: s, AppDisp: appDisp}
+	aiSink := &sink.AI{Store: s, AppDisp: appDisp, Storage: objStore}
 	mgr := bot.NewManager(s, hub, aiSink, objStore, cfg.RPOrigin)
 	srv.BotManager = mgr
 	srv.Hub = hub
