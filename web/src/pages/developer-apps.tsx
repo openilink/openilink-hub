@@ -95,7 +95,7 @@ export function DeveloperAppsPage() {
                 <div className="h-3.5 w-32 rounded bg-muted" />
                 <div className="h-3 w-48 rounded bg-muted" />
               </div>
-              <div className="h-5 w-14 rounded-full bg-muted shrink-0" />
+              <div className="h-5 w-14 rounded-md bg-muted shrink-0" />
             </div>
           ))}
         </div>

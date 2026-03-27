@@ -4,7 +4,7 @@ export function ListingBadge({ listing }: { listing?: string }) {
   if (listing === "listed") return <Badge variant="default">已上架</Badge>;
   if (listing === "pending")
     return (
-      <Badge variant="outline" className="text-orange-500 border-orange-400">
+      <Badge variant="outline" className="text-orange-500 border-orange-500">
         待审核
       </Badge>
     );
