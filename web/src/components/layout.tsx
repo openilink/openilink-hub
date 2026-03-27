@@ -72,12 +72,86 @@ function SidebarLogo() {
   );
 }
 
+const BREADCRUMB_LABELS: Record<string, string> = {
+  accounts: "账号管理",
+  apps: "应用",
+  overview: "概览",
+  settings: "设置",
+  profile: "个人资料",
+  security: "安全",
+  admin: "系统管理",
+  users: "用户管理",
+  reviews: "审核中心",
+  traces: "消息追踪",
+};
+
 const statusColors: Record<string, string> = {
   connected: "text-green-500 fill-green-500",
   disconnected: "text-muted-foreground fill-muted-foreground",
   error: "text-destructive fill-destructive",
   session_expired: "text-destructive fill-destructive",
 };
+
+function LayoutHeader() {
+  const location = useLocation();
+
+  const pathSegments = location.pathname.split("/").filter((s) => Boolean(s) && s !== "dashboard");
+  const breadcrumbs = pathSegments.map((segment: string, index: number) => {
+    const path = `/dashboard/${pathSegments.slice(0, index + 1).join("/")}`;
+    let label = BREADCRUMB_LABELS[segment] || segment;
+    if (segment.length > 20) label = "详情";
+    return { label, path, isLast: index === pathSegments.length - 1 };
+  });
+
+  return (
+    <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b bg-background/95 backdrop-blur px-6 sticky top-0 z-40">
+      <div className="flex items-center gap-4">
+        <SidebarTrigger className="-ml-2 h-9 w-9" />
+        <Separator orientation="vertical" className="h-4 opacity-50" />
+        <Breadcrumb>
+          <BreadcrumbList>
+            {breadcrumbs.map((bc, i) => (
+              <React.Fragment key={bc.path}>
+                {i > 0 && <BreadcrumbSeparator className="hidden md:block opacity-30" />}
+                <BreadcrumbItem>
+                  {bc.isLast ? (
+                    <BreadcrumbPage className="font-bold text-foreground">
+                      {bc.label}
+                    </BreadcrumbPage>
+                  ) : (
+                    <BreadcrumbLink asChild>
+                      <Link
+                        to={bc.path}
+                        className="hover:text-primary transition-colors font-medium"
+                      >
+                        {bc.label}
+                      </Link>
+                    </BreadcrumbLink>
+                  )}
+                </BreadcrumbItem>
+              </React.Fragment>
+            ))}
+          </BreadcrumbList>
+        </Breadcrumb>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="hidden lg:flex relative items-center group">
+          <Search className="absolute left-3 size-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+          <input
+            aria-label="搜索"
+            placeholder="搜索..."
+            className="h-9 w-64 rounded-full bg-muted/50 border-transparent pl-9 pr-4 text-xs font-medium focus:bg-background focus:border-border transition-all outline-none"
+          />
+        </div>
+        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full relative">
+          <Zap className="h-4 w-4 text-yellow-500 fill-yellow-500/20" />
+          <span className="absolute top-2 right-2 size-2 bg-primary rounded-full border-2 border-background animate-pulse" />
+        </Button>
+      </div>
+    </header>
+  );
+}
 
 export function Layout() {
   const navigate = useNavigate();
@@ -117,30 +191,6 @@ export function Layout() {
 
   // Logical matching for active states
   const isActive = (path: string) => location.pathname.startsWith(path);
-
-  // Business-driven Breadcrumbs mapping
-  const pathSegments = location.pathname
-    .split("/")
-    .filter((s) => Boolean(s) && s !== "dashboard")
-    .filter(Boolean);
-  const breadcrumbs = pathSegments.map((segment: string, index: number) => {
-    const path = `/dashboard/${pathSegments.slice(0, index + 1).join("/")}`;
-    const labels: Record<string, string> = {
-      accounts: "账号管理",
-      apps: "应用",
-      overview: "概览",
-      settings: "设置",
-      profile: "个人资料",
-      security: "安全",
-      admin: "系统管理",
-      users: "用户管理",
-      reviews: "审核中心",
-      traces: "消息追踪",
-    };
-    let label = labels[segment] || segment;
-    if (segment.length > 20) label = "详情"; // Handle IDs
-    return { label, path, isLast: index === pathSegments.length - 1 };
-  });
 
   return (
     <SidebarProvider>
@@ -369,52 +419,7 @@ export function Layout() {
       </Sidebar>
 
       <SidebarInset className="flex flex-col bg-background/50 rounded-tl-2xl overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b bg-background/95 backdrop-blur px-6 sticky top-0 z-40">
-          <div className="flex items-center gap-4">
-            <SidebarTrigger className="-ml-2 h-9 w-9" />
-            <Separator orientation="vertical" className="h-4 opacity-50" />
-            <Breadcrumb>
-              <BreadcrumbList>
-                {breadcrumbs.map((bc, i) => (
-                  <React.Fragment key={bc.path}>
-                    {i > 0 && <BreadcrumbSeparator className="hidden md:block opacity-30" />}
-                    <BreadcrumbItem>
-                      {bc.isLast ? (
-                        <BreadcrumbPage className="font-bold text-foreground">
-                          {bc.label}
-                        </BreadcrumbPage>
-                      ) : (
-                        <BreadcrumbLink asChild>
-                          <Link
-                            to={bc.path}
-                            className="hover:text-primary transition-colors font-medium"
-                          >
-                            {bc.label}
-                          </Link>
-                        </BreadcrumbLink>
-                      )}
-                    </BreadcrumbItem>
-                  </React.Fragment>
-                ))}
-              </BreadcrumbList>
-            </Breadcrumb>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="hidden lg:flex relative items-center group">
-              <Search className="absolute left-3 size-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-              <input
-                aria-label="搜索"
-                placeholder="搜索..."
-                className="h-9 w-64 rounded-full bg-muted/50 border-transparent pl-9 pr-4 text-xs font-medium focus:bg-background focus:border-border transition-all outline-none"
-              />
-            </div>
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full relative">
-              <Zap className="h-4 w-4 text-yellow-500 fill-yellow-500/20" />
-              <span className="absolute top-2 right-2 size-2 bg-primary rounded-full border-2 border-background animate-pulse" />
-            </Button>
-          </div>
-        </header>
+        <LayoutHeader />
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
           <div className="mx-auto w-full max-w-[1400px] p-6 lg:p-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
