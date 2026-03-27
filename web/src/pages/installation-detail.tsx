@@ -15,6 +15,7 @@ import {
   ScrollText,
   Terminal,
   Sliders,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -684,13 +685,14 @@ function EventLogsSection({ appId, instId, botId }: { appId: string; instId: str
                 <TableHead>状态码</TableHead>
                 <TableHead>耗时</TableHead>
                 <TableHead>错误</TableHead>
+                <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {logs.map((log) => (
                 <TableRow
                   key={log.id || log.trace_id + log.created_at}
-                  className={log.trace_id ? "cursor-pointer hover:bg-muted/50" : ""}
+                  className={log.trace_id ? "cursor-pointer hover:bg-primary/5" : ""}
                   onClick={() => log.trace_id && navigate(`/dashboard/accounts/${botId}/traces/${log.trace_id}`)}
                 >
                   <TableCell className="font-mono whitespace-nowrap">
@@ -712,6 +714,9 @@ function EventLogsSection({ appId, instId, botId }: { appId: string; instId: str
                   </TableCell>
                   <TableCell className="text-destructive max-w-48 truncate">
                     {log.error || "-"}
+                  </TableCell>
+                  <TableCell className="w-8 px-2">
+                    {log.trace_id && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                   </TableCell>
                 </TableRow>
               ))}
