@@ -55,8 +55,21 @@ type chatRequest struct {
 	Tools    []Tool        `json:"tools,omitempty"`
 }
 
+type chatUsage struct {
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	TotalTokens         int `json:"total_tokens"`
+	PromptTokensDetails *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details,omitempty"`
+}
+
 type chatResponse struct {
 	Choices []chatChoice `json:"choices"`
+	Usage   *chatUsage   `json:"usage,omitempty"`
 	Error   *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
@@ -89,11 +102,21 @@ type ToolCallResult struct {
 	Content string // result text to feed back to LLM
 }
 
+// Usage holds token usage statistics from the API response.
+type Usage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	CachedTokens     int
+	ReasoningTokens  int
+}
+
 // CompletionResult holds the outcome of a completion call.
 type CompletionResult struct {
 	Content   string            // text reply (empty if tool_calls)
 	Thinking  string            // chain-of-thought / reasoning content (may be empty)
 	ToolCalls []ToolCallRequest // tool calls to execute (empty if text reply)
+	Usage     *Usage            // token usage (nil if not provided by API)
 }
 
 // Complete calls the OpenAI-compatible chat completion API.
@@ -264,6 +287,22 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 		thinking = *choice.Message.ReasoningContent
 	}
 
+	// Convert usage if present
+	var usage *Usage
+	if result.Usage != nil {
+		usage = &Usage{
+			PromptTokens:     result.Usage.PromptTokens,
+			CompletionTokens: result.Usage.CompletionTokens,
+			TotalTokens:      result.Usage.TotalTokens,
+		}
+		if result.Usage.PromptTokensDetails != nil {
+			usage.CachedTokens = result.Usage.PromptTokensDetails.CachedTokens
+		}
+		if result.Usage.CompletionTokensDetails != nil {
+			usage.ReasoningTokens = result.Usage.CompletionTokensDetails.ReasoningTokens
+		}
+	}
+
 	// Tool calls
 	if len(choice.Message.ToolCalls) > 0 {
 		var calls []ToolCallRequest
@@ -274,7 +313,7 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 				Arguments: json.RawMessage(tc.Function.Arguments),
 			})
 		}
-		return &CompletionResult{Thinking: thinking, ToolCalls: calls}, nil
+		return &CompletionResult{Thinking: thinking, ToolCalls: calls, Usage: usage}, nil
 	}
 
 	// Text reply
@@ -282,7 +321,7 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 	if choice.Message.Content != nil {
 		content = *choice.Message.Content
 	}
-	return &CompletionResult{Content: content, Thinking: thinking}, nil
+	return &CompletionResult{Content: content, Thinking: thinking, Usage: usage}, nil
 }
 
 func truncate(s string, max int) string {

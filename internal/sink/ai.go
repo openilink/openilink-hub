@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +90,16 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	// Accumulate token usage across all rounds
+	var totalPrompt, totalCompletion, totalTokens, totalCached, totalReasoning int
+	if result.Usage != nil {
+		totalPrompt += result.Usage.PromptTokens
+		totalCompletion += result.Usage.CompletionTokens
+		totalTokens += result.Usage.TotalTokens
+		totalCached += result.Usage.CachedTokens
+		totalReasoning += result.Usage.ReasoningTokens
+	}
+
 	// Build installationID → appName map for status messages
 	toolAppNames := make(map[string]string)
 	for _, t := range tools {
@@ -145,28 +156,51 @@ func (s *AI) reply(d Delivery) {
 			s.stopTyping(d, typingTicket)
 			return
 		}
+
+		// Accumulate token usage from this round
+		if result.Usage != nil {
+			totalPrompt += result.Usage.PromptTokens
+			totalCompletion += result.Usage.CompletionTokens
+			totalTokens += result.Usage.TotalTokens
+			totalCached += result.Usage.CachedTokens
+			totalReasoning += result.Usage.ReasoningTokens
+		}
+	}
+
+	// Set token usage attributes on span
+	if span != nil && totalTokens > 0 {
+		span.SetAttr("ai.tokens.prompt", strconv.Itoa(totalPrompt))
+		span.SetAttr("ai.tokens.completion", strconv.Itoa(totalCompletion))
+		span.SetAttr("ai.tokens.total", strconv.Itoa(totalTokens))
+		if totalCached > 0 {
+			span.SetAttr("ai.tokens.cached", strconv.Itoa(totalCached))
+		}
+		if totalReasoning > 0 {
+			span.SetAttr("ai.tokens.reasoning", strconv.Itoa(totalReasoning))
+		}
 	}
 
 	s.stopTyping(d, typingTicket)
 
 	reply := result.Content
+	thinking := result.Thinking
+
+	// Handle thinking/reasoning content
+	if thinking != "" {
+		if span != nil {
+			span.SetAttr("ai.thinking_length", len(thinking))
+		}
+		if !cfg.HideThinking {
+			reply = "💭 " + thinking + "\n\n" + reply
+		}
+	}
+
 	if reply == "" {
 		if span != nil {
 			span.SetAttr("reply.content", "(empty)")
 			span.End()
 		}
 		return
-	}
-
-	// Handle thinking/reasoning content
-	if result.Thinking != "" {
-		if span != nil {
-			span.SetAttr("ai.thinking_length", len(result.Thinking))
-		}
-		hideThinking, _ := s.Store.GetConfig("ai.hide_thinking")
-		if hideThinking != "true" {
-			reply = "<think>\n" + result.Thinking + "\n</think>\n\n" + reply
-		}
 	}
 
 	if span != nil {
@@ -190,7 +224,8 @@ func (s *AI) reply(d Delivery) {
 		span.End()
 	}
 
-	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": reply}})
+	// Save only the content (not thinking) to message history to avoid polluting context
+	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": result.Content}})
 	s.Store.SaveMessage(&store.Message{
 		BotID:       d.BotDBID,
 		Direction:   "outbound",
@@ -334,6 +369,7 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	cfg.APIKey = global["ai.api_key"]
 	cfg.Model = global["ai.model"]
 	cfg.SystemPrompt = global["ai.system_prompt"]
+	cfg.HideThinking = global["ai.hide_thinking"] == "true"
 	if v := global["ai.max_history"]; v != "" {
 		fmt.Sscanf(v, "%d", &cfg.MaxHistory)
 	}
