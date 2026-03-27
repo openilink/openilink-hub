@@ -162,12 +162,8 @@ func main() {
 
 	hub := relay.NewHub(srv.SetupUpstreamHandler())
 	appDisp := appdelivery.NewDispatcher(s)
-	sinks := []sink.Sink{
-		&sink.WS{Hub: hub},
-		&sink.AI{Store: s, AppDisp: appDisp},
-		&sink.Webhook{Store: s},
-	}
-	mgr := bot.NewManager(s, hub, sinks, objStore, cfg.RPOrigin)
+	aiSink := &sink.AI{Store: s, AppDisp: appDisp}
+	mgr := bot.NewManager(s, hub, aiSink, objStore, cfg.RPOrigin)
 	srv.BotManager = mgr
 	srv.Hub = hub
 	srv.AppWSHub = api.NewAppWSHub()
