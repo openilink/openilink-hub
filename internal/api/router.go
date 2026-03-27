@@ -206,6 +206,7 @@ func (s *Server) Handler() http.Handler {
 	// --- Admin: apps ---
 	protected.HandleFunc("GET /api/admin/apps", s.requireAdmin(s.handleAdminListApps))
 	protected.HandleFunc("PUT /api/admin/apps/{id}/review-listing", s.requireAdmin(s.handleReviewListing))
+	protected.HandleFunc("PUT /api/admin/apps/{id}/listing", s.requireAdmin(s.handleAdminSetListing))
 
 	// --- Admin: registries ---
 	protected.HandleFunc("GET /api/admin/registries", s.requireAdmin(s.handleListRegistries))
