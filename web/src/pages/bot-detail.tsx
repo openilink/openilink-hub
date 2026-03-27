@@ -12,6 +12,9 @@ import {
   Download,
   RefreshCw,
   Sparkles,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -30,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { AppIcon } from "../components/app-icon";
 import { parseTools } from "../components/tools-display";
 
@@ -47,6 +51,8 @@ export function BotDetailPage() {
   const [marketplaceLoading, setMarketplaceLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState("");
   const marketplaceRef = useRef<HTMLDivElement>(null);
 
   const loadBot = useCallback(async () => {
@@ -155,7 +161,58 @@ export function BotDetailPage() {
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold tracking-tight">{bot.name}</h1>
+              {editingDisplayName ? (
+                <form
+                  className="flex items-center gap-1.5"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      await api.updateBot(bot.id, { display_name: displayNameDraft });
+                      setBot({ ...bot, display_name: displayNameDraft });
+                      toast({ title: "已保存" });
+                    } catch (err: any) {
+                      toast({ variant: "destructive", title: "保存失败", description: err.message });
+                    }
+                    setEditingDisplayName(false);
+                  }}
+                >
+                  <Input
+                    autoFocus
+                    className="h-8 w-48 text-lg font-bold"
+                    value={displayNameDraft}
+                    onChange={(e) => setDisplayNameDraft(e.target.value)}
+                    placeholder={bot.name}
+                  />
+                  <Button type="submit" variant="ghost" size="icon-sm">
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setEditingDisplayName(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </form>
+              ) : (
+                <div className="flex items-center gap-1.5 group/name">
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    {bot.display_name || bot.name}
+                  </h1>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="opacity-0 group-hover/name:opacity-100 transition-opacity"
+                    onClick={() => {
+                      setDisplayNameDraft(bot.display_name || "");
+                      setEditingDisplayName(true);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
               <Badge variant={bot.status === "connected" ? "default" : "destructive"}>
                 {bot.status === "connected"
                   ? "运行中"

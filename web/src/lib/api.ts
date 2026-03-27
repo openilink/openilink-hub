@@ -66,7 +66,7 @@ export const api = {
     request<import("./trace-utils").TraceSpan[]>(`/api/bots/${botId}/traces?limit=${limit}`),
   getTrace: (botId: string, traceId: string) =>
     request<import("./trace-utils").TraceSpan[]>(`/api/bots/${botId}/traces/${traceId}`),
-  updateBot: (id: string, data: { name?: string; reminder_hours?: number }) =>
+  updateBot: (id: string, data: { name?: string; display_name?: string; reminder_hours?: number }) =>
     request(`/api/bots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   setBotAI: (botId: string, enabled: boolean) =>
     request(`/api/bots/${botId}/ai`, {

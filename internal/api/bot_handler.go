@@ -28,6 +28,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 	type botResp struct {
 		ID                 string          `json:"id"`
 		Name               string          `json:"name"`
+		DisplayName        string          `json:"display_name"`
 		Provider           string          `json:"provider"`
 		Status             string          `json:"status"`
 		CanSend            bool            `json:"can_send"`
@@ -54,7 +55,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		canSend, reason := checkSendStatus(status, freshTokens[b.ID])
 		extra := extractPublicCredentials(b.Provider, b.Credentials)
 		result = append(result, botResp{
-			ID: b.ID, Name: b.Name, Provider: b.Provider,
+			ID: b.ID, Name: b.Name, DisplayName: b.DisplayName, Provider: b.Provider,
 			Status: status, CanSend: canSend, SendDisabledReason: reason,
 			AIEnabled: b.AIEnabled,
 			MsgCount: b.MsgCount, ReminderHours: b.ReminderHours,
@@ -300,6 +301,7 @@ func (s *Server) handleUpdateBot(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Name          *string `json:"name"`
+		DisplayName   *string `json:"display_name"`
 		ReminderHours *int    `json:"reminder_hours"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -309,6 +311,12 @@ func (s *Server) handleUpdateBot(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name != nil && *req.Name != "" {
 		if err := s.Store.UpdateBotName(botID, *req.Name); err != nil {
+			jsonError(w, "update failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	if req.DisplayName != nil {
+		if err := s.Store.UpdateBotDisplayName(botID, *req.DisplayName); err != nil {
 			jsonError(w, "update failed", http.StatusInternalServerError)
 			return
 		}
