@@ -112,9 +112,9 @@ func (d *Dispatcher) MatchEvent(botID string, eventType string) ([]store.AppInst
 			continue
 		}
 
-		// Installation (or app) must have message:read scope to receive message events
+		// Installation must have message:read scope to receive message events
 		if strings.HasPrefix(eventType, "message.") || eventType == "message" {
-			if !instOrAppHasScope(&inst, app, "message:read") {
+			if !instHasScope(&inst, "message:read") {
 				continue
 			}
 		}
@@ -194,23 +194,22 @@ func appHasCommand(app *store.App, commandName string) bool {
 	return false
 }
 
-// instOrAppHasScope checks if the installation has the scope granted.
-// If installation scopes are empty (default), falls back to app-level scopes.
-func instOrAppHasScope(inst *store.AppInstallation, app *store.App, scope string) bool {
-	// Check installation-level scopes first
-	if len(inst.Scopes) > 0 && string(inst.Scopes) != "[]" {
-		var scopes []string
-		if err := json.Unmarshal(inst.Scopes, &scopes); err == nil {
-			for _, s := range scopes {
-				if s == scope {
-					return true
-				}
-			}
-			return false
+// instHasScope checks if the installation has the given scope granted.
+// Scopes are snapshotted at install time (Slack model) — no fallback to app-level scopes.
+func instHasScope(inst *store.AppInstallation, scope string) bool {
+	if len(inst.Scopes) == 0 || string(inst.Scopes) == "[]" || string(inst.Scopes) == "null" {
+		return false // no scopes granted
+	}
+	var scopes []string
+	if err := json.Unmarshal(inst.Scopes, &scopes); err != nil {
+		return false
+	}
+	for _, s := range scopes {
+		if s == scope {
+			return true
 		}
 	}
-	// Fall back to app-level scopes
-	return appHasScope(app, scope)
+	return false
 }
 
 // appHasScope checks whether an app declares the given scope.

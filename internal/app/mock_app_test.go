@@ -319,7 +319,7 @@ func TestMockApp_FullFlowWithMatchAndDeliver(t *testing.T) {
 			{
 				ID: "inst-ff-1", AppID: "app-ff-1", BotID: "bot-ff-1",
 				Enabled: true, AppWebhookURL: m.server.URL,
-				AppWebhookSecret: secret,
+				AppWebhookSecret: secret, Scopes: scopes,
 			},
 		},
 		apps: map[string]*store.App{

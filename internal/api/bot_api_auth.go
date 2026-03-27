@@ -141,14 +141,14 @@ func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
 	return lw.ResponseWriter.Write(b)
 }
 
-// requireScope checks that the app's scopes include the required scope.
+// requireScope checks that the installation's scopes include the required scope.
+// Scopes are snapshotted at install time (Slack model) — only installation scopes are checked.
 func (s *Server) requireScope(inst *store.AppInstallation, scope string) bool {
-	app, err := s.Store.GetApp(inst.AppID)
-	if err != nil {
+	if len(inst.Scopes) == 0 || string(inst.Scopes) == "[]" || string(inst.Scopes) == "null" {
 		return false
 	}
 	var scopes []string
-	if err := json.Unmarshal(app.Scopes, &scopes); err != nil {
+	if err := json.Unmarshal(inst.Scopes, &scopes); err != nil {
 		return false
 	}
 	for _, sc := range scopes {

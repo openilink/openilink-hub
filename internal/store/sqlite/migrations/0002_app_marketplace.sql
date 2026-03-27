@@ -61,3 +61,9 @@ CREATE TABLE IF NOT EXISTS registries (
 -- Replace global slug uniqueness with per-registry namespace
 DROP INDEX IF EXISTS apps_slug_key;
 CREATE UNIQUE INDEX IF NOT EXISTS apps_slug_registry_key ON apps(slug, registry);
+
+-- Backfill installation scopes from app scopes for installations with empty scopes.
+-- This implements the Slack model where scopes are locked at install time.
+UPDATE app_installations SET scopes = (
+    SELECT apps.scopes FROM apps WHERE apps.id = app_installations.app_id
+) WHERE scopes = '[]' OR scopes = '';

@@ -76,10 +76,10 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("install: created", "inst", inst.ID, "app_token", inst.AppToken[:8]+"...")
 
-	// Set handle and scopes
-	scopes := inst.Scopes
-	if req.Scopes != nil {
-		scopes = req.Scopes
+	// Set handle and scopes — snapshot app scopes at install time (Slack model)
+	scopes := req.Scopes
+	if scopes == nil || string(scopes) == "" || string(scopes) == "[]" || string(scopes) == "null" {
+		scopes = app.Scopes
 	}
 	if err := s.Store.UpdateInstallation(inst.ID, handle, inst.Config, scopes, inst.Enabled); err != nil {
 		slog.Error("install: set handle failed", "inst", inst.ID, "err", err)
@@ -382,6 +382,27 @@ func (s *Server) handleListBotApps(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(installations)
 }
 
+// POST /api/apps/{id}/installations/{iid}/reauthorize
+// Updates installation scopes to the current app scopes.
+// This is the mechanism for users to grant new scopes after an app adds them.
+func (s *Server) handleReauthorize(w http.ResponseWriter, r *http.Request) {
+	app := s.requireAppForInstall(w, r)
+	if app == nil {
+		return
+	}
+	inst := s.requireInstallation(w, r, app.ID)
+	if inst == nil {
+		return
+	}
+
+	// Update installation scopes to current app scopes
+	if err := s.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled); err != nil {
+		jsonError(w, "reauthorize failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w)
+}
+
 // notifyAppInstalled POSTs installation credentials to the App's oauth_redirect_url.
 // The App responds with its webhook_url, which Hub auto-sets and verifies.
 func (s *Server) notifyAppInstalled(app *store.App, inst *store.AppInstallation) {
@@ -566,11 +587,11 @@ func (s *Server) handleUnifiedInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set handle and scopes
+	// Set handle and scopes — snapshot app scopes at install time (Slack model)
 	handle := req.Handle
 	scopes := req.Scopes
-	if scopes == nil {
-		scopes = inst.Scopes
+	if scopes == nil || string(scopes) == "" || string(scopes) == "[]" || string(scopes) == "null" {
+		scopes = app.Scopes
 	}
 	if handle != "" || scopes != nil {
 		s.Store.UpdateInstallation(inst.ID, handle, inst.Config, scopes, inst.Enabled)
