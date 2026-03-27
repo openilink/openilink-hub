@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
@@ -169,14 +168,14 @@ func (s *AI) reply(d Delivery) {
 
 	// Set token usage attributes on span
 	if span != nil && totalTokens > 0 {
-		span.SetAttr("ai.tokens.prompt", strconv.Itoa(totalPrompt))
-		span.SetAttr("ai.tokens.completion", strconv.Itoa(totalCompletion))
-		span.SetAttr("ai.tokens.total", strconv.Itoa(totalTokens))
+		span.SetAttr("ai.tokens.prompt", totalPrompt)
+		span.SetAttr("ai.tokens.completion", totalCompletion)
+		span.SetAttr("ai.tokens.total", totalTokens)
 		if totalCached > 0 {
-			span.SetAttr("ai.tokens.cached", strconv.Itoa(totalCached))
+			span.SetAttr("ai.tokens.cached", totalCached)
 		}
 		if totalReasoning > 0 {
-			span.SetAttr("ai.tokens.reasoning", strconv.Itoa(totalReasoning))
+			span.SetAttr("ai.tokens.reasoning", totalReasoning)
 		}
 	}
 
