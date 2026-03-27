@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -115,7 +117,12 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 
 	// Find or create the local app
 	localApp, err := s.Store.GetAppBySlug(slug, regApp.RegistryURL)
-	if err != nil || localApp == nil {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		slog.Error("marketplace: failed to lookup app", "slug", slug, "err", err)
+		jsonError(w, "lookup app failed", http.StatusInternalServerError)
+		return
+	}
+	if localApp == nil {
 		// First install: create local app from registry data
 		localApp, err = s.Store.CreateApp(&store.App{
 			Name:             regApp.Name,
@@ -133,8 +140,10 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 			Version:          regApp.Version,
 			Readme:           regApp.Readme,
 			Guide:            regApp.Guide,
+			Listing:          "listed",
 		})
 		if err != nil {
+			slog.Error("marketplace: failed to create app", "slug", slug, "err", err)
 			jsonError(w, "create app failed", http.StatusInternalServerError)
 			return
 		}
@@ -167,6 +176,7 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 		regApp.Events,
 		regApp.Scopes,
 	); err != nil {
+		slog.Error("marketplace: failed to update app", "slug", slug, "err", err)
 		jsonError(w, "sync failed", http.StatusInternalServerError)
 		return
 	}
