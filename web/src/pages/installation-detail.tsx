@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowLeft,
   Eye,
@@ -19,7 +19,14 @@ import {
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
-import { Card, CardHeader, CardTitle, CardAction, CardContent, CardDescription } from "../components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardAction,
+  CardContent,
+  CardDescription,
+} from "../components/ui/card";
 import {
   Table,
   TableBody,
@@ -56,7 +63,12 @@ function buildNavSections(app: any, inst?: any) {
   }
   if (app?.config_schema) {
     let parsed: any = {};
-    try { parsed = typeof app.config_schema === "string" ? JSON.parse(app.config_schema || "{}") : (app.config_schema || {}); } catch {}
+    try {
+      parsed =
+        typeof app.config_schema === "string"
+          ? JSON.parse(app.config_schema || "{}")
+          : app.config_schema || {};
+    } catch {}
     if (Object.keys(parsed.properties || {}).length > 0) {
       items.push({ key: "app-config", label: "应用配置", icon: Sliders });
     }
@@ -86,10 +98,7 @@ export function InstallationDetailPage() {
       if (!found) throw new Error("未找到安装实例");
       setInst(found);
 
-      const [appData, bots] = await Promise.all([
-        api.getApp(found.app_id),
-        api.listBots(),
-      ]);
+      const [appData, bots] = await Promise.all([api.getApp(found.app_id), api.listBots()]);
       setApp(appData);
       const bot = (bots || []).find((b: any) => b.id === botId);
       if (bot) setBotName(bot.name);
@@ -98,7 +107,7 @@ export function InstallationDetailPage() {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botId, iid]);
 
   useEffect(() => {
@@ -118,8 +127,8 @@ export function InstallationDetailPage() {
     return (
       <div className="py-20 text-center space-y-4">
         <p className="font-bold">未找到安装实例</p>
-        <Button variant="link" onClick={() => navigate(`/dashboard/accounts/${botId}`)}>
-          返回账号
+        <Button variant="link" asChild>
+          <Link to={`/dashboard/accounts/${botId}`}>返回账号</Link>
         </Button>
       </div>
     );
@@ -131,13 +140,17 @@ export function InstallationDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="space-y-4">
-        <button
-          onClick={() => navigate(`/dashboard/accounts/${botId}`)}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="gap-1.5 text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="h-4 w-4" />
-          {botName || "返回"}
-        </button>
+          <Link to={`/dashboard/accounts/${botId}`}>
+            <ArrowLeft className="h-4 w-4" />
+            {botName || "返回"}
+          </Link>
+        </Button>
 
         <div className="flex items-start gap-4">
           <AppIcon
@@ -148,29 +161,29 @@ export function InstallationDetailPage() {
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold">{inst.app_name || app.name}</h1>
-              {inst.handle && (
+              {inst.handle ? (
                 <span className="text-sm text-muted-foreground font-mono">@{inst.handle}</span>
-              )}
+              ) : null}
               <Badge
                 variant={inst.enabled ? "default" : "secondary"}
                 className="rounded-full font-bold"
               >
                 {inst.enabled ? "运行中" : "已停用"}
               </Badge>
-              {app.registry && app.registry !== "builtin" && (
+              {app.registry && app.registry !== "builtin" ? (
                 <Badge variant="outline" className="rounded-full font-bold">
                   来自应用市场
                 </Badge>
-              )}
-              {app.registry === "builtin" && (
+              ) : null}
+              {app.registry === "builtin" ? (
                 <Badge variant="outline" className="rounded-full font-bold">
                   内置应用
                 </Badge>
-              )}
+              ) : null}
             </div>
-            {app.description && (
+            {app.description ? (
               <p className="text-sm text-muted-foreground">{app.description}</p>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -179,12 +192,14 @@ export function InstallationDetailPage() {
       <div className="md:hidden">
         <select
           value={section}
-          onChange={e => setSection(e.target.value as SectionKey)}
+          onChange={(e) => setSection(e.target.value as SectionKey)}
           className="w-full h-9 px-3 rounded-md border bg-background text-sm"
           aria-label="选择页面"
         >
-          {navItems.map(item => (
-            <option key={item.key} value={item.key}>{item.label}</option>
+          {navItems.map((item) => (
+            <option key={item.key} value={item.key}>
+              {item.label}
+            </option>
           ))}
         </select>
       </div>
@@ -192,48 +207,57 @@ export function InstallationDetailPage() {
       {/* Desktop: Left nav + Right content */}
       <div className="flex gap-8">
         <nav className="hidden md:block w-48 shrink-0 space-y-1">
-          {navItems.map(item => (
-            <button
+          {navItems.map((item) => (
+            <Button
               key={item.key}
+              variant="ghost"
+              size="sm"
               onClick={() => setSection(item.key)}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
+              className={`w-full justify-start gap-2 ${
                 section === item.key
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  ? "bg-primary/10 text-primary font-medium hover:bg-primary/10 hover:text-primary"
+                  : "text-muted-foreground"
               }`}
             >
               <item.icon className="h-4 w-4 shrink-0" />
               {item.label}
-            </button>
+            </Button>
           ))}
         </nav>
 
         <div className="flex-1 min-w-0">
           {section === "token" && <TokenSection app={app} inst={inst} />}
-          {section === "tools" && (() => {
-            const appTools = parseTools(app?.tools);
-            const instTools = parseTools(inst?.tools);
-            return (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-base font-semibold">命令 / 工具</h2>
-                  <p className="text-sm text-muted-foreground mt-1">此安装可用的命令和工具。</p>
+          {section === "tools" &&
+            (() => {
+              const appTools = parseTools(app?.tools);
+              const instTools = parseTools(inst?.tools);
+              return (
+                <div className="space-y-6">
+                  <div>
+                    <h2 className="text-base font-semibold">命令 / 工具</h2>
+                    <p className="text-sm text-muted-foreground mt-1">此安装可用的命令和工具。</p>
+                  </div>
+                  {instTools.length > 0 ? (
+                    <Card className="p-5 space-y-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        自定义命令
+                      </h3>
+                      <ToolsDisplay tools={instTools} />
+                    </Card>
+                  ) : null}
+                  {appTools.length > 0 ? (
+                    <Card className="p-5 space-y-3">
+                      {instTools.length > 0 ? (
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          应用命令
+                        </h3>
+                      ) : null}
+                      <ToolsDisplay tools={appTools} />
+                    </Card>
+                  ) : null}
                 </div>
-                {instTools.length > 0 && (
-                  <Card className="p-5 space-y-3">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">自定义命令</h3>
-                    <ToolsDisplay tools={instTools} />
-                  </Card>
-                )}
-                {appTools.length > 0 && (
-                  <Card className="p-5 space-y-3">
-                    {instTools.length > 0 && <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">应用命令</h3>}
-                    <ToolsDisplay tools={appTools} />
-                  </Card>
-                )}
-              </div>
-            );
-          })()}
+              );
+            })()}
           {section === "app-config" && <AppConfigForm app={app} inst={inst} onUpdate={loadData} />}
           {section === "config" && (
             <ConfigSection
@@ -262,17 +286,18 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
   const hubUrl = window.location.origin;
 
   function handleCopy(text: string) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {
-      toast({ variant: "destructive", title: "复制失败", description: "请手动选中复制" });
-    });
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        toast({ variant: "destructive", title: "复制失败", description: "请手动选中复制" });
+      });
   }
 
-  const maskedToken = token
-    ? token.slice(0, 8) + "****" + token.slice(-4)
-    : "---";
+  const maskedToken = token ? token.slice(0, 8) + "****" + token.slice(-4) : "---";
 
   function renderGuide(): string | null {
     if (app.guide) {
@@ -303,18 +328,20 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
             <code className="text-xs font-mono flex-1 break-all select-all">
               {showToken ? token : maskedToken}
             </code>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={() => setShowToken(!showToken)}
-              className="cursor-pointer text-muted-foreground hover:text-foreground shrink-0"
               aria-label={showToken ? "隐藏" : "显示"}
             >
               {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={() => handleCopy(token)}
-              className="cursor-pointer text-muted-foreground hover:text-foreground shrink-0"
               aria-label="复制"
             >
               {copied ? (
@@ -322,12 +349,12 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
               ) : (
                 <Copy className="w-3.5 h-3.5" />
               )}
-            </button>
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {guideText && (
+      {guideText ? (
         <Card>
           <CardHeader>
             <CardTitle>使用指南</CardTitle>
@@ -338,9 +365,9 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
-      {showGenericGuide && (
+      {showGenericGuide ? (
         <Card>
           <CardHeader>
             <CardTitle>接入方式</CardTitle>
@@ -367,9 +394,9 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
             </details>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
-      {!showUsageGuide && app.webhook_url && (
+      {!showUsageGuide && app.webhook_url ? (
         <Card>
           <CardContent>
             <p className="text-xs text-muted-foreground">
@@ -377,7 +404,7 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
             </p>
           </CardContent>
         </Card>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -390,9 +417,10 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
 
   let parsed: any = {};
   try {
-    parsed = typeof app.config_schema === "string"
-      ? JSON.parse(app.config_schema || "{}")
-      : (app.config_schema || {});
+    parsed =
+      typeof app.config_schema === "string"
+        ? JSON.parse(app.config_schema || "{}")
+        : app.config_schema || {};
   } catch {
     return null;
   }
@@ -401,9 +429,8 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
 
   let currentConfig: Record<string, string> = {};
   try {
-    currentConfig = typeof inst.config === "string"
-      ? JSON.parse(inst.config || "{}")
-      : (inst.config || {});
+    currentConfig =
+      typeof inst.config === "string" ? JSON.parse(inst.config || "{}") : inst.config || {};
   } catch {}
 
   const [form, setForm] = useState<Record<string, string>>(currentConfig);
@@ -436,13 +463,13 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
               <Label className="text-muted-foreground">{prop.title || key}</Label>
               <Input
                 value={form[key] || ""}
-                onChange={e => setForm({ ...form, [key]: e.target.value })}
+                onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                 className="h-8 text-xs font-mono"
                 placeholder={prop.description || ""}
               />
-              {prop.description && (
+              {prop.description ? (
                 <p className="text-xs text-muted-foreground">{prop.description}</p>
-              )}
+              ) : null}
             </div>
           ))}
           <div className="flex items-center gap-2 pt-2 border-t">
@@ -512,7 +539,9 @@ function ConfigSection({
     <div className="space-y-6">
       <div>
         <h2 className="text-base font-semibold">安装设置</h2>
-        <p className="text-sm text-muted-foreground mt-1">管理此安装实例的 Handle、状态和生命周期。</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          管理此安装实例的 Handle、状态和生命周期。
+        </p>
       </div>
 
       <Card>
@@ -555,11 +584,7 @@ function ConfigSection({
           保存
         </Button>
         <div className="flex-1" />
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => setShowUninstallDialog(true)}
-        >
+        <Button variant="destructive" size="sm" onClick={() => setShowUninstallDialog(true)}>
           <Trash2 className="h-3.5 w-3.5 mr-1" />
           卸载应用
         </Button>
@@ -612,7 +637,10 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
       if (!cancelled) timer = setTimeout(poll, 10000);
     }
     poll();
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [loadLogs]);
 
   return (
@@ -626,7 +654,10 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
           variant="ghost"
           size="sm"
           className="h-7 text-xs gap-1"
-          onClick={() => { setLoading(true); loadLogs(); }}
+          onClick={() => {
+            setLoading(true);
+            loadLogs();
+          }}
         >
           <RefreshCw className="h-3 w-3" />
           刷新
@@ -716,7 +747,10 @@ function ApiLogsSection({ appId, instId }: { appId: string; instId: string }) {
       if (!cancelled) timer = setTimeout(poll, 10000);
     }
     poll();
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [loadLogs]);
 
   return (
@@ -730,7 +764,10 @@ function ApiLogsSection({ appId, instId }: { appId: string; instId: string }) {
           variant="ghost"
           size="sm"
           className="h-7 text-xs gap-1"
-          onClick={() => { setLoading(true); loadLogs(); }}
+          onClick={() => {
+            setLoading(true);
+            loadLogs();
+          }}
         >
           <RefreshCw className="h-3 w-3" />
           刷新
