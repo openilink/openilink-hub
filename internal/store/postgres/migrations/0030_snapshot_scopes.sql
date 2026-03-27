@@ -4,4 +4,4 @@
 -- this migration handles existing installations created before that change.
 UPDATE app_installations SET scopes = (
     SELECT apps.scopes FROM apps WHERE apps.id = app_installations.app_id
-) WHERE scopes = '[]' OR scopes = '' OR scopes IS NULL;
+) WHERE scopes = '[]' OR scopes IS NULL;
