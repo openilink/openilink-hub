@@ -174,7 +174,7 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 	if len(toolImages) > 0 {
 		messages = append(messages, Message{
 			Role:    "user",
-			Content: buildCurrentContent("以上工具返回了图片，请查看并回复用户。", toolImages),
+			Content: buildCurrentContent("The tool returned the following image(s). Please describe or discuss them.", toolImages),
 		})
 	}
 

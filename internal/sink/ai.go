@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -107,12 +109,17 @@ func (s *AI) reply(d Delivery) {
 					slog.Warn("ai: download image failed", "bot", d.BotDBID, "err", err)
 					continue
 				}
-				if len(data) > 0 {
-					currentImages = append(currentImages, ai.ImageData{
-						Data:        data,
-						ContentType: http.DetectContentType(data),
-					})
+				if len(data) == 0 {
+					continue
 				}
+				if len(data) > maxImageBytes {
+					slog.Warn("ai: image too large, skipping", "bot", d.BotDBID, "size", len(data))
+					continue
+				}
+				currentImages = append(currentImages, ai.ImageData{
+					Data:        data,
+					ContentType: http.DetectContentType(data),
+				})
 			}
 		}
 		if len(currentImages) == 0 && text == "" {
@@ -414,6 +421,8 @@ func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageD
 				ext = ".png"
 			} else if strings.HasPrefix(ct, "image/gif") {
 				ext = ".gif"
+			} else if strings.HasPrefix(ct, "image/webp") {
+				ext = ".webp"
 			}
 			now := time.Now()
 			key := fmt.Sprintf("%s/%s/ai_%d%s", d.BotDBID, now.Format("2006/01/02"), now.UnixMilli(), ext)
@@ -442,14 +451,27 @@ func (s *AI) resolveToolMedia(ctx context.Context, botID string, result *appdeli
 		}
 		data, err = base64.StdEncoding.DecodeString(b64)
 		if err != nil {
-			slog.Error("ai tool media: base64 decode failed", "bot", botID, "err", err)
-			return nil
+			// Retry without padding (common in browser/JS encoders)
+			data, err = base64.RawStdEncoding.DecodeString(b64)
+			if err != nil {
+				slog.Error("ai tool media: base64 decode failed", "bot", botID, "err", err)
+				return nil
+			}
 		}
 		if len(data) > maxImageBytes {
 			slog.Error("ai tool media: base64 data too large", "bot", botID, "size", len(data))
 			return nil
 		}
 	} else if result.ReplyURL != "" {
+		u, err := url.Parse(result.ReplyURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			slog.Error("ai tool media: invalid url scheme", "bot", botID, "url", result.ReplyURL)
+			return nil
+		}
+		if isPrivateHost(u.Host) {
+			slog.Error("ai tool media: private/internal url blocked", "bot", botID, "url", result.ReplyURL)
+			return nil
+		}
 		dlCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, result.ReplyURL, nil)
@@ -517,6 +539,25 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 		fmt.Sscanf(v, "%d", &cfg.MaxHistory)
 	}
 	return cfg
+}
+
+// isPrivateHost returns true if the host resolves to a private/loopback/link-local IP.
+func isPrivateHost(host string) bool {
+	// Strip port
+	h := host
+	if idx := strings.LastIndex(h, ":"); idx >= 0 {
+		h = h[:idx]
+	}
+	ip := net.ParseIP(h)
+	if ip == nil {
+		// Try resolving hostname
+		addrs, err := net.LookupIP(h)
+		if err != nil || len(addrs) == 0 {
+			return true // block if can't resolve
+		}
+		ip = addrs[0]
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
 }
 
 func truncateStr(s string, max int) string {

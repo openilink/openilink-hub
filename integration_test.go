@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2643,8 +2644,8 @@ func TestAIToolImageReply(t *testing.T) {
 	defer appSrv.Close()
 
 	// --- Mock LLM server ---
-	var llmCallCount int
-	var gotMultimodalToolResult bool
+	var llmCallCount atomic.Int32
+	var gotMultimodalUserImage atomic.Bool
 	var instIDForLLM string // set after InstallApp, read by LLM handler
 
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2653,11 +2654,11 @@ func TestAIToolImageReply(t *testing.T) {
 			Tools    []json.RawMessage `json:"tools"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		llmCallCount++
+		llmCallCount.Add(1)
 
 		w.Header().Set("Content-Type", "application/json")
 
-		if llmCallCount == 1 {
+		if llmCallCount.Load() == 1 {
 			// First call: return tool_call
 			json.NewEncoder(w).Encode(map[string]any{
 				"choices": []map[string]any{{
@@ -2685,14 +2686,14 @@ func TestAIToolImageReply(t *testing.T) {
 				Content any    `json:"content"`
 			}
 			json.Unmarshal(raw, &msg)
-			if msg.Role == "tool" {
+			if msg.Role == "user" {
 				// Check if content is array (multimodal) vs string
 				var contentArr []map[string]any
 				contentBytes, _ := json.Marshal(msg.Content)
 				if json.Unmarshal(contentBytes, &contentArr) == nil && len(contentArr) > 0 {
 					for _, part := range contentArr {
 						if part["type"] == "image_url" {
-							gotMultimodalToolResult = true
+							gotMultimodalUserImage.Store(true)
 						}
 					}
 				}
@@ -2826,10 +2827,10 @@ func TestAIToolImageReply(t *testing.T) {
 	if !hasTextReply {
 		t.Error("final text reply was not sent")
 	}
-	if !gotMultimodalToolResult {
-		t.Error("LLM did not receive multimodal image content in tool result")
+	if !gotMultimodalUserImage.Load() {
+		t.Error("LLM did not receive multimodal image content in user message")
 	}
-	if llmCallCount != 2 {
-		t.Errorf("LLM called %d times, want 2", llmCallCount)
+	if llmCallCount.Load() != 2 {
+		t.Errorf("LLM called %d times, want 2", llmCallCount.Load())
 	}
 }
