@@ -22,6 +22,7 @@ type Bot struct {
 	CreatedAt      int64           `json:"created_at"`
 	UpdatedAt      int64           `json:"updated_at"`
 	AIEnabled      bool            `json:"ai_enabled"`
+	AIModel        string          `json:"ai_model"`
 }
 
 type BotStats struct {
@@ -73,5 +74,6 @@ type BotStore interface {
 	GetBotStats(userID string) (*BotStats, error)
 	ListRecentContacts(botID string, limit int) ([]RecentContact, error)
 	UpdateBotAIEnabled(id string, enabled bool) error
+	UpdateBotAIModel(id, model string) error
 	LastActivityAt(userID string) *time.Time
 }
