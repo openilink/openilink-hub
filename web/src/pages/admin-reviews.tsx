@@ -57,10 +57,20 @@ export function AdminReviewsPage() {
   const [rejectTarget, setRejectTarget] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   function loadApps() {
-    api.adminListApps().then(setApps);
+    setLoading(true);
+    api.adminListApps()
+      .then((data) => {
+        setApps(data);
+        setSelected((prev: any) =>
+          prev ? (data.find((a: any) => a.id === prev.id) ?? prev) : null
+        );
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -73,7 +83,6 @@ export function AdminReviewsPage() {
       await api.reviewListing(a.id, true);
       toast({ title: `「${a.name}」已通过上架` });
       loadApps();
-      if (selected?.id === a.id) setSelected((prev: any) => ({ ...prev, listing: "listed" }));
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
     } finally {
@@ -83,15 +92,14 @@ export function AdminReviewsPage() {
 
   async function handleRejectConfirm() {
     if (!rejectTarget || !rejectReason.trim()) return;
+    const reason = rejectReason.trim();
     setSubmitting(true);
     try {
-      await api.reviewListing(rejectTarget.id, false, rejectReason.trim());
+      await api.reviewListing(rejectTarget.id, false, reason);
       toast({ title: `「${rejectTarget.name}」已拒绝` });
       setRejectTarget(null);
       setRejectReason("");
       loadApps();
-      if (selected?.id === rejectTarget.id)
-        setSelected((prev: any) => ({ ...prev, listing: "rejected", listing_reject_reason: rejectReason.trim() }));
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
     } finally {
@@ -104,7 +112,6 @@ export function AdminReviewsPage() {
     try {
       await api.setAppListing(a.id, newListing);
       loadApps();
-      if (selected?.id === a.id) setSelected((prev: any) => ({ ...prev, listing: newListing }));
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
     }
@@ -167,6 +174,7 @@ export function AdminReviewsPage() {
                           variant="outline"
                           className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/5"
                           onClick={() => { setRejectTarget(a); setRejectReason(""); }}
+                          disabled={submitting}
                         >
                           <X className="h-3 w-3" /> 拒绝
                         </Button>
@@ -180,13 +188,19 @@ export function AdminReviewsPage() {
                 </TableCell>
               </TableRow>
             ))}
-            {apps.length === 0 && (
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-10">
+                  加载中…
+                </TableCell>
+              </TableRow>
+            ) : apps.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-10">
                   暂无应用
                 </TableCell>
               </TableRow>
-            )}
+            ) : null}
           </TableBody>
         </Table>
       </div>
