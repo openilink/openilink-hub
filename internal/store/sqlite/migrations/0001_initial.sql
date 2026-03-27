@@ -51,7 +51,6 @@ CREATE TABLE IF NOT EXISTS bots (
     id              TEXT PRIMARY KEY,
     user_id         TEXT NOT NULL,
     name            TEXT NOT NULL DEFAULT '',
-    display_name    TEXT NOT NULL DEFAULT '',
     provider        TEXT NOT NULL DEFAULT 'ilink',
     provider_id     TEXT NOT NULL DEFAULT '',
     status          TEXT NOT NULL DEFAULT 'disconnected',

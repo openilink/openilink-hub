@@ -316,6 +316,10 @@ func (s *Server) handleUpdateBot(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.DisplayName != nil {
+		if len(*req.DisplayName) > 64 {
+			jsonError(w, "display_name too long (max 64)", http.StatusBadRequest)
+			return
+		}
 		if err := s.Store.UpdateBotDisplayName(botID, *req.DisplayName); err != nil {
 			jsonError(w, "update failed", http.StatusInternalServerError)
 			return
