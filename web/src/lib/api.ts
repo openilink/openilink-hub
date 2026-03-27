@@ -138,6 +138,9 @@ export const api = {
   deleteOAuthConfig: (provider: string) =>
     request(`/api/admin/config/oauth/${provider}`, { method: "DELETE" }),
 
+  // Public: available models list (all authenticated users)
+  getAvailableModels: () => request<string[]>("/api/config/ai/available_models"),
+
   // Admin: AI config
   getAIConfig: () => request<any>("/api/admin/config/ai"),
   setAIConfig: (data: {

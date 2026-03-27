@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Users,
@@ -69,6 +69,16 @@ export function AdminOverviewPage() {
   const [aiConfig, setAIConfig] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+
+  const availableModelsText = useMemo(() => {
+    try {
+      return aiConfig?.available_models
+        ? JSON.parse(aiConfig.available_models).join("\n")
+        : "";
+    } catch {
+      return "";
+    }
+  }, [aiConfig?.available_models]);
 
   useEffect(() => {
     api
@@ -183,15 +193,7 @@ export function AdminOverviewPage() {
                 可用模型列表（每行一个）
               </Label>
               <Textarea
-                value={((): string => {
-                  try {
-                    return aiConfig?.available_models
-                      ? JSON.parse(aiConfig.available_models).join("\n")
-                      : "";
-                  } catch {
-                    return "";
-                  }
-                })()}
+                value={availableModelsText}
                 onChange={(e) => {
                   const models = e.target.value
                     .split("\n")

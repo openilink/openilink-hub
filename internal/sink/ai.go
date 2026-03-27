@@ -76,7 +76,9 @@ func (s *AI) handleCommand(d Delivery, cmd string) {
 	availableRaw := global["ai.available_models"]
 	var available []string
 	if availableRaw != "" {
-		json.Unmarshal([]byte(availableRaw), &available)
+		if err := json.Unmarshal([]byte(availableRaw), &available); err != nil {
+			slog.Warn("ai: malformed ai.available_models config", "err", err)
+		}
 	}
 
 	sendText := func(text string) {

@@ -97,13 +97,8 @@ export function BotDetailPage() {
     loadBot();
     loadInstallations();
     loadMarketplace();
-    api.getAIConfig().then((cfg: any) => {
-      if (cfg?.available_models) {
-        try {
-          const models = JSON.parse(cfg.available_models);
-          if (Array.isArray(models)) setAvailableModels(models);
-        } catch {}
-      }
+    api.getAvailableModels().then((models) => {
+      if (Array.isArray(models)) setAvailableModels(models);
     }).catch(() => {});
     const t = setInterval(async () => {
       try {

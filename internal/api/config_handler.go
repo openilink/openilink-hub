@@ -111,6 +111,17 @@ func (s *Server) handleDeleteOAuthConfig(w http.ResponseWriter, r *http.Request)
 	jsonOK(w)
 }
 
+// GET /api/config/ai/available_models — public endpoint returning the configured model list
+func (s *Server) handleGetAvailableModels(w http.ResponseWriter, r *http.Request) {
+	dbConf, _ := s.Store.ListConfigByPrefix("ai.")
+	raw := dbConf["ai.available_models"]
+	if raw == "" {
+		raw = "[]"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(raw))
+}
+
 // GET /api/admin/config/ai — get global AI config
 func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	dbConf, err := s.Store.ListConfigByPrefix("ai.")
