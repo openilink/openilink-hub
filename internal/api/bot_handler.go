@@ -562,6 +562,37 @@ func (s *Server) handleSetBotAI(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w)
 }
 
+// PUT /api/bots/{id}/ai_model
+func (s *Server) handleSetBotAIModel(w http.ResponseWriter, r *http.Request) {
+	botID := r.PathValue("id")
+	userID := auth.UserIDFromContext(r.Context())
+
+	bot, err := s.Store.GetBot(botID)
+	if err != nil || bot.UserID != userID {
+		jsonError(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.Store.UpdateBotAIModel(botID, req.Model); err != nil {
+		jsonError(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	if s.BotManager != nil {
+		if inst, ok := s.BotManager.GetInstance(botID); ok {
+			inst.AIModel = req.Model
+		}
+	}
+	jsonOK(w)
+}
+
 func (s *Server) handleBotContacts(w http.ResponseWriter, r *http.Request) {
 	botID := r.PathValue("id")
 	userID := auth.UserIDFromContext(r.Context())

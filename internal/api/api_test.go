@@ -1797,3 +1797,43 @@ func TestBotAPI_UpdateInstallationTools(t *testing.T) {
 		}
 	})
 }
+
+func TestSetBotAIModel(t *testing.T) {
+	env := setupTestEnv(t)
+	bot := createTestBot(t, env.store, env.user.ID, "model-bot")
+
+	// Set a model
+	resp := doJSON(t, env.ts, "PUT", "/api/bots/"+bot.ID+"/ai_model",
+		map[string]string{"model": "gpt-4o"},
+		withCookie(env.cookie))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Verify it was saved
+	updated, err := env.store.GetBot(bot.ID)
+	if err != nil {
+		t.Fatalf("GetBot: %v", err)
+	}
+	if updated.AIModel != "gpt-4o" {
+		t.Errorf("expected AIModel %q, got %q", "gpt-4o", updated.AIModel)
+	}
+
+	// Clear model (use global default)
+	resp2 := doJSON(t, env.ts, "PUT", "/api/bots/"+bot.ID+"/ai_model",
+		map[string]string{"model": ""},
+		withCookie(env.cookie))
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.StatusCode)
+	}
+
+	updated, err = env.store.GetBot(bot.ID)
+	if err != nil {
+		t.Fatalf("GetBot: %v", err)
+	}
+	if updated.AIModel != "" {
+		t.Errorf("expected AIModel %q, got %q", "", updated.AIModel)
+	}
+}
