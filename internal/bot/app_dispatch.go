@@ -107,9 +107,11 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 					},
 				}
 				if err := wsConn.SendJSON(envelope); err != nil {
+					slog.Warn("ws delivery failed, falling back to webhook", "inst", installations[i].ID, "app", installations[i].AppSlug, "err", err)
 					span.EndWithError("ws send: " + err.Error())
 					// Fall through to webhook delivery below
 				} else {
+					slog.Info("event delivered via ws", "inst", installations[i].ID, "app", installations[i].AppSlug, "event", event.Type, "event_id", event.ID)
 					span.End()
 					continue
 				}
@@ -219,6 +221,9 @@ func (m *Manager) deliverToInstallation(inst *Instance, installation *store.AppI
 		if wsConn == nil {
 			wsConn = m.appWSHub.GetAppLevel(installation.AppID)
 		}
+		if wsConn == nil {
+			slog.Info("no ws connection found", "inst", installation.ID, "app", installation.AppSlug, "app_id", installation.AppID)
+		}
 		if wsConn != nil {
 			span := tracer.StartChild(rootSpan, "ws:"+installation.AppSlug, store.SpanKindClient, map[string]any{
 				"app.name": installation.AppName,
@@ -248,9 +253,11 @@ func (m *Manager) deliverToInstallation(inst *Instance, installation *store.AppI
 				RequestBody:    string(envJSON),
 			})
 			if err := wsConn.SendJSON(envelope); err != nil {
+				slog.Warn("ws delivery failed, falling back to webhook", "inst", installation.ID, "app", installation.AppSlug, "err", err)
 				span.EndWithError("ws send: " + err.Error())
 				// Fall through to webhook
 			} else {
+				slog.Info("event delivered via ws", "inst", installation.ID, "app", installation.AppSlug, "event", event.Type, "event_id", event.ID)
 				span.End()
 				return
 			}
@@ -298,12 +305,18 @@ func (m *Manager) deliverBuiltinMention(inst *Instance, installation *store.AppI
 func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage, p parsedMessage, content string, tracer *store.Tracer, rootSpan *store.SpanBuilder) bool {
 	installations, command, args, err := m.appDisp.MatchCommand(inst.DBID, content)
 	if err != nil {
+		slog.Error("match command error", "bot", inst.DBID, "content", content, "err", err)
 		rootSpan.AddEvent("match_command_error", map[string]any{"error": err.Error()})
 		return false
 	}
 	if len(installations) == 0 {
+		if command != "" {
+			slog.Info("command not matched", "bot", inst.DBID, "command", command)
+		}
 		return false
 	}
+
+	slog.Info("command matched", "bot", inst.DBID, "command", command, "args", args, "installations", len(installations))
 
 	rootSpan.AddEvent("match_command", map[string]any{
 		"command": command,

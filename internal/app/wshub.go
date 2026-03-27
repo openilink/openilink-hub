@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -153,19 +154,26 @@ func (c *WSConn) ReadPump(h ReadPumpHandler) {
 	for {
 		_, message, err := c.WS.ReadMessage()
 		if err != nil {
+			slog.Info("ws read ended", "inst", c.InstID, "app", c.AppSlug, "err", err)
 			break
 		}
 
 		var msg map[string]any
 		if err := json.Unmarshal(message, &msg); err != nil {
+			slog.Warn("ws unmarshal failed", "inst", c.InstID, "app", c.AppSlug, "err", err)
 			continue
 		}
 
-		switch msg["type"] {
+		msgType, _ := msg["type"].(string)
+		slog.Debug("ws recv", "inst", c.InstID, "app", c.AppSlug, "type", msgType)
+
+		switch msgType {
 		case "ping":
 			c.SendJSON(map[string]string{"type": "pong"})
 		case "send":
 			h.HandleAppWSSend(c, msg)
+		default:
+			slog.Warn("ws unknown msg type", "inst", c.InstID, "app", c.AppSlug, "type", msgType)
 		}
 	}
 }
