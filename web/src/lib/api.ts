@@ -92,6 +92,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ enabled }),
     }),
+  setBotAIModel: (botId: string, model: string) =>
+    request(`/api/bots/${botId}/ai_model`, {
+      method: "PUT",
+      body: JSON.stringify({ model }),
+    }),
   botContacts: (id: string) => request<any[]>(`/api/bots/${id}/contacts`),
 
   // Channels (under bots)

@@ -53,6 +53,7 @@ export function BotDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const marketplaceRef = useRef<HTMLDivElement>(null);
 
   const loadBot = useCallback(async () => {
@@ -96,6 +97,14 @@ export function BotDetailPage() {
     loadBot();
     loadInstallations();
     loadMarketplace();
+    api.getAIConfig().then((cfg: any) => {
+      if (cfg?.available_models) {
+        try {
+          const models = JSON.parse(cfg.available_models);
+          if (Array.isArray(models)) setAvailableModels(models);
+        } catch {}
+      }
+    }).catch(() => {});
     const t = setInterval(async () => {
       try {
         const bots = await api.listBots();
@@ -282,6 +291,30 @@ export function BotDetailPage() {
               }}
             />
           </div>
+
+          {/* Model selector */}
+          {bot.ai_enabled && availableModels.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Label className="text-xs font-bold uppercase text-muted-foreground">模型</Label>
+              <Select
+                value={bot.ai_model || ""}
+                onValueChange={async (model) => {
+                  await api.setBotAIModel(id!, model);
+                  setBot({ ...bot, ai_model: model });
+                }}
+              >
+                <SelectTrigger className="h-7 text-xs w-48">
+                  <SelectValue placeholder="使用全局默认" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">使用全局默认</SelectItem>
+                  {availableModels.map((m) => (
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <Separator orientation="vertical" className="h-6 mx-1" />
 
