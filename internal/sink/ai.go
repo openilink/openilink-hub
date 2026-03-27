@@ -158,6 +158,17 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	// Handle thinking/reasoning content
+	if result.Thinking != "" {
+		if span != nil {
+			span.SetAttr("ai.thinking_length", len(result.Thinking))
+		}
+		hideThinking, _ := s.Store.GetConfig("ai.hide_thinking")
+		if hideThinking != "true" {
+			reply = "<think>\n" + result.Thinking + "\n</think>\n\n" + reply
+		}
+	}
+
 	if span != nil {
 		span.SetAttr("reply.content", reply)
 	}

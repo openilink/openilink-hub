@@ -68,9 +68,11 @@ type chatChoice struct {
 }
 
 type chatResponseMessage struct {
-	Role      string     `json:"role"`
-	Content   *string    `json:"content"`
-	ToolCalls []toolCall `json:"tool_calls,omitempty"`
+	Role             string     `json:"role"`
+	Content          *string    `json:"content"`
+	Thinking         *string    `json:"thinking,omitempty"`          // DeepSeek / some providers
+	ReasoningContent *string    `json:"reasoning_content,omitempty"` // OpenAI o1/o3 compatible
+	ToolCalls        []toolCall `json:"tool_calls,omitempty"`
 }
 
 // ToolCallRequest is returned when the LLM wants to call a tool.
@@ -90,6 +92,7 @@ type ToolCallResult struct {
 // CompletionResult holds the outcome of a completion call.
 type CompletionResult struct {
 	Content   string            // text reply (empty if tool_calls)
+	Thinking  string            // chain-of-thought / reasoning content (may be empty)
 	ToolCalls []ToolCallRequest // tool calls to execute (empty if text reply)
 }
 
@@ -253,6 +256,14 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 
 	choice := result.Choices[0]
 
+	// Extract thinking/reasoning content (varies by provider)
+	thinking := ""
+	if choice.Message.Thinking != nil && *choice.Message.Thinking != "" {
+		thinking = *choice.Message.Thinking
+	} else if choice.Message.ReasoningContent != nil && *choice.Message.ReasoningContent != "" {
+		thinking = *choice.Message.ReasoningContent
+	}
+
 	// Tool calls
 	if len(choice.Message.ToolCalls) > 0 {
 		var calls []ToolCallRequest
@@ -263,7 +274,7 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 				Arguments: json.RawMessage(tc.Function.Arguments),
 			})
 		}
-		return &CompletionResult{ToolCalls: calls}, nil
+		return &CompletionResult{Thinking: thinking, ToolCalls: calls}, nil
 	}
 
 	// Text reply
@@ -271,7 +282,7 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 	if choice.Message.Content != nil {
 		content = *choice.Message.Content
 	}
-	return &CompletionResult{Content: content}, nil
+	return &CompletionResult{Content: content, Thinking: thinking}, nil
 }
 
 func truncate(s string, max int) string {

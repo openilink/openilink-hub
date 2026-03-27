@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -180,6 +181,18 @@ export function AdminOverviewPage() {
                 value={aiConfig?.api_key || ""}
                 onChange={(e) => setAIConfig({ ...aiConfig, api_key: e.target.value })}
                 placeholder="••••••••"
+              />
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
+              <div>
+                <p className="text-sm font-medium">隐藏思考过程</p>
+                <p className="text-xs text-muted-foreground">启用后不会将模型的思考内容发送给用户</p>
+              </div>
+              <Switch
+                checked={aiConfig?.hide_thinking === "true"}
+                onCheckedChange={(checked) =>
+                  setAIConfig({ ...aiConfig, hide_thinking: checked ? "true" : "false" })
+                }
               />
             </div>
           </CardContent>
