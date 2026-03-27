@@ -225,11 +225,11 @@ func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, o
 	return err
 }
 
-func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, guide string, tools, events, scopes json.RawMessage) error {
+func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide string, tools, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=?, description=?, icon_url=?, homepage=?,
-		webhook_url=?, oauth_setup_url=?, oauth_redirect_url=?, version=?, guide=?,
+		webhook_url=?, oauth_setup_url=?, oauth_redirect_url=?, version=?, readme=?, guide=?,
 		tools=?, events=?, scopes=?, updated_at=unixepoch() WHERE id=?`,
-		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, guide, tools, events, scopes, id)
+		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide, tools, events, scopes, id)
 	return err
 }
 

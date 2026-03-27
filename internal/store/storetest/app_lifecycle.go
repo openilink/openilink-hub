@@ -379,7 +379,7 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		err := s.UpdateMarketplaceApp(marketplaceAppID, "Marketplace App v2",
 			"updated from registry", "https://new-icon.png", "https://new-home.com",
 			"https://new-webhook.com", "https://new-setup.com", "https://new-redirect.com",
-			"2.0.0", "Updated guide", newTools, newEvents, newScopes)
+			"2.0.0", "Updated readme", "Updated guide", newTools, newEvents, newScopes)
 		if err != nil {
 			t.Fatalf("UpdateMarketplaceApp: %v", err)
 		}

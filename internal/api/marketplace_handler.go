@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/openilink/openilink-hub/internal/registry"
@@ -17,7 +18,12 @@ func (s *Server) handleMarketplace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Fetch apps from all registries
-	registryApps, _ := s.Registry.ListApps()
+	registryApps, err := s.Registry.ListApps()
+	if err != nil {
+		log.Printf("marketplace: failed to fetch registry apps: %v", err)
+		jsonError(w, "failed to fetch registry apps", http.StatusBadGateway)
+		return
+	}
 
 	// 2. Get locally installed marketplace apps
 	localApps, err := s.Store.ListMarketplaceApps()
@@ -155,6 +161,7 @@ func (s *Server) handleMarketplaceSync(w http.ResponseWriter, r *http.Request) {
 		regApp.OAuthSetupURL,
 		regApp.OAuthRedirectURL,
 		regApp.Version,
+		regApp.Readme,
 		regApp.Guide,
 		regApp.Tools,
 		regApp.Events,

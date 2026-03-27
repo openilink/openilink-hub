@@ -222,11 +222,11 @@ func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, o
 	return err
 }
 
-func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, guide string, tools, events, scopes json.RawMessage) error {
+func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide string, tools, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=$1, description=$2, icon_url=$3, homepage=$4,
-		webhook_url=$5, oauth_setup_url=$6, oauth_redirect_url=$7, version=$8, guide=$9,
-		tools=$10, events=$11, scopes=$12, updated_at=NOW() WHERE id=$13`,
-		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, guide, tools, events, scopes, id)
+		webhook_url=$5, oauth_setup_url=$6, oauth_redirect_url=$7, version=$8, readme=$9, guide=$10,
+		tools=$11, events=$12, scopes=$13, updated_at=NOW() WHERE id=$14`,
+		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide, tools, events, scopes, id)
 	return err
 }
 
