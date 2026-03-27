@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Eye, Zap, Loader2, ExternalLink, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Eye, Zap, Loader2, ExternalLink, ShieldCheck, Terminal, Sliders } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
+import { Card, CardContent } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { Label } from "../components/ui/label";
 import { api, botDisplayName } from "../lib/api";
@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 import { SCOPE_DESCRIPTIONS, EVENT_TYPES } from "../lib/constants";
 import { ToolsDisplay, parseTools } from "../components/tools-display";
+
+type TabKey = "permissions" | "tools" | "config";
 
 export function InstallAppPage() {
   const { id: botId, appId } = useParams<{ id: string; appId: string }>();
@@ -23,7 +25,6 @@ export function InstallAppPage() {
   const [loading, setLoading] = useState(true);
   const [handle, setHandle] = useState(searchParams.get("handle") || "");
   const [configForm, setConfigForm] = useState<Record<string, string>>(() => {
-    // Prefill config from URL search params (e.g. ?config.forward_url=https://...)
     const prefill: Record<string, string> = {};
     searchParams.forEach((value, key) => {
       if (key.startsWith("config.")) {
@@ -35,6 +36,7 @@ export function InstallAppPage() {
   const [installing, setInstalling] = useState(false);
   const [waitingForOAuth, setWaitingForOAuth] = useState(false);
   const [oauthPopup, setOAuthPopup] = useState<Window | null>(null);
+  const [tab, setTab] = useState<TabKey>("permissions");
 
   const loadData = useCallback(async () => {
     try {
@@ -70,7 +72,6 @@ export function InstallAppPage() {
     };
     window.addEventListener("message", handleMessage);
 
-    // Fallback: poll every 3s in case postMessage doesn't work
     const interval = setInterval(async () => {
       try {
         const installations = await api.listBotApps(botId!);
@@ -99,7 +100,6 @@ export function InstallAppPage() {
         scopes: app.scopes || [],
       });
 
-      // If app requires OAuth setup, open popup for OAuth flow
       if (result?.needs_oauth && result?.oauth_redirect) {
         setWaitingForOAuth(true);
         const popup = window.open(result.oauth_redirect, "oauth_popup", "width=600,height=700,scrollbars=yes");
@@ -110,7 +110,6 @@ export function InstallAppPage() {
 
       const installationId = result?.id || result?.installation_id;
 
-      // If config_schema exists and form was filled, save config
       if (app.config_schema && installationId) {
         const hasConfig = Object.values(configForm).some((v) => v !== "");
         if (hasConfig) {
@@ -175,6 +174,7 @@ export function InstallAppPage() {
   const writeScopes = scopes.filter((s: string) => s.endsWith(":write"));
   const otherScopes = scopes.filter((s: string) => !s.endsWith(":read") && !s.endsWith(":write"));
   const events: string[] = app.events || [];
+  const hasPermissions = readScopes.length > 0 || writeScopes.length > 0 || otherScopes.length > 0 || events.length > 0;
 
   // Parse config_schema
   let schemaProperties: Record<string, any> = {};
@@ -190,37 +190,39 @@ export function InstallAppPage() {
   }
 
   const tools = parseTools(app.tools);
-  const hasPermissions = readScopes.length > 0 || writeScopes.length > 0 || otherScopes.length > 0 || events.length > 0;
+
+  // Build tabs
+  const tabs: { key: TabKey; label: string; icon: any }[] = [
+    { key: "permissions", label: "权限", icon: ShieldCheck },
+  ];
+  if (tools.length > 0) {
+    tabs.push({ key: "tools", label: "命令 / 工具", icon: Terminal });
+  }
+  if (Object.keys(schemaProperties).length > 0) {
+    tabs.push({ key: "config", label: "配置", icon: Sliders });
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="space-y-4">
-        <button
-          onClick={() => navigate(`/dashboard/accounts/${botId}`)}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {botName || "返回"}
-        </button>
-        <h1 className="text-2xl font-bold">安装应用</h1>
-      </div>
+    <div className="space-y-6">
+      {/* Back */}
+      <button
+        onClick={() => navigate(`/dashboard/accounts/${botId}`)}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {botName || "返回"}
+      </button>
 
-      <div className="grid gap-8 md:grid-cols-2">
-        {/* Left section: App identity */}
-        <Card>
-          <CardHeader>
-            <CardTitle>应用信息</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-start gap-4">
-              <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-14 w-14" />
-              <div className="flex-1 min-w-0 space-y-1">
-                <h2 className="text-lg font-bold">{app.name}</h2>
-                {app.slug && (
-                  <p className="text-sm text-muted-foreground font-mono">{app.slug}</p>
-                )}
-              </div>
+      <div className="flex gap-8">
+        {/* Left: App info + install */}
+        <div className="w-64 shrink-0 space-y-6">
+          <div className="space-y-3">
+            <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-14 w-14" />
+            <div className="space-y-1">
+              <h1 className="text-xl font-bold">{app.name}</h1>
+              {app.slug && (
+                <p className="text-sm text-muted-foreground font-mono">{app.slug}</p>
+              )}
             </div>
             {app.description && (
               <p className="text-sm text-muted-foreground">{app.description}</p>
@@ -236,131 +238,178 @@ export function InstallAppPage() {
                 主页
               </a>
             )}
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Right section: Permissions + config */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>权限与配置</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Permissions */}
-              {hasPermissions ? (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium">此应用将能够：</p>
+          {/* Handle */}
+          <div className="space-y-1.5">
+            <Label htmlFor="install-handle" className="text-muted-foreground">Handle</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="install-handle"
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                className="h-8 text-xs font-mono flex-1"
+                placeholder="如 notify-prod"
+              />
+              <span className="text-xs text-muted-foreground font-mono shrink-0">
+                @{handle || "handle"}
+              </span>
+            </div>
+          </div>
 
-                  {readScopes.length > 0 && (
-                    <div className="space-y-1.5">
-                      {readScopes.map((scope: string) => (
-                        <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Eye className="h-3.5 w-3.5 shrink-0" />
-                          <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {writeScopes.length > 0 && (
-                    <div className="space-y-1.5">
-                      {writeScopes.map((scope: string) => (
-                        <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Zap className="h-3.5 w-3.5 shrink-0" />
-                          <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {otherScopes.length > 0 && (
-                    <div className="space-y-1.5">
-                      {otherScopes.map((scope: string) => (
-                        <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                          <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {events.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-xs text-muted-foreground">订阅事件：</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {events.map((event: string) => {
-                          const found = EVENT_TYPES.find((e) => e.key === event);
-                          return (
-                            <Badge key={event} variant="outline" className="text-xs">
-                              {found ? found.label : event}
-                              {found && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
-                            </Badge>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  接收 @mention 消息并执行响应。
-                </p>
-              )}
-
-              {/* Tools (commands) */}
-              {tools.length > 0 && (
-                <div className="pt-2 border-t">
-                  <ToolsDisplay tools={tools} />
-                </div>
-              )}
-
-              {/* Handle */}
-              <div className="space-y-1.5 pt-2 border-t">
-                <Label htmlFor="install-handle" className="text-muted-foreground">
-                  Handle
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="install-handle"
-                    value={handle}
-                    onChange={(e) => setHandle(e.target.value)}
-                    className="h-8 text-xs font-mono flex-1"
-                    placeholder="如 notify-prod"
-                  />
-                  <span className="text-xs text-muted-foreground font-mono shrink-0">
-                    @{handle || "handle"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Config schema form */}
-              {Object.keys(schemaProperties).length > 0 && (
-                <div className="space-y-3 pt-2 border-t">
-                  <p className="text-sm font-medium">应用配置</p>
-                  {Object.entries(schemaProperties).map(([key, prop]: [string, any]) => (
-                    <div key={key} className="space-y-1.5">
-                      <Label className="text-muted-foreground">{prop.title || key}</Label>
-                      <Input
-                        value={configForm[key] || ""}
-                        onChange={(e) => setConfigForm({ ...configForm, [key]: e.target.value })}
-                        className="h-8 text-xs font-mono"
-                        placeholder={prop.description || ""}
-                      />
-                      {prop.description && (
-                        <p className="text-xs text-muted-foreground">{prop.description}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Install button */}
           <Button className="w-full" onClick={handleInstall} disabled={installing}>
             {installing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             允许并安装
           </Button>
+        </div>
+
+        {/* Right: Tabs */}
+        <div className="flex gap-8 flex-1 min-w-0">
+          {/* Tab nav */}
+          <nav className="hidden md:block w-40 shrink-0 space-y-1">
+            {tabs.map((t) => (
+              <Button
+                key={t.key}
+                variant="ghost"
+                size="sm"
+                onClick={() => setTab(t.key)}
+                className={`w-full justify-start gap-2 ${
+                  tab === t.key
+                    ? "bg-primary/10 text-primary font-medium hover:bg-primary/10 hover:text-primary"
+                    : "text-muted-foreground"
+                }`}
+              >
+                <t.icon className="h-4 w-4 shrink-0" />
+                {t.label}
+              </Button>
+            ))}
+          </nav>
+
+          {/* Mobile tab select */}
+          <div className="md:hidden w-full mb-4">
+            <select
+              value={tab}
+              onChange={(e) => setTab(e.target.value as TabKey)}
+              className="w-full h-9 px-3 rounded-md border bg-background text-sm"
+            >
+              {tabs.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tab content */}
+          <div className="flex-1 min-w-0">
+            {tab === "permissions" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-base font-semibold">权限</h2>
+                  <p className="text-sm text-muted-foreground mt-1">安装后此应用将获得以下权限。</p>
+                </div>
+                <Card>
+                  <CardContent className="pt-6 space-y-4">
+                    {readScopes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">读取权限</p>
+                        <div className="space-y-1.5">
+                          {readScopes.map((scope: string) => (
+                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Eye className="h-3.5 w-3.5 shrink-0" />
+                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {writeScopes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">写入权限</p>
+                        <div className="space-y-1.5">
+                          {writeScopes.map((scope: string) => (
+                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Zap className="h-3.5 w-3.5 shrink-0" />
+                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {otherScopes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">其他权限</p>
+                        <div className="space-y-1.5">
+                          {otherScopes.map((scope: string) => (
+                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {events.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {events.map((event: string) => {
+                            const found = EVENT_TYPES.find((e) => e.key === event);
+                            return (
+                              <Badge key={event} variant="outline" className="text-xs">
+                                {found ? found.label : event}
+                                {found && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {!hasPermissions && (
+                      <p className="text-sm text-muted-foreground">此应用未申请任何权限，仅接收 @mention 消息并执行响应。</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {tab === "tools" && tools.length > 0 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-base font-semibold">命令 / 工具</h2>
+                  <p className="text-sm text-muted-foreground mt-1">此应用提供的命令和工具。</p>
+                </div>
+                <Card className="p-5">
+                  <ToolsDisplay tools={tools} />
+                </Card>
+              </div>
+            )}
+
+            {tab === "config" && Object.keys(schemaProperties).length > 0 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-base font-semibold">应用配置</h2>
+                  <p className="text-sm text-muted-foreground mt-1">安装前填写此应用所需的配置。</p>
+                </div>
+                <Card>
+                  <CardContent className="space-y-4 pt-6">
+                    {Object.entries(schemaProperties).map(([key, prop]: [string, any]) => (
+                      <div key={key} className="space-y-1.5">
+                        <Label className="text-muted-foreground">{prop.title || key}</Label>
+                        <Input
+                          value={configForm[key] || ""}
+                          onChange={(e) => setConfigForm({ ...configForm, [key]: e.target.value })}
+                          className="h-8 text-xs font-mono"
+                          placeholder={prop.description || ""}
+                        />
+                        {prop.description && (
+                          <p className="text-xs text-muted-foreground">{prop.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
