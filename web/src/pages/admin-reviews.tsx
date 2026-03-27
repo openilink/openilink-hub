@@ -59,7 +59,9 @@ export function AdminReviewsPage() {
           prev ? (data.find((a: any) => a.id === prev.id) ?? prev) : null
         );
       })
-      .catch(() => {})
+      .catch(() => {
+        toast({ variant: "destructive", title: "加载失败", description: "无法获取应用列表，请刷新重试" });
+      })
       .finally(() => setLoading(false));
   }
 
