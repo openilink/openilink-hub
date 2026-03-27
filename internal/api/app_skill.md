@@ -161,7 +161,7 @@ All events share this envelope format:
     "timestamp": 1711234567,
     "data": {
       "message_id": 12345,
-      "sender": {"id": "wxid_abc", "name": "Zhang San"},
+      "sender": {"id": "wxid_abc", "name": "Zhang San", "role": "user"},
       "group": null,
       "content": "hello",
       "msg_type": "text",
@@ -187,7 +187,7 @@ User-triggered:
       "command": "pr",
       "text": "openilink/openilink-hub open",
       "args": null,
-      "sender": {"id": "wxid_abc", "name": "Zhang San"},
+      "sender": {"id": "wxid_abc", "name": "Zhang San", "role": "user"},
       "group": null
     }
   }
@@ -203,14 +203,14 @@ AI Agent-triggered:
       "command": "pr",
       "text": "",
       "args": {"repo": "openilink/openilink-hub", "state": "open"},
-      "sender": {"id": "wxid_abc", "name": "wxid_abc", "role": "ai_agent"},
+      "sender": {"id": "wxid_abc", "name": "wxid_abc", "role": "agent"},
       "group": null
     }
   }
 }
 ```
 
-When `sender.role` is `"ai_agent"`, it means the command was triggered by the AI Agent on behalf of this user. The `sender.id` and `group` are the real user/group, so your App can use them for async replies.
+The `sender.role` field indicates who triggered the command: `"user"` for direct user commands, `"agent"` for AI Agent tool calls. The `sender.id` and `group` are always the real user/group, so your App can use them for async replies regardless of role.
 
 ### Replying to Events
 

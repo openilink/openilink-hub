@@ -54,7 +54,7 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 
 	event := appdelivery.NewEvent(eventType, map[string]any{
 		"message_id": msg.ExternalID,
-		"sender":     map[string]any{"id": msg.Sender, "name": msg.Sender},
+		"sender":     map[string]any{"id": msg.Sender, "name": msg.Sender, "role": "user"},
 		"group":      groupInfo(msg),
 		"content":    content,
 		"msg_type":   p.msgType,
@@ -186,7 +186,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		}
 		event := appdelivery.NewEvent("command", map[string]any{
 			"command": command, "text": cmdArgs,
-			"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
+			"sender": map[string]any{"id": msg.Sender, "name": msg.Sender, "role": "user"},
 			"group": groupInfo(msg), "handle": handle,
 		})
 		event.TraceID = tracer.TraceID()
@@ -205,7 +205,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 	}
 
 	event := appdelivery.NewEvent("message.text", map[string]any{
-		"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
+		"sender": map[string]any{"id": msg.Sender, "name": msg.Sender, "role": "user"},
 		"group": groupInfo(msg), "content": text, "handle": handle,
 	})
 	event.TraceID = tracer.TraceID()
@@ -338,7 +338,7 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 
 	event := appdelivery.NewEvent("command", map[string]any{
 		"command": command, "text": args,
-		"sender": map[string]any{"id": msg.Sender, "name": msg.Sender},
+		"sender": map[string]any{"id": msg.Sender, "name": msg.Sender, "role": "user"},
 		"group": groupInfo(msg),
 	})
 	event.TraceID = tracer.TraceID()
