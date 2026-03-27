@@ -485,8 +485,15 @@ func (s *Server) requireAppForInstall(w http.ResponseWriter, r *http.Request) *s
 }
 
 // PUT /api/admin/apps/{id}/listing — admin directly sets listing status
+// PUT /api/admin/apps/{id}/listing — admin directly sets listing status (listed/unlisted).
+// This is an admin privilege bypass of the normal review flow, intended for
+// moderation actions (e.g. emergency takedown, re-listing without re-review).
 func (s *Server) handleAdminSetListing(w http.ResponseWriter, r *http.Request) {
 	appID := r.PathValue("id")
+	if _, err := s.Store.GetApp(appID); err != nil {
+		jsonError(w, "app not found", http.StatusNotFound)
+		return
+	}
 	var req struct {
 		Listing string `json:"listing"`
 	}
@@ -501,10 +508,11 @@ func (s *Server) handleAdminSetListing(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.Store.SetListing(appID, req.Listing); err != nil {
 		slog.Error("set listing failed", "err", err)
-		jsonError(w, "failed to set listing: "+err.Error(), http.StatusInternalServerError)
+		jsonError(w, "set listing failed", http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	slog.Info("admin set listing", "app_id", appID, "listing", req.Listing)
+	jsonOK(w)
 }
 
 // requireInstallation loads an installation by path IID and verifies it belongs to the app
