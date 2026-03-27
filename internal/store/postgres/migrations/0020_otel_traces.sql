@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Replace message_traces with OTel-style span storage
 DROP TABLE IF EXISTS message_traces;
 

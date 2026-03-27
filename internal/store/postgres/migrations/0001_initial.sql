@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- OpeniLink Hub schema v1 (consolidated)
 
 CREATE TABLE IF NOT EXISTS users (

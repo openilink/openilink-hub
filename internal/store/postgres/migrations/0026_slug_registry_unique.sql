@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Remove kind column and fix slug uniqueness to per-registry namespace
 ALTER TABLE apps DROP COLUMN IF EXISTS kind;
 

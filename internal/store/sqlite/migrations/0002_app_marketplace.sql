@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- App Marketplace migration for existing databases.
 -- This migration is safe to run on both old and new schemas:
 -- it checks for old column names before attempting renames/adds.

@@ -1,1 +1,3 @@
+-- +goose Up
+
 ALTER TABLE plugins ADD COLUMN IF NOT EXISTS changelog TEXT NOT NULL DEFAULT '';

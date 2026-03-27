@@ -41,8 +41,8 @@ func testDB(t *testing.T) *postgres.DB {
 	if err != nil {
 		t.Skipf("skip: database unavailable: %v", err)
 	}
-	// Drop schema_version and modified tables so migrations re-run from scratch
-	preDB.Exec("DROP TABLE IF EXISTS schema_version, plugin_installs, plugin_versions, plugins CASCADE")
+	// Drop goose version table and legacy tables so migrations re-run from scratch
+	preDB.Exec("DROP TABLE IF EXISTS goose_db_version, schema_version, plugin_installs, plugin_versions, plugins CASCADE")
 	preDB.Close()
 
 	db, err := postgres.Open(dsn)

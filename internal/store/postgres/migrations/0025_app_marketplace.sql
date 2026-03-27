@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Rename columns
 ALTER TABLE apps RENAME COLUMN setup_url TO oauth_setup_url;
 ALTER TABLE apps RENAME COLUMN redirect_url TO oauth_redirect_url;

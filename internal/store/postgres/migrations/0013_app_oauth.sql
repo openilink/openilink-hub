@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Add OAuth fields to apps for one-click install flow
 ALTER TABLE apps ADD COLUMN IF NOT EXISTS setup_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE apps ADD COLUMN IF NOT EXISTS redirect_url TEXT NOT NULL DEFAULT '';

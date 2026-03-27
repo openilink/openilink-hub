@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Plugin marketplace
 CREATE TABLE IF NOT EXISTS plugins (
     id            TEXT PRIMARY KEY,

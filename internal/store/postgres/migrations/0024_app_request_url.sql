@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Move request_url, signing_secret, url_verified from app_installations to apps table.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
