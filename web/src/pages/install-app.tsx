@@ -191,16 +191,18 @@ export function InstallAppPage() {
 
   const tools = parseTools(app.tools);
 
-  // Build tabs
-  const tabs: { key: TabKey; label: string; icon: any }[] = [
-    { key: "permissions", label: "权限", icon: ShieldCheck },
-  ];
+  // Build tabs — permissions only shown when app has scopes or events
+  const tabs: { key: TabKey; label: string; icon: any }[] = [];
+  if (hasPermissions) {
+    tabs.push({ key: "permissions", label: "权限", icon: ShieldCheck });
+  }
   if (tools.length > 0) {
     tabs.push({ key: "tools", label: "命令 / 工具", icon: Terminal });
   }
   if (Object.keys(schemaProperties).length > 0) {
     tabs.push({ key: "config", label: "配置", icon: Sliders });
   }
+  const activeTab = tabs.find((t) => t.key === tab) ? tab : tabs[0]?.key ?? "permissions";
 
   return (
     <div className="space-y-6">
@@ -268,7 +270,7 @@ export function InstallAppPage() {
           {/* Mobile tab select */}
           <div className="md:hidden">
             <select
-              value={tab}
+              value={activeTab}
               onChange={(e) => setTab(e.target.value as TabKey)}
               className="w-full h-9 px-3 rounded-md border bg-background text-sm"
             >
@@ -288,7 +290,7 @@ export function InstallAppPage() {
                   size="sm"
                   onClick={() => setTab(t.key)}
                   className={`w-full justify-start gap-2 ${
-                    tab === t.key
+                    activeTab === t.key
                       ? "bg-primary/10 text-primary font-medium hover:bg-primary/10 hover:text-primary"
                       : "text-muted-foreground"
                   }`}
@@ -299,9 +301,9 @@ export function InstallAppPage() {
               ))}
             </nav>
 
-          {/* Tab content */}
-          <div className="flex-1 min-w-0">
-            {tab === "permissions" && (
+            {/* Tab content */}
+            <div className="flex-1 min-w-0">
+            {activeTab === "permissions" && (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-base font-semibold">权限</h2>
@@ -317,6 +319,7 @@ export function InstallAppPage() {
                             <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
                               <Eye className="h-3.5 w-3.5 shrink-0" />
                               <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
                             </div>
                           ))}
                         </div>
@@ -330,6 +333,7 @@ export function InstallAppPage() {
                             <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
                               <Zap className="h-3.5 w-3.5 shrink-0" />
                               <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
                             </div>
                           ))}
                         </div>
@@ -343,6 +347,7 @@ export function InstallAppPage() {
                             <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
                               <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
                               <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
                             </div>
                           ))}
                         </div>
@@ -365,26 +370,28 @@ export function InstallAppPage() {
                       </div>
                     )}
                     {!hasPermissions && (
-                      <p className="text-sm text-muted-foreground">此应用未申请任何权限，仅接收 @mention 消息并执行响应。</p>
+                      <p className="text-sm text-muted-foreground">此应用未申请任何权限。</p>
                     )}
                   </CardContent>
                 </Card>
               </div>
             )}
 
-            {tab === "tools" && tools.length > 0 && (
+            {activeTab === "tools" && tools.length > 0 && (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-base font-semibold">命令 / 工具</h2>
                   <p className="text-sm text-muted-foreground mt-1">此应用提供的命令和工具。</p>
                 </div>
-                <Card className="p-5">
-                  <ToolsDisplay tools={tools} />
+                <Card>
+                  <CardContent className="pt-6">
+                    <ToolsDisplay tools={tools} />
+                  </CardContent>
                 </Card>
               </div>
             )}
 
-            {tab === "config" && Object.keys(schemaProperties).length > 0 && (
+            {activeTab === "config" && Object.keys(schemaProperties).length > 0 && (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-base font-semibold">应用配置</h2>
