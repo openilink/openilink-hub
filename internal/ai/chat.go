@@ -34,6 +34,8 @@ type imageURL struct {
 	URL string `json:"url"`
 }
 
+const maxImageBytes = 20 * 1024 * 1024 // 20MB max for base64 encoding
+
 const defaultBaseURL = "https://api.openai.com/v1"
 const defaultModel = "gpt-4o-mini"
 const defaultMaxHistory = 20
@@ -122,7 +124,7 @@ type CompletionResult struct {
 // resolver reads image data from storage for history messages (may be nil).
 // Returns text content or tool call requests.
 func Complete(ctx context.Context, cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, tools []Tool, currentImages []ImageData, resolver MediaResolver) (*CompletionResult, error) {
-	messages := BuildMessages(cfg, s, channelID, sender, text, currentImages, resolver)
+	messages := BuildMessages(ctx, cfg, s, channelID, sender, text, currentImages, resolver)
 	return CompleteMessages(ctx, cfg, messages, tools)
 }
 
@@ -173,7 +175,7 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 }
 
 // BuildMessages builds the conversation message list from history and the current message.
-func BuildMessages(cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, currentImages []ImageData, resolver MediaResolver) []Message {
+func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore, channelID, sender, text string, currentImages []ImageData, resolver MediaResolver) []Message {
 	maxHistory := cfg.MaxHistory
 	if maxHistory <= 0 {
 		maxHistory = defaultMaxHistory
@@ -184,7 +186,6 @@ func BuildMessages(cfg store.AIConfig, s store.MessageStore, channelID, sender, 
 		messages = append(messages, Message{Role: "system", Content: cfg.SystemPrompt})
 	}
 
-	ctx := context.Background()
 	history, _ := s.ListChannelMessages(channelID, sender, maxHistory)
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]
@@ -341,6 +342,13 @@ func buildHistoryContent(ctx context.Context, itemList, mediaKeys json.RawMessag
 			if err != nil || len(data) == 0 {
 				continue
 			}
+			if len(data) > maxImageBytes {
+				continue
+			}
+			ct := http.DetectContentType(data)
+			if !strings.HasPrefix(ct, "image/") {
+				continue
+			}
 			imageParts = append(imageParts, contentPart{
 				Type:     "image_url",
 				ImageURL: &imageURL{URL: imageDataURI(data)},
@@ -372,9 +380,15 @@ func buildCurrentContent(text string, images []ImageData) any {
 		parts = append(parts, contentPart{Type: "text", Text: text})
 	}
 	for _, img := range images {
+		if len(img.Data) > maxImageBytes {
+			continue
+		}
 		ct := img.ContentType
 		if ct == "" {
 			ct = http.DetectContentType(img.Data)
+		}
+		if !strings.HasPrefix(ct, "image/") {
+			continue
 		}
 		parts = append(parts, contentPart{
 			Type:     "image_url",

@@ -233,7 +233,7 @@ func TestContinueWithToolResults(t *testing.T) {
 		t.Fatalf("expected tool_call, got text: %q", result.Content)
 	}
 
-	messages := BuildMessages(cfg, &mockMessageStore{}, "ch1", "user1", "weather?", nil, nil)
+	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "weather?", nil, nil)
 	messages = AppendAssistantToolCalls(messages, result.ToolCalls)
 	result2, _, err := ContinueWithToolResults(context.Background(), cfg, messages, []ToolCallResult{
 		{ID: "call_abc", Name: "cmd.weather", Content: "Sunny, 25°C"},
@@ -312,7 +312,7 @@ func TestComplete_MultiRoundToolCalls(t *testing.T) {
 		{Type: "function", Function: ToolFunction{Name: "cmd.detail", Description: "Get detail"}},
 	}
 
-	messages := BuildMessages(cfg, &mockMessageStore{}, "ch1", "user1", "tell me about the latest PR", nil, nil)
+	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "tell me about the latest PR", nil, nil)
 	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "tell me about the latest PR", tools, nil, nil)
 	if err != nil {
 		t.Fatalf("round 1: %v", err)
@@ -407,7 +407,7 @@ func TestComplete_MaxToolRoundsExceeded(t *testing.T) {
 	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
 	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "cmd.loop", Description: "Loop forever"}}}
 
-	messages := BuildMessages(cfg, &mockMessageStore{}, "ch1", "user1", "loop", nil, nil)
+	messages := BuildMessages(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "loop", nil, nil)
 	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "loop", tools, nil, nil)
 	if err != nil {
 		t.Fatalf("initial: %v", err)

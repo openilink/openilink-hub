@@ -18,6 +18,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/openilink/openilink-hub/internal/api"
+	appdelivery "github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
@@ -2644,6 +2645,7 @@ func TestAIToolImageReply(t *testing.T) {
 	// --- Mock LLM server ---
 	var llmCallCount int
 	var gotMultimodalToolResult bool
+	var instIDForLLM string // set after InstallApp, read by LLM handler
 
 	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -2665,7 +2667,7 @@ func TestAIToolImageReply(t *testing.T) {
 							"id":   "call_img",
 							"type": "function",
 							"function": map[string]any{
-								"name":      "generate_chart",
+								"name":      instIDForLLM + "__generate_chart",
 								"arguments": `{"metric":"cpu"}`,
 							},
 						}},
@@ -2719,7 +2721,8 @@ func TestAIToolImageReply(t *testing.T) {
 		OAuthStates: api.SetupOAuth(cfg),
 	}
 	hub := relay.NewHub(server.SetupUpstreamHandler())
-	aiSink := &sink.AI{Store: db}
+	appDisp := appdelivery.NewDispatcher(db)
+	aiSink := &sink.AI{Store: db, AppDisp: appDisp}
 	mgr := bot.NewManager(db, hub, aiSink, nil, "http://localhost")
 	server.BotManager = mgr
 	server.Hub = hub
@@ -2766,10 +2769,11 @@ func TestAIToolImageReply(t *testing.T) {
 		t.Fatalf("CreateApp: %v", err)
 	}
 
-	_, err = db.InstallApp(app.ID, botObj.ID)
+	inst, err := db.InstallApp(app.ID, botObj.ID)
 	if err != nil {
 		t.Fatalf("InstallApp: %v", err)
 	}
+	instIDForLLM = inst.ID
 
 	// Start bot
 	if err := mgr.StartBot(context.Background(), botObj); err != nil {

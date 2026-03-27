@@ -19,6 +19,7 @@ import (
 )
 
 const typingTimeout = 30 * time.Second
+const maxImageBytes = 20 * 1024 * 1024 // 20MB
 
 // AI calls an OpenAI-compatible chat completion API and sends the reply
 // back through the bot. Supports tool calling via installed App tools.
@@ -124,7 +125,7 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	// Build messages for conversation context (reused across tool-call rounds)
-	messages := ai.BuildMessages(cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
 	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
@@ -393,8 +394,25 @@ func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageD
 			continue
 		}
 		itemList, _ := json.Marshal([]map[string]any{{"type": "image", "file_name": fileName}})
+		mediaStatus := ""
+		mediaKeys := json.RawMessage(`{}`)
+		if s.Storage != nil {
+			ext := ".jpg"
+			if strings.HasPrefix(ct, "image/png") {
+				ext = ".png"
+			} else if strings.HasPrefix(ct, "image/gif") {
+				ext = ".gif"
+			}
+			now := time.Now()
+			key := fmt.Sprintf("%s/%s/ai_%d%s", d.BotDBID, now.Format("2006/01/02"), now.UnixMilli(), ext)
+			if _, err := s.Storage.Put(ctx, key, ct, img.Data); err == nil {
+				mediaStatus = "ready"
+				mediaKeys, _ = json.Marshal(map[string]string{"0": key})
+			}
+		}
 		s.Store.SaveMessage(&store.Message{
-			BotID: d.BotDBID, Direction: "outbound", ToUserID: sender, MessageType: 2, ItemList: itemList,
+			BotID: d.BotDBID, Direction: "outbound", ToUserID: sender, MessageType: 2,
+			ItemList: itemList, MediaStatus: mediaStatus, MediaKeys: mediaKeys,
 		})
 	}
 }
@@ -414,6 +432,10 @@ func (s *AI) resolveToolMedia(ctx context.Context, botID string, result *appdeli
 			slog.Error("ai tool media: base64 decode failed", "bot", botID, "err", err)
 			return nil
 		}
+		if len(data) > maxImageBytes {
+			slog.Error("ai tool media: base64 data too large", "bot", botID, "size", len(data))
+			return nil
+		}
 	} else if result.ReplyURL != "" {
 		dlCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
@@ -428,9 +450,13 @@ func (s *AI) resolveToolMedia(ctx context.Context, botID string, result *appdeli
 			return nil
 		}
 		defer resp.Body.Close()
-		data, err = io.ReadAll(resp.Body)
+		data, err = io.ReadAll(io.LimitReader(resp.Body, int64(maxImageBytes)+1))
 		if err != nil {
 			slog.Error("ai tool media: read failed", "bot", botID, "err", err)
+			return nil
+		}
+		if len(data) > maxImageBytes {
+			slog.Error("ai tool media: download too large", "bot", botID, "size", len(data))
 			return nil
 		}
 	} else {
@@ -441,9 +467,15 @@ func (s *AI) resolveToolMedia(ctx context.Context, botID string, result *appdeli
 		return nil
 	}
 
+	ct := http.DetectContentType(data)
+	if !strings.HasPrefix(ct, "image/") {
+		slog.Warn("ai tool media: not an image", "bot", botID, "ct", ct)
+		return nil
+	}
+
 	return []ai.ImageData{{
 		Data:        data,
-		ContentType: http.DetectContentType(data),
+		ContentType: ct,
 	}}
 }
 
