@@ -82,7 +82,7 @@ func SeedApps(s store.Store) error {
 			// Update existing builtin app to match manifest
 			err := s.UpdateMarketplaceApp(existing.ID,
 				m.Name, m.Description, "", "",
-				"", "", "", "", "", m.Guide,
+				"", "", "", "", m.Readme, m.Guide,
 				tools, events, scopes,
 			)
 			if err != nil {

@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/openilink/openilink-hub/internal/registry"
@@ -20,7 +20,7 @@ func (s *Server) handleMarketplace(w http.ResponseWriter, r *http.Request) {
 	// 1. Fetch apps from all registries
 	registryApps, err := s.Registry.ListApps()
 	if err != nil {
-		log.Printf("marketplace: failed to fetch registry apps: %v", err)
+		slog.Error("marketplace: failed to fetch registry apps", "err", err)
 		jsonError(w, "failed to fetch registry apps", http.StatusBadGateway)
 		return
 	}

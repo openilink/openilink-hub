@@ -391,6 +391,9 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		if got.Version != "2.0.0" {
 			t.Errorf("version = %q", got.Version)
 		}
+		if got.Readme != "Updated readme" {
+			t.Errorf("readme = %q", got.Readme)
+		}
 		if got.Guide != "Updated guide" {
 			t.Errorf("guide = %q", got.Guide)
 		}
