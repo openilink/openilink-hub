@@ -352,7 +352,7 @@ function InstallAppSection({ appId }: { appId: string }) {
     if (!botId || !handle.trim()) return;
     setInstalling(true);
     try {
-      await api.installApp(appId, { bot_id: botId, handle: handle.trim() });
+      await api.installApp(appId!, { bot_id: botId, handle: handle.trim() });
       toast({ title: "安装成功" });
       setHandle("");
       load();

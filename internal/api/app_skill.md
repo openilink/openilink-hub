@@ -604,7 +604,7 @@ PUT /api/admin/config/registry
 | GET | `/api/apps/{id}` | Get App detail |
 | PUT | `/api/apps/{id}` | Update App |
 | DELETE | `/api/apps/{id}` | Delete App |
-| POST | `/api/apps/{id}/install` | Install to Bot |
+| POST | `/api/bots/{id}/apps` | Install App to Bot (unified) |
 | POST | `/api/apps/{id}/request-listing` | Request listing review |
 | POST | `/api/apps/{id}/withdraw-listing` | Withdraw pending listing request |
 | POST | `/api/apps/{id}/verify-url` | Verify webhook URL |

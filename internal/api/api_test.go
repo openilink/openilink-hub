@@ -411,71 +411,19 @@ func TestAppAPI_CRUD(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Unified install endpoint (POST /api/bots/{id}/apps)
+// Test: Install endpoint (POST /api/apps/{id}/install)
 // ---------------------------------------------------------------------------
 
-func TestUnifiedInstall(t *testing.T) {
+func TestInstallApp(t *testing.T) {
 	env := setupTestEnv(t)
 	bot := createTestBot(t, env.store, env.user.ID, "install-bot")
-
-	t.Run("template install creates builtin app", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"template_slug": "ws-test-app",
-			"name":          "WS Test App",
-			"description":   "A test app",
-			"scopes":        []string{"message:write"},
-		}, withCookie(env.cookie))
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			body := decodeJSON(t, resp)
-			t.Fatalf("expected 201, got %d: %v", resp.StatusCode, body)
-		}
-		body := decodeJSON(t, resp)
-
-		// Verify the created app has registry=builtin.
-		appID, _ := body["app_id"].(string)
-		if appID == "" {
-			t.Fatal("installation has no app_id")
-		}
-		app, err := env.store.GetApp(appID)
-		if err != nil {
-			t.Fatalf("GetApp: %v", err)
-		}
-		if app.Registry != "builtin" {
-			t.Errorf("registry = %q, want %q", app.Registry, "builtin")
-		}
-		if app.Slug != "ws-test-app" {
-			t.Errorf("slug = %q, want %q", app.Slug, "ws-test-app")
-		}
-	})
-
-	t.Run("second template install reuses same app", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"template_slug": "ws-test-app",
-			"name":          "WS Test App",
-			"scopes":        []string{"message:write"},
-		}, withCookie(env.cookie))
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			body := decodeJSON(t, resp)
-			t.Fatalf("expected 201, got %d: %v", resp.StatusCode, body)
-		}
-
-		// There should be only one app with slug "ws-test-app" and registry "builtin".
-		app, _ := env.store.GetAppBySlug("ws-test-app", "builtin")
-		if app == nil {
-			t.Fatal("app not found by slug")
-		}
-	})
 
 	t.Run("install by app_id", func(t *testing.T) {
 		app := createTestApp(t, env.store, env.user.ID, "Direct App", "direct-app",
 			[]string{"message:write"})
 
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"app_id": app.ID,
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install", map[string]any{
+			"bot_id": bot.ID,
 		}, withCookie(env.cookie))
 		defer resp.Body.Close()
 
@@ -490,8 +438,8 @@ func TestUnifiedInstall(t *testing.T) {
 			[]string{"message:write"})
 
 		// First install with a handle.
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"app_id": app.ID,
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install", map[string]any{
+			"bot_id": bot.ID,
 			"handle": "myhandle",
 		}, withCookie(env.cookie))
 		resp.Body.Close()
@@ -502,8 +450,8 @@ func TestUnifiedInstall(t *testing.T) {
 		// Second install with the same handle should conflict.
 		app2 := createTestApp(t, env.store, env.user.ID, "Handle App2", "handle-app2",
 			[]string{"message:write"})
-		resp2 := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{
-			"app_id": app2.ID,
+		resp2 := doJSON(t, env.ts, "POST", "/api/apps/"+app2.ID+"/install", map[string]any{
+			"bot_id": bot.ID,
 			"handle": "myhandle",
 		}, withCookie(env.cookie))
 		defer resp2.Body.Close()
@@ -513,8 +461,11 @@ func TestUnifiedInstall(t *testing.T) {
 		}
 	})
 
-	t.Run("missing all IDs returns 400", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+bot.ID+"/apps", map[string]any{},
+	t.Run("missing bot_id returns 400", func(t *testing.T) {
+		app := createTestApp(t, env.store, env.user.ID, "NoBotID App", "nobotid-app",
+			[]string{"message:write"})
+
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install", map[string]any{},
 			withCookie(env.cookie))
 		defer resp.Body.Close()
 
@@ -524,9 +475,11 @@ func TestUnifiedInstall(t *testing.T) {
 	})
 
 	t.Run("nonexistent bot returns 404", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/nonexistent-id/apps", map[string]any{
-			"template_slug": "ws-test-app",
-			"name":          "X",
+		app := createTestApp(t, env.store, env.user.ID, "Good App", "good-app",
+			[]string{"message:write"})
+
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+app.ID+"/install", map[string]any{
+			"bot_id": "nonexistent-id",
 		}, withCookie(env.cookie))
 		defer resp.Body.Close()
 
@@ -1402,13 +1355,13 @@ func TestAppAPI_FullListingLifecycle(t *testing.T) {
 		}
 	})
 
-	// Step 11f: Unified install endpoint works for marketplace-style install.
+	// Step 11f: Install endpoint works for marketplace-style install.
 	// Admin user installs the same listed app to their own bot via
-	// POST /api/bots/{id}/apps with app_id.
+	// POST /api/apps/{id}/install with bot_id.
 	adminBot := createTestBot(t, env.store, env.user.ID, "Admin Lifecycle Bot")
-	t.Run("11f_unified_install_endpoint", func(t *testing.T) {
-		resp := doJSON(t, env.ts, "POST", "/api/bots/"+adminBot.ID+"/apps", map[string]any{
-			"app_id": appID,
+	t.Run("11f_install_endpoint", func(t *testing.T) {
+		resp := doJSON(t, env.ts, "POST", "/api/apps/"+appID+"/install", map[string]any{
+			"bot_id": adminBot.ID,
 			"handle": "unified-test",
 		}, withCookie(env.cookie))
 		defer resp.Body.Close()
