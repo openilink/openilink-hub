@@ -25,6 +25,7 @@ import { Toaster } from "./components/ui/toaster";
 import { OnboardingPage } from "./pages/onboarding";
 import { InstallationDetailPage } from "./pages/installation-detail";
 import { InstallAppPage } from "./pages/install-app";
+import { DeveloperAppsPage } from "./pages/developer-apps";
 
 function RouterProgress() {
   useAnchorProgress({ startOnLoad: false });
@@ -62,6 +63,9 @@ createRoot(document.getElementById("root")!).render(
                 {/* Apps */}
                 <Route path="apps" element={<AppsPage />} />
                 <Route path="apps/:id" element={<AppDetailPage />} />
+
+                {/* Developer */}
+                <Route path="developer/apps" element={<DeveloperAppsPage />} />
 
                 {/* Domain 4: Management & Ops */}
                 <Route path="admin" element={<Navigate to="/dashboard/admin/overview" replace />} />

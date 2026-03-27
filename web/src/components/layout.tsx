@@ -19,6 +19,7 @@ import {
   Puzzle,
   Circle,
   House,
+  Code2,
 } from "lucide-react";
 import { api, botDisplayName } from "../lib/api";
 import { useTheme } from "../lib/theme";
@@ -85,6 +86,7 @@ const BREADCRUMB_LABELS: Record<string, string> = {
   users: "用户管理",
   reviews: "审核中心",
   traces: "消息追踪",
+  developer: "开发者",
 };
 
 const statusColors: Record<string, string> = {
@@ -351,6 +353,26 @@ export function Layout() {
                     <Link to="/dashboard/apps">
                       <Puzzle />
                       <span>应用市场</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          {/* 开发者 */}
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive("/dashboard/developer")}
+                    tooltip="开发者"
+                  >
+                    <Link to="/dashboard/developer/apps">
+                      <Code2 />
+                      <span>开发者</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
