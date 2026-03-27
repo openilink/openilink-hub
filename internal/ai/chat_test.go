@@ -505,6 +505,86 @@ func TestComplete_UsageNilWhenMissing(t *testing.T) {
 	}
 }
 
+func TestComplete_UsagePartialDetails(t *testing.T) {
+	// Most real-world models return usage without the detail sub-objects
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "Hi!"}, "finish_reason": "stop"},
+			},
+			"usage": map[string]any{
+				"prompt_tokens":     80,
+				"completion_tokens": 20,
+				"total_tokens":      100,
+				// no prompt_tokens_details or completion_tokens_details
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if result.Usage == nil {
+		t.Fatal("expected usage to be set")
+	}
+	if result.Usage.PromptTokens != 80 {
+		t.Errorf("prompt_tokens = %d, want 80", result.Usage.PromptTokens)
+	}
+	if result.Usage.TotalTokens != 100 {
+		t.Errorf("total_tokens = %d, want 100", result.Usage.TotalTokens)
+	}
+	if result.Usage.CachedTokens != 0 {
+		t.Errorf("cached_tokens = %d, want 0 (no details)", result.Usage.CachedTokens)
+	}
+	if result.Usage.ReasoningTokens != 0 {
+		t.Errorf("reasoning_tokens = %d, want 0 (no details)", result.Usage.ReasoningTokens)
+	}
+}
+
+func TestComplete_UsageOnToolCallResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{
+					"message": map[string]any{
+						"role": "assistant",
+						"tool_calls": []map[string]any{
+							{"id": "call_1", "type": "function", "function": map[string]any{"name": "cmd.foo", "arguments": `{}`}},
+						},
+					},
+					"finish_reason": "tool_calls",
+				},
+			},
+			"usage": map[string]any{
+				"prompt_tokens":     60,
+				"completion_tokens": 10,
+				"total_tokens":      70,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if len(result.ToolCalls) == 0 {
+		t.Fatal("expected tool_calls")
+	}
+	if result.Usage == nil {
+		t.Fatal("expected usage to be populated on tool-call response")
+	}
+	if result.Usage.TotalTokens != 70 {
+		t.Errorf("total_tokens = %d, want 70", result.Usage.TotalTokens)
+	}
+}
+
 // ==================== Real API test (skipped unless env vars set) ====================
 
 func TestCompleteWithRealAPI(t *testing.T) {
