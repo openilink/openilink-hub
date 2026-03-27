@@ -106,6 +106,15 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 						"data":      event.Data,
 					},
 				}
+				// Write event log for WebSocket delivery (consistent with deliverToInstallation)
+				envJSON, _ := json.Marshal(envelope)
+				m.appDisp.Store.CreateEventLog(&store.AppEventLog{
+					InstallationID: installations[i].ID,
+					TraceID:        event.TraceID,
+					EventType:      event.Type,
+					EventID:        event.ID,
+					RequestBody:    string(envJSON),
+				})
 				if err := wsConn.SendJSON(envelope); err != nil {
 					slog.Warn("ws delivery failed, falling back to webhook", "inst", installations[i].ID, "app", installations[i].AppSlug, "err", err)
 					span.EndWithError("ws send: " + err.Error())
@@ -222,7 +231,7 @@ func (m *Manager) deliverToInstallation(inst *Instance, installation *store.AppI
 			wsConn = m.appWSHub.GetAppLevel(installation.AppID)
 		}
 		if wsConn == nil {
-			slog.Info("no ws connection found", "inst", installation.ID, "app", installation.AppSlug, "app_id", installation.AppID)
+			slog.Warn("no ws connection found", "inst", installation.ID, "app", installation.AppSlug, "app_id", installation.AppID)
 		}
 		if wsConn != nil {
 			span := tracer.StartChild(rootSpan, "ws:"+installation.AppSlug, store.SpanKindClient, map[string]any{
