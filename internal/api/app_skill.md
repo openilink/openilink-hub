@@ -203,12 +203,14 @@ AI Agent-triggered:
       "command": "pr",
       "text": "",
       "args": {"repo": "openilink/openilink-hub", "state": "open"},
-      "sender": {"id": "system", "name": "AI Agent"},
+      "sender": {"id": "wxid_abc", "name": "wxid_abc", "role": "ai_agent"},
       "group": null
     }
   }
 }
 ```
+
+When `sender.role` is `"ai_agent"`, it means the command was triggered by the AI Agent on behalf of this user. The `sender.id` and `group` are the real user/group, so your App can use them for async replies.
 
 ### Replying to Events
 
