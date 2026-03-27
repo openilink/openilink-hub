@@ -349,6 +349,20 @@ func TestBotCRUD(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("UpdateBotDisplayName", func(t *testing.T) {
+		bots, _ := s.ListBotsByUser(u.ID)
+		b := bots[0]
+		if err := s.UpdateBotDisplayName(b.ID, "My Alias"); err != nil {
+			t.Fatalf("UpdateBotDisplayName: %v", err)
+		}
+		got, _ := s.GetBot(b.ID)
+		if got.DisplayName != "My Alias" {
+			t.Errorf("display_name = %q, want %q", got.DisplayName, "My Alias")
+		}
+		// Clear display_name for downstream tests
+		s.UpdateBotDisplayName(b.ID, "")
+	})
+
 	t.Run("UpdateBotStatus", func(t *testing.T) {
 		bots, _ := s.ListBotsByUser(u.ID)
 		b := bots[0]

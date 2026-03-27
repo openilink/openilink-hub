@@ -124,6 +124,7 @@ func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		"model":         dbConf["ai.model"],
 		"system_prompt": dbConf["ai.system_prompt"],
 		"max_history":   dbConf["ai.max_history"],
+		"hide_thinking": dbConf["ai.hide_thinking"],
 	}
 	if dbConf["ai.api_key"] != "" {
 		result["enabled"] = "true"
@@ -140,6 +141,7 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 		Model        string `json:"model"`
 		SystemPrompt string `json:"system_prompt"`
 		MaxHistory   string `json:"max_history"`
+		HideThinking string `json:"hide_thinking"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -160,6 +162,9 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if req.MaxHistory != "" {
 		s.Store.SetConfig("ai.max_history", req.MaxHistory)
 	}
+	if req.HideThinking != "" {
+		s.Store.SetConfig("ai.hide_thinking", req.HideThinking)
+	}
 	jsonOK(w)
 }
 
@@ -168,6 +173,7 @@ func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 	s.Store.DeleteConfig("ai.base_url")
 	s.Store.DeleteConfig("ai.api_key")
 	s.Store.DeleteConfig("ai.model")
+	s.Store.DeleteConfig("ai.hide_thinking")
 	jsonOK(w)
 }
 
@@ -175,10 +181,57 @@ func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	globalAI, _ := s.Store.ListConfigByPrefix("ai.")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{
-		"ai":      globalAI["ai.api_key"] != "",
-		"storage": s.Config.StorageEndpoint != "",
+	json.NewEncoder(w).Encode(map[string]any{
+		"ai":                   globalAI["ai.api_key"] != "",
+		"storage":              s.Config.StorageEndpoint != "",
+		"registration_enabled": s.registrationEnabled(),
 	})
+}
+
+// registrationEnabled returns true if public registration is allowed.
+// Default is enabled (key absent or != "false").
+func (s *Server) registrationEnabled() bool {
+	val, err := s.Store.GetConfig("registration.enabled")
+	if err != nil || val != "false" {
+		return true
+	}
+	return false
+}
+
+// GET /api/admin/config/registration — get registration config
+func (s *Server) handleGetRegistrationConfig(w http.ResponseWriter, r *http.Request) {
+	enabled, err := s.Store.GetConfig("registration.enabled")
+	if err != nil {
+		slog.Error("failed to get registration config", "err", err)
+	}
+	// Default to "true" when key is absent
+	if enabled == "" {
+		enabled = "true"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"enabled": enabled,
+	})
+}
+
+// PUT /api/admin/config/registration — set registration config
+func (s *Server) handleSetRegistrationConfig(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled string `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.Enabled != "true" && req.Enabled != "false" {
+		jsonError(w, "enabled must be 'true' or 'false'", http.StatusBadRequest)
+		return
+	}
+	if err := s.Store.SetConfig("registration.enabled", req.Enabled); err != nil {
+		jsonError(w, "save failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w)
 }
 
 // GET /api/admin/config/registry — get registry config

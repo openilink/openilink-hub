@@ -221,6 +221,8 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("DELETE /api/admin/config/ai", s.requireAdmin(s.handleDeleteAIConfig))
 	protected.HandleFunc("GET /api/admin/config/registry", s.requireAdmin(s.handleGetRegistryConfig))
 	protected.HandleFunc("PUT /api/admin/config/registry", s.requireAdmin(s.handleSetRegistryConfig))
+	protected.HandleFunc("GET /api/admin/config/registration", s.requireAdmin(s.handleGetRegistrationConfig))
+	protected.HandleFunc("PUT /api/admin/config/registration", s.requireAdmin(s.handleSetRegistrationConfig))
 
 	// App OAuth exchange (no user auth — uses PKCE or single-use code)
 	mux.HandleFunc("POST /api/apps/{id}/oauth/exchange", s.handleAppOAuthExchange)

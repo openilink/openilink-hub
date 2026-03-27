@@ -33,7 +33,7 @@ export const api = {
   oauthProviders: () => request<{ providers: string[] }>("/api/auth/oauth/providers"),
   me: () =>
     request<{ id: string; username: string; display_name: string; role: string }>("/api/me"),
-  info: () => request<{ ai: boolean }>("/api/info"),
+  info: () => request<{ ai: boolean; registration_enabled: boolean }>("/api/info"),
 
   // Passkeys
   listPasskeys: () => request<any[]>("/api/me/passkeys"),
@@ -66,7 +66,7 @@ export const api = {
     request<import("./trace-utils").TraceSpan[]>(`/api/bots/${botId}/traces?limit=${limit}`),
   getTrace: (botId: string, traceId: string) =>
     request<import("./trace-utils").TraceSpan[]>(`/api/bots/${botId}/traces/${traceId}`),
-  updateBot: (id: string, data: { name?: string; reminder_hours?: number }) =>
+  updateBot: (id: string, data: { name?: string; display_name?: string; reminder_hours?: number }) =>
     request(`/api/bots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   setBotAI: (botId: string, enabled: boolean) =>
     request(`/api/bots/${botId}/ai`, {
@@ -122,6 +122,7 @@ export const api = {
     model?: string;
     system_prompt?: string;
     max_history?: string;
+    hide_thinking?: string;
   }) => request("/api/admin/config/ai", { method: "PUT", body: JSON.stringify(data) }),
   deleteAIConfig: () => request("/api/admin/config/ai", { method: "DELETE" }),
 
@@ -191,6 +192,10 @@ export const api = {
   // Registry config
   getRegistryConfig: () => request<any>("/api/admin/config/registry"),
   setRegistryConfig: (data: { enabled: string }) => request<any>("/api/admin/config/registry", { method: "PUT", body: JSON.stringify(data) }),
+
+  // Registration config
+  getRegistrationConfig: () => request<{ enabled: string }>("/api/admin/config/registration"),
+  setRegistrationConfig: (data: { enabled: string }) => request<any>("/api/admin/config/registration", { method: "PUT", body: JSON.stringify(data) }),
 
   // Admin: Dashboard
   adminStats: () => request<any>("/api/admin/stats"),

@@ -34,6 +34,13 @@ func (s *Server) handlePasswordRegister(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// First user becomes admin; also check registration gate
+	count, _ := s.Store.UserCount()
+	if count > 0 && !s.registrationEnabled() {
+		jsonError(w, "registration is disabled", http.StatusForbidden)
+		return
+	}
+
 	// Check if username taken
 	if _, err := s.Store.GetUserByUsername(req.Username); err == nil {
 		jsonError(w, "username already taken", http.StatusConflict)
@@ -45,9 +52,7 @@ func (s *Server) handlePasswordRegister(w http.ResponseWriter, r *http.Request) 
 		displayName = req.Username
 	}
 
-	// First user becomes admin
 	role := store.RoleMember
-	count, _ := s.Store.UserCount()
 	if count == 0 {
 		role = store.RoleSuperAdmin
 	}

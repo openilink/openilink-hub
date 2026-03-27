@@ -1,0 +1,3 @@
+-- +goose Up
+
+ALTER TABLE bots ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '';

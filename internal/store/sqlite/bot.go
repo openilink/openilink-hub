@@ -9,7 +9,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/store"
 )
 
-const botSelectCols = `id, user_id, name, provider, provider_id, status, credentials, sync_state,
+const botSelectCols = `id, user_id, name, display_name, provider, provider_id, status, credentials, sync_state,
 	msg_count, last_msg_at,
 	reminder_hours, last_reminded_at,
 	created_at, updated_at, ai_enabled`
@@ -17,7 +17,7 @@ const botSelectCols = `id, user_id, name, provider, provider_id, status, credent
 func scanBot(scanner interface{ Scan(...any) error }) (*store.Bot, error) {
 	b := &store.Bot{}
 	var credStr, syncStr string
-	err := scanner.Scan(&b.ID, &b.UserID, &b.Name, &b.Provider, &b.ProviderID, &b.Status,
+	err := scanner.Scan(&b.ID, &b.UserID, &b.Name, &b.DisplayName, &b.Provider, &b.ProviderID, &b.Status,
 		&credStr, &syncStr, &b.MsgCount, &b.LastMsgAt,
 		&b.ReminderHours, &b.LastRemindedAt,
 		&b.CreatedAt, &b.UpdatedAt, &b.AIEnabled)
@@ -112,6 +112,11 @@ func (db *DB) UpdateBotCredentials(id, providerID string, credentials json.RawMe
 
 func (db *DB) UpdateBotName(id, name string) error {
 	_, err := db.Exec("UPDATE bots SET name = ?, updated_at = unixepoch() WHERE id = ?", name, id)
+	return err
+}
+
+func (db *DB) UpdateBotDisplayName(id, displayName string) error {
+	_, err := db.Exec("UPDATE bots SET display_name = ?, updated_at = unixepoch() WHERE id = ?", displayName, id)
 	return err
 }
 

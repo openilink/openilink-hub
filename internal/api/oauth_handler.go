@@ -241,8 +241,12 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	// Login mode: find or create user
 	user, err := s.findOrCreateOAuthUser(name, providerID, username, email, avatarURL)
 	if err != nil {
+		if err.Error() == "registration is disabled" {
+			http.Redirect(w, r, "/login?error=registration_disabled", http.StatusFound)
+			return
+		}
 		slog.Error("oauth user creation failed", "provider", name, "err", err)
-		jsonError(w, "login failed: "+err.Error(), http.StatusInternalServerError)
+		http.Redirect(w, r, "/login?error=login_failed", http.StatusFound)
 		return
 	}
 
@@ -365,9 +369,13 @@ func (s *Server) findOrCreateOAuthUser(provider, providerID, username, email, av
 
 	// Create new user if not found
 	if user == nil {
+		// Check registration gate (always allow first user for bootstrap)
+		count, _ := s.Store.UserCount()
+		if count > 0 && !s.registrationEnabled() {
+			return nil, fmt.Errorf("registration is disabled")
+		}
 		displayName := username
 		role := store.RoleMember
-		count, _ := s.Store.UserCount()
 		if count == 0 {
 			role = store.RoleSuperAdmin
 		}

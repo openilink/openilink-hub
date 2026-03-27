@@ -9,6 +9,7 @@ type Bot struct {
 	ID             string          `json:"id"`
 	UserID         string          `json:"user_id"`
 	Name           string          `json:"name"`
+	DisplayName    string          `json:"display_name"`
 	Provider       string          `json:"provider"`
 	ProviderID     string          `json:"provider_id,omitempty"`
 	Status         string          `json:"status"`
@@ -59,6 +60,7 @@ type BotStore interface {
 	FindBotByCredential(key, value string) (*Bot, error)
 	UpdateBotCredentials(id, providerID string, credentials json.RawMessage) error
 	UpdateBotName(id, name string) error
+	UpdateBotDisplayName(id, displayName string) error
 	UpdateBotStatus(id, status string) error
 	UpdateBotSyncState(id string, syncState json.RawMessage) error
 	IncrBotMsgCount(id string) error

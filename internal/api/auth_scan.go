@@ -162,6 +162,12 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 
 	// 3. Still no match → create a new Hub user (username: ilink_<bot_id_prefix>)
 	if userID == "" {
+		// Check registration gate (always allow first user for bootstrap)
+		count, _ := s.Store.UserCount()
+		if count > 0 && !s.registrationEnabled() {
+			sendEvent("error", `{"message":"registration is disabled"}`)
+			return
+		}
 		suffix := creds.BotID
 		if len(suffix) > 8 {
 			suffix = suffix[:8]

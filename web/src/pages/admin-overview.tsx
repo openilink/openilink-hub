@@ -9,10 +9,12 @@ import {
   Settings,
   Trash2,
   Plus,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -152,6 +154,8 @@ export function AdminOverviewPage() {
         </CardContent>
       </Card>
 
+      <RegistrationConfigCard />
+
       <div className="grid gap-8 md:grid-cols-2">
         <Card className="border-border/50 bg-card/50">
           <CardHeader>
@@ -182,6 +186,18 @@ export function AdminOverviewPage() {
                 placeholder="••••••••"
               />
             </div>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
+              <div>
+                <p className="text-sm font-medium">隐藏思考过程</p>
+                <p className="text-xs text-muted-foreground">启用后不会将模型的思考内容发送给用户</p>
+              </div>
+              <Switch
+                checked={aiConfig?.hide_thinking === "true"}
+                onCheckedChange={(checked) =>
+                  setAIConfig({ ...aiConfig, hide_thinking: checked ? "true" : "false" })
+                }
+              />
+            </div>
           </CardContent>
           <CardFooter className="flex justify-end">
             <Button onClick={handleSaveAI} disabled={saving}>
@@ -193,6 +209,62 @@ export function AdminOverviewPage() {
         <RegistryConfigCard />
       </div>
     </div>
+  );
+}
+
+// ==================== Registration Config ====================
+
+function RegistrationConfigCard() {
+  const [regConfig, setRegConfig] = useState<{ enabled: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    api
+      .getRegistrationConfig()
+      .then(setRegConfig)
+      .catch(() => setRegConfig({ enabled: "true" }));
+  }, []);
+
+  async function handleToggle() {
+    setSaving(true);
+    try {
+      const newEnabled = regConfig?.enabled === "true" ? "false" : "true";
+      await api.setRegistrationConfig({ enabled: newEnabled });
+      setRegConfig({ enabled: newEnabled });
+      toast({ title: newEnabled === "true" ? "已开放注册" : "已关闭注册" });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "保存失败", description: e.message });
+    }
+    setSaving(false);
+  }
+
+  return (
+    <Card className="border-border/50 bg-card/30">
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+              <UserPlus className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold">开放注册</p>
+              <p className="text-xs text-muted-foreground">
+                关闭后，新用户无法通过密码注册、扫码登录或 OAuth 创建账号。管理员仍可手动创建用户。
+              </p>
+            </div>
+          </div>
+          <Button
+            variant={regConfig?.enabled === "true" ? "default" : "outline"}
+            size="sm"
+            onClick={handleToggle}
+            disabled={saving}
+          >
+            {regConfig?.enabled === "true" ? "已启用" : "已禁用"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

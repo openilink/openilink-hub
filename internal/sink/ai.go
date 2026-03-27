@@ -188,6 +188,18 @@ func (s *AI) reply(d Delivery) {
 	s.stopTyping(d, typingTicket)
 
 	reply := result.Content
+	thinking := result.Thinking
+
+	// Handle thinking/reasoning content
+	if thinking != "" {
+		if span != nil {
+			span.SetAttr("ai.thinking_length", len(thinking))
+		}
+		if !cfg.HideThinking {
+			reply = "💭 " + thinking + "\n\n" + reply
+		}
+	}
+
 	if reply == "" {
 		if span != nil {
 			span.SetAttr("reply.content", "(empty)")
@@ -217,7 +229,8 @@ func (s *AI) reply(d Delivery) {
 		span.End()
 	}
 
-	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": reply}})
+	// Save only the content (not thinking) to message history to avoid polluting context
+	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": result.Content}})
 	s.Store.SaveMessage(&store.Message{
 		BotID:       d.BotDBID,
 		Direction:   "outbound",
@@ -361,6 +374,7 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	cfg.APIKey = global["ai.api_key"]
 	cfg.Model = global["ai.model"]
 	cfg.SystemPrompt = global["ai.system_prompt"]
+	cfg.HideThinking = global["ai.hide_thinking"] == "true"
 	if v := global["ai.max_history"]; v != "" {
 		fmt.Sscanf(v, "%d", &cfg.MaxHistory)
 	}

@@ -10,7 +10,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/store"
 )
 
-const botSelectCols = `id, user_id, name, provider, provider_id, status, credentials, sync_state,
+const botSelectCols = `id, user_id, name, display_name, provider, provider_id, status, credentials, sync_state,
 	msg_count, EXTRACT(EPOCH FROM last_msg_at)::BIGINT,
 	reminder_hours, EXTRACT(EPOCH FROM last_reminded_at)::BIGINT,
 	EXTRACT(EPOCH FROM created_at)::BIGINT, EXTRACT(EPOCH FROM updated_at)::BIGINT,
@@ -18,7 +18,7 @@ const botSelectCols = `id, user_id, name, provider, provider_id, status, credent
 
 func scanBot(scanner interface{ Scan(...any) error }) (*store.Bot, error) {
 	b := &store.Bot{}
-	err := scanner.Scan(&b.ID, &b.UserID, &b.Name, &b.Provider, &b.ProviderID, &b.Status,
+	err := scanner.Scan(&b.ID, &b.UserID, &b.Name, &b.DisplayName, &b.Provider, &b.ProviderID, &b.Status,
 		&b.Credentials, &b.SyncState, &b.MsgCount, &b.LastMsgAt,
 		&b.ReminderHours, &b.LastRemindedAt,
 		&b.CreatedAt, &b.UpdatedAt, &b.AIEnabled)
@@ -111,6 +111,11 @@ func (db *DB) UpdateBotCredentials(id, providerID string, credentials json.RawMe
 
 func (db *DB) UpdateBotName(id, name string) error {
 	_, err := db.Exec("UPDATE bots SET name = $1, updated_at = NOW() WHERE id = $2", name, id)
+	return err
+}
+
+func (db *DB) UpdateBotDisplayName(id, displayName string) error {
+	_, err := db.Exec("UPDATE bots SET display_name = $1, updated_at = NOW() WHERE id = $2", displayName, id)
 	return err
 }
 
