@@ -11,6 +11,7 @@ type Instance struct {
 	DBID      string
 	Provider  provider.Provider
 	AIEnabled bool
+	AIModel   string
 	cancel    context.CancelFunc
 }
 

@@ -93,6 +93,7 @@ func (m *Manager) StartBot(ctx context.Context, bot *store.Bot) error {
 	p := factory()
 	inst := NewInstance(bot.ID, p)
 	inst.AIEnabled = bot.AIEnabled
+	inst.AIModel = bot.AIModel
 
 	err := p.Start(ctx, provider.StartOptions{
 		Credentials: bot.Credentials,
