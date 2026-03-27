@@ -213,9 +213,9 @@ export function InstallAppPage() {
         {botName || "返回"}
       </button>
 
-      <div className="flex gap-8">
+      <div className="flex flex-col md:flex-row gap-8">
         {/* Left: App info + install */}
-        <div className="w-64 shrink-0 space-y-6">
+        <div className="md:w-64 shrink-0 space-y-6">
           <div className="space-y-3">
             <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-14 w-14" />
             <div className="space-y-1">
@@ -264,29 +264,9 @@ export function InstallAppPage() {
         </div>
 
         {/* Right: Tabs */}
-        <div className="flex gap-8 flex-1 min-w-0">
-          {/* Tab nav */}
-          <nav className="hidden md:block w-40 shrink-0 space-y-1">
-            {tabs.map((t) => (
-              <Button
-                key={t.key}
-                variant="ghost"
-                size="sm"
-                onClick={() => setTab(t.key)}
-                className={`w-full justify-start gap-2 ${
-                  tab === t.key
-                    ? "bg-primary/10 text-primary font-medium hover:bg-primary/10 hover:text-primary"
-                    : "text-muted-foreground"
-                }`}
-              >
-                <t.icon className="h-4 w-4 shrink-0" />
-                {t.label}
-              </Button>
-            ))}
-          </nav>
-
+        <div className="flex-1 min-w-0 space-y-4">
           {/* Mobile tab select */}
-          <div className="md:hidden w-full mb-4">
+          <div className="md:hidden">
             <select
               value={tab}
               onChange={(e) => setTab(e.target.value as TabKey)}
@@ -297,6 +277,27 @@ export function InstallAppPage() {
               ))}
             </select>
           </div>
+
+          {/* Desktop: nav + content */}
+          <div className="flex gap-8">
+            <nav className="hidden md:block w-40 shrink-0 space-y-1">
+              {tabs.map((t) => (
+                <Button
+                  key={t.key}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTab(t.key)}
+                  className={`w-full justify-start gap-2 ${
+                    tab === t.key
+                      ? "bg-primary/10 text-primary font-medium hover:bg-primary/10 hover:text-primary"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  <t.icon className="h-4 w-4 shrink-0" />
+                  {t.label}
+                </Button>
+              ))}
+            </nav>
 
           {/* Tab content */}
           <div className="flex-1 min-w-0">
@@ -409,6 +410,7 @@ export function InstallAppPage() {
                 </Card>
               </div>
             )}
+          </div>
           </div>
         </div>
       </div>
