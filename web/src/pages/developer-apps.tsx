@@ -1,38 +1,19 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Badge } from "../components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Blocks, Loader2, Plus } from "lucide-react";
-import { api } from "../lib/api";
+import { api } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "../components/ui/dialog";
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { AppIcon } from "../components/app-icon";
-
-// ==================== Listing Badge ====================
-
-function ListingBadge({ listing }: { listing?: string }) {
-  switch (listing) {
-    case "listed":
-      return <Badge variant="default">已上架</Badge>;
-    case "pending":
-      return (
-        <Badge variant="outline" className="text-orange-500 border-orange-400">
-          待审核
-        </Badge>
-      );
-    case "rejected":
-      return <Badge variant="destructive">已拒绝</Badge>;
-    default:
-      return <Badge variant="secondary">未上架</Badge>;
-  }
-}
+import { AppIcon } from "@/components/app-icon";
+import { ListingBadge } from "@/components/listing-badge";
 
 // ==================== Page ====================
 
@@ -47,10 +28,11 @@ export function DeveloperAppsPage() {
 
   useEffect(() => {
     setLoading(true);
-    api
-      .listApps()
-      .catch(() => [])
+    api.listApps()
       .then((list) => setApps(list || []))
+      .catch(() => {
+        toast({ variant: "destructive", title: "加载失败", description: "无法获取应用列表" });
+      })
       .finally(() => setLoading(false));
   }, []);
 

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, X, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -19,6 +18,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -29,22 +29,12 @@ import { Separator } from "@/components/ui/separator";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "@/components/app-icon";
-
-function listingBadge(listing: string) {
-  if (listing === "listed") return <Badge variant="default">已上架</Badge>;
-  if (listing === "pending")
-    return (
-      <Badge variant="outline" className="text-orange-500 border-orange-400">
-        待审核
-      </Badge>
-    );
-  if (listing === "rejected") return <Badge variant="destructive">已拒绝</Badge>;
-  return <Badge variant="secondary">未上架</Badge>;
-}
+import { ListingBadge } from "@/components/listing-badge";
 
 function timeAgo(ts: number) {
   if (!ts) return "—";
   const diff = Math.floor((Date.now() - ts * 1000) / 1000);
+  if (diff < 0) return "刚刚";
   if (diff < 60) return `${diff}秒前`;
   if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
@@ -109,11 +99,14 @@ export function AdminReviewsPage() {
 
   async function handleToggle(a: any) {
     const newListing = a.listing === "listed" ? "unlisted" : "listed";
+    setSubmitting(true);
     try {
       await api.setAppListing(a.id, newListing);
       loadApps();
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -155,7 +148,7 @@ export function AdminReviewsPage() {
                 <TableCell className="text-sm text-muted-foreground">
                   {timeAgo(a.updated_at)}
                 </TableCell>
-                <TableCell>{listingBadge(a.listing)}</TableCell>
+                <TableCell><ListingBadge listing={a.listing} /></TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
                     {a.listing === "pending" ? (
@@ -180,7 +173,7 @@ export function AdminReviewsPage() {
                         </Button>
                       </>
                     ) : (
-                      <Button size="xs" variant="outline" onClick={() => handleToggle(a)}>
+                      <Button size="xs" variant="outline" onClick={() => handleToggle(a)} disabled={submitting}>
                         {a.listing === "listed" ? "下架" : "上架"}
                       </Button>
                     )}
@@ -217,7 +210,7 @@ export function AdminReviewsPage() {
                     <SheetTitle className="text-left leading-tight">{selected.name}</SheetTitle>
                     <p className="text-xs text-muted-foreground font-mono mt-0.5">{selected.slug}</p>
                   </div>
-                  {listingBadge(selected.listing)}
+                  <ListingBadge listing={selected.listing} />
                 </div>
               </SheetHeader>
 
@@ -295,6 +288,7 @@ export function AdminReviewsPage() {
                         variant="outline"
                         className="flex-1 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5"
                         onClick={() => { setRejectTarget(selected); setRejectReason(""); }}
+                        disabled={submitting}
                       >
                         <X className="h-4 w-4" /> 拒绝
                       </Button>
@@ -308,6 +302,7 @@ export function AdminReviewsPage() {
                       variant="outline"
                       className="w-full"
                       onClick={() => handleToggle(selected)}
+                      disabled={submitting}
                     >
                       {selected.listing === "listed" ? "下架" : "上架"}
                     </Button>
@@ -327,6 +322,7 @@ export function AdminReviewsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>拒绝「{rejectTarget?.name}」</DialogTitle>
+            <DialogDescription className="sr-only">填写拒绝原因，开发者将收到此通知。</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
