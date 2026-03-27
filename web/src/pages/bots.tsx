@@ -18,7 +18,7 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import {
   Dialog,
   DialogContent,
@@ -254,7 +254,7 @@ function BotInstanceCard({
               {isOnline ? <Wifi className="h-5 w-5" /> : <WifiOff className="h-5 w-5" />}
             </div>
             <div className="min-w-0">
-              <p className="font-semibold leading-tight truncate">{bot.display_name || bot.name}</p>
+              <p className="font-semibold leading-tight truncate">{botDisplayName(bot)}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span
                   className={`size-1.5 rounded-full shrink-0 ${status.dot} ${isOnline ? "animate-pulse" : ""}`}

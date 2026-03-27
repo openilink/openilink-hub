@@ -23,7 +23,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 import { EVENT_TYPES, SCOPES } from "../lib/constants";
@@ -503,7 +503,7 @@ function InstallAppSection({ appId }: { appId: string }) {
                 >
                   {bots.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.display_name || b.name}
+                      {botDisplayName(b)}
                     </option>
                   ))}
                 </select>

@@ -45,7 +45,7 @@ import {
 import { Skeleton } from "../components/ui/skeleton";
 import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 import { ToolsDisplay, parseTools } from "../components/tools-display";
@@ -101,7 +101,7 @@ export function InstallationDetailPage() {
       const [appData, bots] = await Promise.all([api.getApp(found.app_id), api.listBots()]);
       setApp(appData);
       const bot = (bots || []).find((b: any) => b.id === botId);
-      if (bot) setBotName(bot.display_name || bot.name);
+      if (bot) setBotName(botDisplayName(bot));
     } catch (e: any) {
       toast({ variant: "destructive", title: "加载失败", description: e.message });
     } finally {

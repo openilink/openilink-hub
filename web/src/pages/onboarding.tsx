@@ -6,7 +6,7 @@ import { Badge } from "../components/ui/badge";
 import {
   Bot as BotIcon, Sparkles, ArrowRight, Check, Download, Loader2, Blocks, ChevronRight,
 } from "lucide-react";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 
@@ -104,7 +104,7 @@ export function OnboardingPage() {
             </div>
             <h1 className="text-2xl font-bold">账号添加成功！</h1>
             <p className="text-muted-foreground">
-              {(bot?.display_name || bot?.name) ? `"${bot.display_name || bot.name}" 已就绪` : "你的账号已就绪"}，接下来做一些基础设置。
+              {bot ? `"${botDisplayName(bot)}" 已就绪` : "你的账号已就绪"}，接下来做一些基础设置。
             </p>
           </div>
 

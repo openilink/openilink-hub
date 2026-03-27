@@ -34,7 +34,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import {
   Table,
   TableBody,
@@ -141,7 +141,7 @@ export function ChannelDetailPage() {
                 to={`/dashboard/accounts/${botId}`}
                 className="hover:text-primary transition-colors flex items-center gap-1"
               >
-                <BotIcon className="h-3 w-3" /> {bot.display_name || bot.name}
+                <BotIcon className="h-3 w-3" /> {botDisplayName(bot)}
               </Link>
               <ChevronRight className="h-3 w-3 opacity-30" />
               <span>规则 ID: {channel.id.slice(0, 8)}</span>

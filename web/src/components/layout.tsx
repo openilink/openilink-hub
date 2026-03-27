@@ -20,7 +20,7 @@ import {
   Circle,
   House,
 } from "lucide-react";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import { useTheme } from "../lib/theme";
 import {
   Sidebar,
@@ -327,7 +327,7 @@ export function Layout() {
                             <Circle
                               className={`size-2 ${statusColors[b.status] || "text-muted-foreground"}`}
                             />
-                            <span className="truncate">{b.display_name || b.name}</span>
+                            <span className="truncate">{botDisplayName(b)}</span>
                           </Link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

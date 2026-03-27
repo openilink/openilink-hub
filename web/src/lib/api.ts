@@ -1,3 +1,22 @@
+export interface Bot {
+  id: string;
+  name: string;
+  display_name: string;
+  provider: string;
+  status: string;
+  can_send: boolean;
+  send_disabled_reason?: string;
+  ai_enabled: boolean;
+  msg_count: number;
+  reminder_hours: number;
+  created_at: number;
+  extra?: Record<string, any>;
+}
+
+export function botDisplayName(bot: Pick<Bot, "display_name" | "name">): string {
+  return bot.display_name || bot.name;
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     credentials: "same-origin",
@@ -56,7 +75,7 @@ export const api = {
     request("/api/me/password", { method: "PUT", body: JSON.stringify(data) }),
 
   // Bots
-  listBots: () => request<any[]>("/api/bots"),
+  listBots: () => request<Bot[]>("/api/bots"),
   bindStart: () =>
     request<{ session_id: string; qr_url: string }>("/api/bots/bind/start", { method: "POST" }),
   reconnectBot: (id: string) => request(`/api/bots/${id}/reconnect`, { method: "POST" }),

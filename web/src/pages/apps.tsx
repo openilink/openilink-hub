@@ -4,7 +4,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Blocks, Download, Loader2, Search, RefreshCw } from "lucide-react";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -173,7 +173,7 @@ export function AppsPage() {
                 <SelectContent>
                   {bots.map((b) => (
                     <SelectItem key={b.id} value={b.id}>
-                      {b.display_name || b.name}
+                      {botDisplayName(b)}
                     </SelectItem>
                   ))}
                 </SelectContent>

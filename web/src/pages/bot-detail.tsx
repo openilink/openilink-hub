@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
@@ -198,7 +198,7 @@ export function BotDetailPage() {
               ) : (
                 <div className="flex items-center gap-1.5 group/name">
                   <h1 className="text-2xl font-bold tracking-tight">
-                    {bot.display_name || bot.name}
+                    {botDisplayName(bot)}
                   </h1>
                   <Button
                     variant="ghost"

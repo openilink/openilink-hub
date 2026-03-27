@@ -7,7 +7,7 @@ import { Input } from "../components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { Label } from "../components/ui/label";
-import { api } from "../lib/api";
+import { api, botDisplayName } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 import { SCOPE_DESCRIPTIONS } from "../lib/constants";
@@ -44,7 +44,7 @@ export function InstallAppPage() {
       ]);
       setApp(appData);
       const bot = (bots || []).find((b: any) => b.id === botId);
-      if (bot) setBotName(bot.display_name || bot.name);
+      if (bot) setBotName(botDisplayName(bot));
     } catch (e: any) {
       toast({ variant: "destructive", title: "加载失败", description: e.message });
     } finally {
