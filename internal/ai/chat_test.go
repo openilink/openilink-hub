@@ -15,7 +15,6 @@ import (
 )
 
 // mockMessageStore implements store.MessageStore for testing.
-// Only ListChannelMessages is used by ai.Complete; rest are stubs.
 type mockMessageStore struct{}
 
 func (m *mockMessageStore) ListChannelMessages(channelID, sender string, limit int) ([]store.Message, error) {
@@ -51,8 +50,14 @@ func (m *mockMessageStore) GetUnprocessedMessages(_ string, _ int) ([]store.Mess
 }
 func (m *mockMessageStore) PruneMessages(_ int) (int64, error) { return 0, nil }
 
+// ==================== Tests ====================
+
 func TestComplete_TextReply(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			http.Error(w, "not found", 404)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
@@ -76,15 +81,19 @@ func TestComplete_TextReply(t *testing.T) {
 }
 
 func TestComplete_ToolCall(t *testing.T) {
+	var gotToolCount int
+	var gotToolName string
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req chatRequest
-		json.NewDecoder(r.Body).Decode(&req)
-
-		if len(req.Tools) != 1 {
-			t.Errorf("expected 1 tool, got %d", len(req.Tools))
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
 		}
-		if req.Tools[0].Function.Name != "cmd.list_prs" {
-			t.Errorf("tool name = %q", req.Tools[0].Function.Name)
+
+		gotToolCount = len(req.Tools)
+		if len(req.Tools) > 0 {
+			gotToolName = req.Tools[0].Function.Name
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -127,6 +136,19 @@ func TestComplete_ToolCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
+
+	// Verify tools were sent
+	if gotToolCount != 1 {
+		t.Errorf("tools sent = %d, want 1", gotToolCount)
+	}
+	if gotToolName != "cmd.list_prs" {
+		t.Errorf("tool name sent = %q, want %q", gotToolName, "cmd.list_prs")
+	}
+
+	// Verify result
+	if result.Content != "" {
+		t.Errorf("content should be empty, got %q", result.Content)
+	}
 	if len(result.ToolCalls) != 1 {
 		t.Fatalf("tool_calls = %d, want 1", len(result.ToolCalls))
 	}
@@ -138,14 +160,21 @@ func TestComplete_ToolCall(t *testing.T) {
 		t.Errorf("name = %q, want %q", tc.Name, "cmd.list_prs")
 	}
 	var args map[string]string
-	json.Unmarshal(tc.Arguments, &args)
+	if err := json.Unmarshal(tc.Arguments, &args); err != nil {
+		t.Fatalf("unmarshal arguments: %v", err)
+	}
 	if args["repo"] != "openilink/hub" {
-		t.Errorf("args.repo = %q", args["repo"])
+		t.Errorf("args.repo = %q, want %q", args["repo"], "openilink/hub")
+	}
+	if args["state"] != "open" {
+		t.Errorf("args.state = %q, want %q", args["state"], "open")
 	}
 }
 
 func TestContinueWithToolResults(t *testing.T) {
 	var callCount atomic.Int32
+	var hasAssistantToolCalls, hasToolResult bool
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := callCount.Add(1)
 		var req chatRequest
@@ -153,7 +182,6 @@ func TestContinueWithToolResults(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		if n == 1 {
-			// Return tool_call
 			json.NewEncoder(w).Encode(map[string]any{
 				"choices": []map[string]any{
 					{
@@ -168,19 +196,21 @@ func TestContinueWithToolResults(t *testing.T) {
 				},
 			})
 		} else {
-			// Verify tool result message is present
-			hasToolMsg := false
+			// Verify assistant tool_calls message + tool result message
 			for _, msg := range req.Messages {
-				if msg.Role == "tool" && msg.ToolCallID == "call_abc" {
-					hasToolMsg = true
-					content, _ := msg.Content.(string)
-					if content != "Sunny, 25°C" {
-						t.Errorf("tool result = %v, want %q", msg.Content, "Sunny, 25°C")
+				if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+					for _, tc := range msg.ToolCalls {
+						if tc.Function.Name == "cmd.weather" && tc.ID == "call_abc" {
+							hasAssistantToolCalls = true
+						}
 					}
 				}
-			}
-			if !hasToolMsg {
-				t.Error("expected tool message in continuation")
+				if msg.Role == "tool" && msg.ToolCallID == "call_abc" {
+					content, _ := msg.Content.(string)
+					if content == "Sunny, 25°C" {
+						hasToolResult = true
+					}
+				}
 			}
 
 			json.NewEncoder(w).Encode(map[string]any{
@@ -195,7 +225,6 @@ func TestContinueWithToolResults(t *testing.T) {
 	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
 	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "cmd.weather", Description: "Get weather"}}}
 
-	// Step 1: initial call returns tool_call
 	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "weather?", tools)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
@@ -204,7 +233,6 @@ func TestContinueWithToolResults(t *testing.T) {
 		t.Fatalf("expected tool_call, got text: %q", result.Content)
 	}
 
-	// Step 2: feed tool result
 	messages := BuildMessages(cfg, &mockMessageStore{}, "ch1", "user1", "weather?")
 	messages = AppendAssistantToolCalls(messages, result.ToolCalls)
 	result2, _, err := ContinueWithToolResults(context.Background(), cfg, messages, []ToolCallResult{
@@ -216,17 +244,28 @@ func TestContinueWithToolResults(t *testing.T) {
 	if result2.Content != "Tokyo is sunny, 25°C." {
 		t.Errorf("final = %q", result2.Content)
 	}
+
+	// Verify message chain was correct
+	if !hasAssistantToolCalls {
+		t.Error("continuation request missing assistant tool_calls message")
+	}
+	if !hasToolResult {
+		t.Error("continuation request missing tool result message")
+	}
 }
 
 func TestComplete_MultiRoundToolCalls(t *testing.T) {
 	var callCount atomic.Int32
+	var round2HasCall1Result, round3HasCall2Result bool
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := callCount.Add(1)
-		w.Header().Set("Content-Type", "application/json")
+		var req chatRequest
+		json.NewDecoder(r.Body).Decode(&req)
 
+		w.Header().Set("Content-Type", "application/json")
 		switch n {
 		case 1:
-			// Round 1: call tool A
 			json.NewEncoder(w).Encode(map[string]any{
 				"choices": []map[string]any{
 					{"message": map[string]any{"role": "assistant", "tool_calls": []map[string]any{
@@ -235,7 +274,12 @@ func TestComplete_MultiRoundToolCalls(t *testing.T) {
 				},
 			})
 		case 2:
-			// Round 2: call tool B based on result of A
+			// Verify call_1 result is present
+			for _, msg := range req.Messages {
+				if msg.Role == "tool" && msg.ToolCallID == "call_1" {
+					round2HasCall1Result = true
+				}
+			}
 			json.NewEncoder(w).Encode(map[string]any{
 				"choices": []map[string]any{
 					{"message": map[string]any{"role": "assistant", "tool_calls": []map[string]any{
@@ -244,7 +288,12 @@ func TestComplete_MultiRoundToolCalls(t *testing.T) {
 				},
 			})
 		case 3:
-			// Final: text reply
+			// Verify call_2 result is present
+			for _, msg := range req.Messages {
+				if msg.Role == "tool" && msg.ToolCallID == "call_2" {
+					round3HasCall2Result = true
+				}
+			}
 			json.NewEncoder(w).Encode(map[string]any{
 				"choices": []map[string]any{
 					{"message": map[string]any{"role": "assistant", "content": "PR #42 is a bug fix."}, "finish_reason": "stop"},
@@ -260,7 +309,6 @@ func TestComplete_MultiRoundToolCalls(t *testing.T) {
 		{Type: "function", Function: ToolFunction{Name: "cmd.detail", Description: "Get detail"}},
 	}
 
-	// Simulate the full loop that AI sink does
 	messages := BuildMessages(cfg, &mockMessageStore{}, "ch1", "user1", "tell me about the latest PR")
 	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "tell me about the latest PR", tools)
 	if err != nil {
@@ -285,7 +333,108 @@ func TestComplete_MultiRoundToolCalls(t *testing.T) {
 	if callCount.Load() != 3 {
 		t.Errorf("api calls = %d, want 3", callCount.Load())
 	}
+	if !round2HasCall1Result {
+		t.Error("round 2 missing call_1 tool result")
+	}
+	if !round3HasCall2Result {
+		t.Error("round 3 missing call_2 tool result")
+	}
 }
+
+func TestComplete_APIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		w.Write([]byte(`{"error":{"message":"internal server error"}}`))
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
+	_, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+}
+
+func TestComplete_ErrorJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{"message": "rate limit exceeded"},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
+	_, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	if err == nil {
+		t.Fatal("expected error for error JSON response")
+	}
+}
+
+func TestComplete_EmptyChoices(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{}})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
+	_, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil)
+	if err == nil {
+		t.Fatal("expected error for empty choices")
+	}
+}
+
+func TestComplete_MaxToolRoundsExceeded(t *testing.T) {
+	// Mock that always returns tool_calls, never text
+	var callCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := callCount.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "tool_calls": []map[string]any{
+					{"id": "call_" + string(rune('0'+n)), "type": "function", "function": map[string]any{"name": "cmd.loop", "arguments": `{}`}},
+				}}, "finish_reason": "tool_calls"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{BaseURL: srv.URL, APIKey: "test-key", Model: "test-model"}
+	tools := []Tool{{Type: "function", Function: ToolFunction{Name: "cmd.loop", Description: "Loop forever"}}}
+
+	messages := BuildMessages(cfg, &mockMessageStore{}, "ch1", "user1", "loop")
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "loop", tools)
+	if err != nil {
+		t.Fatalf("initial: %v", err)
+	}
+
+	rounds := 0
+	for rounds < MaxToolRounds && len(result.ToolCalls) > 0 {
+		messages = AppendAssistantToolCalls(messages, result.ToolCalls)
+		var results []ToolCallResult
+		for _, tc := range result.ToolCalls {
+			results = append(results, ToolCallResult{ID: tc.ID, Name: tc.Name, Content: "still looping"})
+		}
+		result, messages, err = ContinueWithToolResults(context.Background(), cfg, messages, results, tools)
+		if err != nil {
+			t.Fatalf("round %d: %v", rounds+1, err)
+		}
+		rounds++
+	}
+
+	// Should stop at MaxToolRounds even though LLM keeps returning tool_calls
+	if rounds != MaxToolRounds {
+		t.Errorf("rounds = %d, want %d", rounds, MaxToolRounds)
+	}
+	// Total API calls: 1 initial + MaxToolRounds continuations
+	if int(callCount.Load()) != MaxToolRounds+1 {
+		t.Errorf("api calls = %d, want %d", callCount.Load(), MaxToolRounds+1)
+	}
+}
+
+// ==================== Real API test (skipped unless env vars set) ====================
 
 func TestCompleteWithRealAPI(t *testing.T) {
 	baseURL := os.Getenv("TEST_AI_BASE_URL")
