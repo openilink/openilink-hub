@@ -355,7 +355,6 @@ function InlineHandleEditor({
     if (committingRef.current || cancelledRef.current) return;
     // Keep editor open on empty input so user can correct it
     if (!draft.trim()) {
-      onSave(draft);
       return;
     }
     committingRef.current = true;
