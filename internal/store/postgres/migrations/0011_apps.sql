@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- App platform: apps, installations, event logs, API logs
 
 CREATE TABLE IF NOT EXISTS apps (

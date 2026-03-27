@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE IF NOT EXISTS message_traces (
     id          BIGSERIAL PRIMARY KEY,
     bot_id      TEXT NOT NULL,

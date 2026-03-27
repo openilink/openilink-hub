@@ -5,62 +5,83 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
-	"sort"
+
+	"github.com/pressly/goose/v3"
 )
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-func loadMigrations() ([]string, error) {
-	entries, err := migrationsFS.ReadDir("migrations")
-	if err != nil {
-		return nil, err
+func runMigrations(db *sql.DB) error {
+	// Migrate from old schema_version table to goose if needed
+	if err := migrateFromLegacy(db); err != nil {
+		slog.Warn("legacy migration check", "err", err)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
-	sqls := make([]string, 0, len(entries))
-	for _, e := range entries {
-		data, err := migrationsFS.ReadFile("migrations/" + e.Name())
-		if err != nil {
-			return nil, err
-		}
-		sqls = append(sqls, string(data))
+
+	goose.SetBaseFS(migrationsFS)
+	goose.SetLogger(goose.NopLogger())
+
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		return fmt.Errorf("goose set dialect: %w", err)
 	}
-	return sqls, nil
+
+	before, _ := goose.GetDBVersion(db)
+
+	if err := goose.Up(db, "migrations"); err != nil {
+		return fmt.Errorf("goose up: %w", err)
+	}
+
+	after, _ := goose.GetDBVersion(db)
+	if after > before {
+		slog.Info("migrations complete", "from", before, "to", after)
+	}
+	return nil
 }
 
-func runMigrations(db *sql.DB) error {
+// migrateFromLegacy converts the old schema_version table to goose_db_version.
+func migrateFromLegacy(db *sql.DB) error {
+	var exists int
+	err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_version'").Scan(&exists)
+	if err != nil || exists == 0 {
+		return nil
+	}
+
+	// Check if goose table already exists
+	var gooseExists int
+	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='goose_db_version'").Scan(&gooseExists)
+	if gooseExists > 0 {
+		return nil
+	}
+
+	var maxVersion int
+	if err := db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_version").Scan(&maxVersion); err != nil {
+		return err
+	}
+	if maxVersion == 0 {
+		return nil
+	}
+
+	slog.Info("migrating from legacy schema_version to goose", "version", maxVersion)
+
 	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS schema_version (
-			version    INTEGER PRIMARY KEY,
-			applied_at INTEGER NOT NULL DEFAULT (unixepoch())
+		CREATE TABLE IF NOT EXISTS goose_db_version (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			version_id INTEGER NOT NULL,
+			is_applied INTEGER NOT NULL DEFAULT 1,
+			tstamp TEXT NOT NULL DEFAULT (datetime('now'))
 		)
 	`); err != nil {
-		return fmt.Errorf("create schema_version: %w", err)
+		return fmt.Errorf("create goose table: %w", err)
 	}
 
-	sqls, err := loadMigrations()
-	if err != nil {
-		return fmt.Errorf("load migrations: %w", err)
-	}
+	db.Exec("INSERT INTO goose_db_version (version_id, is_applied) VALUES (0, 1)")
 
-	var current int
-	db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_version").Scan(&current)
-
-	for i := current; i < len(sqls); i++ {
-		version := i + 1
-		slog.Info("running migration", "version", version)
-		if _, err := db.Exec(sqls[i]); err != nil {
-			return fmt.Errorf("migration %d failed: %w", version, err)
-		}
-		if _, err := db.Exec("INSERT INTO schema_version (version) VALUES (?)", version); err != nil {
-			return fmt.Errorf("record migration %d: %w", version, err)
+	for v := 1; v <= maxVersion; v++ {
+		if _, err := db.Exec("INSERT INTO goose_db_version (version_id, is_applied) VALUES (?, 1)", v); err != nil {
+			return fmt.Errorf("insert goose version %d: %w", v, err)
 		}
 	}
 
-	if current < len(sqls) {
-		slog.Info("migrations complete", "from", current, "to", len(sqls))
-	}
+	slog.Info("legacy migration complete", "versions_migrated", maxVersion)
 	return nil
 }

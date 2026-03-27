@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Extract provider_id from credentials JSON into a proper column.
 ALTER TABLE bots ADD COLUMN IF NOT EXISTS provider_id TEXT NOT NULL DEFAULT '';
 

@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Allow same app to be installed multiple times on same bot
 ALTER TABLE app_installations DROP CONSTRAINT IF EXISTS app_installations_app_id_bot_id_key;
 

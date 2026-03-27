@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Extended plugin metadata (WebhookPlugin spec)
 ALTER TABLE plugins ADD COLUMN IF NOT EXISTS namespace TEXT NOT NULL DEFAULT '';
 ALTER TABLE plugins ADD COLUMN IF NOT EXISTS icon TEXT NOT NULL DEFAULT '';

@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- OpeniLink Hub SQLite schema (consolidated from 24 PG migrations)
 
 CREATE TABLE IF NOT EXISTS users (

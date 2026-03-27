@@ -1,3 +1,5 @@
+-- +goose Up
+
 ALTER TABLE bots ADD COLUMN IF NOT EXISTS ai_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Migrate AI enabled from channel ai_config to bot level

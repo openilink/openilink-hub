@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Deduplicate existing messages: keep only the latest row per (bot_id, message_id).
 DELETE FROM messages a
   USING messages b

@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Webhook request logs
 CREATE TABLE IF NOT EXISTS webhook_logs (
     id              BIGSERIAL PRIMARY KEY,

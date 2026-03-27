@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- Split plugins into two tables: plugins (identity) + plugin_versions (releases)
 -- NOTE: drops old plugins table, existing plugin data will be lost
 

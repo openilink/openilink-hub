@@ -1,3 +1,5 @@
+-- +goose Up
+
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ;
 
 -- Backfill: treat all existing inbound messages as already processed.

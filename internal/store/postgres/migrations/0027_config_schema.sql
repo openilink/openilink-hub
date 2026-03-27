@@ -1,1 +1,3 @@
+-- +goose Up
+
 ALTER TABLE apps ADD COLUMN config_schema TEXT NOT NULL DEFAULT '';
