@@ -47,11 +47,11 @@ import { ToolsDisplay, parseTools } from "../components/tools-display";
 
 type SectionKey = "token" | "config" | "app-config" | "tools" | "event-logs" | "api-logs";
 
-function buildNavSections(app: any) {
+function buildNavSections(app: any, inst?: any) {
   const items: { key: SectionKey; label: string; icon: any }[] = [
     { key: "token", label: "Token & 使用", icon: Key },
   ];
-  if (parseTools(app?.tools).length > 0) {
+  if (parseTools(app?.tools).length > 0 || parseTools(inst?.tools).length > 0) {
     items.push({ key: "tools", label: "命令 / 工具", icon: Terminal });
   }
   if (app?.config_schema) {
@@ -125,7 +125,7 @@ export function InstallationDetailPage() {
     );
   }
 
-  const navItems = buildNavSections(app);
+  const navItems = buildNavSections(app, inst);
 
   return (
     <div className="space-y-6">
@@ -210,17 +210,30 @@ export function InstallationDetailPage() {
 
         <div className="flex-1 min-w-0">
           {section === "token" && <TokenSection app={app} inst={inst} />}
-          {section === "tools" && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-base font-semibold">命令 / 工具</h2>
-                <p className="text-sm text-muted-foreground mt-1">此应用注册的命令和工具。</p>
+          {section === "tools" && (() => {
+            const appTools = parseTools(app?.tools);
+            const instTools = parseTools(inst?.tools);
+            return (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-base font-semibold">命令 / 工具</h2>
+                  <p className="text-sm text-muted-foreground mt-1">此安装可用的命令和工具。</p>
+                </div>
+                {instTools.length > 0 && (
+                  <Card className="p-5 space-y-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">自定义命令</h3>
+                    <ToolsDisplay tools={instTools} />
+                  </Card>
+                )}
+                {appTools.length > 0 && (
+                  <Card className="p-5 space-y-3">
+                    {instTools.length > 0 && <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">应用命令</h3>}
+                    <ToolsDisplay tools={appTools} />
+                  </Card>
+                )}
               </div>
-              <Card className="p-5">
-                <ToolsDisplay tools={parseTools(app.tools)} />
-              </Card>
-            </div>
-          )}
+            );
+          })()}
           {section === "app-config" && <AppConfigForm app={app} inst={inst} onUpdate={loadData} />}
           {section === "config" && (
             <ConfigSection
