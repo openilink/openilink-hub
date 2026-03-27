@@ -115,7 +115,7 @@ func (s *Server) handleDeleteOAuthConfig(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleGetAvailableModels(w http.ResponseWriter, r *http.Request) {
 	dbConf, _ := s.Store.ListConfigByPrefix("ai.")
 	raw := dbConf["ai.available_models"]
-	if raw == "" {
+	if raw == "" || !json.Valid([]byte(raw)) {
 		raw = "[]"
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -178,7 +178,9 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if req.HideThinking != "" {
 		s.Store.SetConfig("ai.hide_thinking", req.HideThinking)
 	}
-	s.Store.SetConfig("ai.available_models", req.AvailableModels)
+	if req.AvailableModels != "" {
+		s.Store.SetConfig("ai.available_models", req.AvailableModels)
+	}
 	jsonOK(w)
 }
 
