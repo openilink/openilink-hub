@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS app_reviews (
     id         TEXT PRIMARY KEY,
     app_id     TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
