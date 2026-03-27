@@ -161,7 +161,7 @@ All events share this envelope format:
     "timestamp": 1711234567,
     "data": {
       "message_id": 12345,
-      "sender": {"id": "wxid_abc", "name": "Zhang San", "role": "user"},
+      "sender": {"id": "wxid_abc", "name": "wxid_abc", "role": "user"},
       "group": null,
       "content": "hello",
       "msg_type": "text",
@@ -187,7 +187,7 @@ User-triggered:
       "command": "pr",
       "text": "openilink/openilink-hub open",
       "args": null,
-      "sender": {"id": "wxid_abc", "name": "Zhang San", "role": "user"},
+      "sender": {"id": "wxid_abc", "name": "wxid_abc", "role": "user"},
       "group": null
     }
   }

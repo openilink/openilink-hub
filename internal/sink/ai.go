@@ -226,9 +226,20 @@ func (s *AI) reply(d Delivery) {
 			return
 		}
 
+		// Strip images from async/image results before passing to LLM.
+		// We keep all tool results (required by OpenAI tool_calls protocol) but
+		// clear images so they don't get sent as multimodal content to the LLM.
+		var llmResults []ai.ToolCallResult
+		for _, tr := range toolResults {
+			if tr.Async || len(tr.Images) > 0 {
+				tr.Images = nil
+			}
+			llmResults = append(llmResults, tr)
+		}
+
 		// Continue conversation with tool results
 		var nextErr error
-		result, messages, nextErr = ai.ContinueWithToolResults(ctx, cfg, messages, toolResults, tools)
+		result, messages, nextErr = ai.ContinueWithToolResults(ctx, cfg, messages, llmResults, tools)
 		if nextErr != nil {
 			slog.Error("ai continuation failed", "bot", d.BotDBID, "round", round+1, "err", nextErr)
 			if span != nil {

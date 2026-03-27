@@ -368,7 +368,7 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 
 // sendAppResult sends a reply from an App via the bot and stores it as outbound.
 func (m *Manager) sendAppResult(inst *Instance, to string, result *appdelivery.DeliveryResult, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
-	if result == nil {
+	if result == nil || result.ReplyAsync {
 		return
 	}
 
