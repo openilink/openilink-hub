@@ -41,15 +41,12 @@ func runMigrations(db *sql.DB) error {
 // migrateFromLegacy converts the old schema_version table to goose_db_version.
 func migrateFromLegacy(db *sql.DB) error {
 	var exists int
-	err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_version'").Scan(&exists)
-	if err != nil || exists == 0 {
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_version'").Scan(&exists); err != nil || exists == 0 {
 		return nil
 	}
 
-	// Check if goose table already exists
 	var gooseExists int
-	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='goose_db_version'").Scan(&gooseExists)
-	if gooseExists > 0 {
+	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='goose_db_version'").Scan(&gooseExists); err != nil || gooseExists > 0 {
 		return nil
 	}
 
@@ -63,7 +60,13 @@ func migrateFromLegacy(db *sql.DB) error {
 
 	slog.Info("migrating from legacy schema_version to goose", "version", maxVersion)
 
-	if _, err := db.Exec(`
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
 		CREATE TABLE IF NOT EXISTS goose_db_version (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			version_id INTEGER NOT NULL,
@@ -74,12 +77,17 @@ func migrateFromLegacy(db *sql.DB) error {
 		return fmt.Errorf("create goose table: %w", err)
 	}
 
-	db.Exec("INSERT INTO goose_db_version (version_id, is_applied) VALUES (0, 1)")
-
+	if _, err := tx.Exec("INSERT INTO goose_db_version (version_id, is_applied) VALUES (0, 1)"); err != nil {
+		return fmt.Errorf("insert goose version 0: %w", err)
+	}
 	for v := 1; v <= maxVersion; v++ {
-		if _, err := db.Exec("INSERT INTO goose_db_version (version_id, is_applied) VALUES (?, 1)", v); err != nil {
+		if _, err := tx.Exec("INSERT INTO goose_db_version (version_id, is_applied) VALUES (?, 1)", v); err != nil {
 			return fmt.Errorf("insert goose version %d: %w", v, err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit legacy migration: %w", err)
 	}
 
 	slog.Info("legacy migration complete", "versions_migrated", maxVersion)
