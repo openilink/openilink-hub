@@ -166,16 +166,22 @@ func (s *AI) reply(d Delivery) {
 		}
 	}
 
-	// Set token usage attributes on span
-	if span != nil && totalTokens > 0 {
-		span.SetAttr("ai.tokens.prompt", totalPrompt)
-		span.SetAttr("ai.tokens.completion", totalCompletion)
-		span.SetAttr("ai.tokens.total", totalTokens)
-		if totalCached > 0 {
-			span.SetAttr("ai.tokens.cached", totalCached)
-		}
-		if totalReasoning > 0 {
-			span.SetAttr("ai.tokens.reasoning", totalReasoning)
+	// Set token usage attributes on both the ai_completion span and the root span.
+	// The root span is used by the traces list and trace header summary views.
+	if totalTokens > 0 {
+		for _, s := range []*store.SpanBuilder{span, d.RootSpan} {
+			if s == nil {
+				continue
+			}
+			s.SetAttr("ai.tokens.prompt", totalPrompt)
+			s.SetAttr("ai.tokens.completion", totalCompletion)
+			s.SetAttr("ai.tokens.total", totalTokens)
+			if totalCached > 0 {
+				s.SetAttr("ai.tokens.cached", totalCached)
+			}
+			if totalReasoning > 0 {
+				s.SetAttr("ai.tokens.reasoning", totalReasoning)
+			}
 		}
 	}
 
