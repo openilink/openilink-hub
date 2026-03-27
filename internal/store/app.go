@@ -67,6 +67,17 @@ type AppInstallation struct {
 	BotName          string `json:"bot_name,omitempty"`
 }
 
+type AppReview struct {
+	ID        string `json:"id"`
+	AppID     string `json:"app_id"`
+	Action    string `json:"action"`    // request, approve, reject, withdraw, auto_revert, admin_set
+	ActorID   string `json:"actor_id"`
+	Reason    string `json:"reason"`
+	Version   string `json:"version"`
+	Snapshot  string `json:"snapshot"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 type AppStore interface {
 	CreateApp(app *App) (*App, error)
 	GetApp(id string) (*App, error)
@@ -75,7 +86,7 @@ type AppStore interface {
 	ListListedApps() ([]App, error)
 	ListAllApps() ([]App, error)
 	ListMarketplaceApps() ([]App, error)
-	UpdateApp(id string, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL, configSchema string, tools, events, scopes json.RawMessage) error
+	UpdateApp(id string, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide string, tools, events, scopes json.RawMessage) error
 	UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide string, tools, events, scopes json.RawMessage) error
 	DeleteApp(id string) error
 	InstallApp(appID, botID string) (*AppInstallation, error)
@@ -98,4 +109,6 @@ type AppStore interface {
 	SetListing(id, listing string) error
 	UpdateAppTools(id string, tools json.RawMessage) error
 	UpdateInstallationTools(id string, tools json.RawMessage) error
+	CreateAppReview(review *AppReview) error
+	ListAppReviews(appID string) ([]AppReview, error)
 }

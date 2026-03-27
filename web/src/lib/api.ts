@@ -200,6 +200,8 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ approve, reason: reason || "" }),
     }),
+  listAppReviews: (appId: string) =>
+    request<any[]>(`/api/apps/${appId}/reviews`),
 
   // Webhook logs
   webhookLogs: (botId: string, channelId?: string, limit = 50) =>

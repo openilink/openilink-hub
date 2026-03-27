@@ -218,10 +218,11 @@ func (db *DB) ListMarketplaceApps() ([]store.App, error) {
 	return apps, rows.Err()
 }
 
-func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL, configSchema string, tools, events, scopes json.RawMessage) error {
+func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide string, tools, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=?, description=?, icon=?, icon_url=?, homepage=?,
-		tools=?, events=?, scopes=?, oauth_setup_url=?, oauth_redirect_url=?, config_schema=?, updated_at=unixepoch() WHERE id=?`,
-		name, description, icon, iconURL, homepage, tools, events, scopes, oauthSetupURL, oauthRedirectURL, configSchema, id)
+		tools=?, events=?, scopes=?, oauth_setup_url=?, oauth_redirect_url=?, config_schema=?,
+		version=?, readme=?, guide=?, updated_at=unixepoch() WHERE id=?`,
+		name, description, icon, iconURL, homepage, tools, events, scopes, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide, id)
 	return err
 }
 
@@ -452,4 +453,32 @@ func (db *DB) UpdateAppTools(id string, tools json.RawMessage) error {
 func (db *DB) UpdateInstallationTools(id string, tools json.RawMessage) error {
 	_, err := db.Exec(`UPDATE app_installations SET tools = ?, updated_at = unixepoch() WHERE id = ?`, tools, id)
 	return err
+}
+
+func (db *DB) CreateAppReview(review *store.AppReview) error {
+	if review.ID == "" {
+		review.ID = uuid.New().String()
+	}
+	_, err := db.Exec(`INSERT INTO app_reviews (id, app_id, action, actor_id, reason, version, snapshot, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())`,
+		review.ID, review.AppID, review.Action, review.ActorID, review.Reason, review.Version, review.Snapshot)
+	return err
+}
+
+func (db *DB) ListAppReviews(appID string) ([]store.AppReview, error) {
+	rows, err := db.Query(`SELECT id, app_id, action, actor_id, reason, version, snapshot, created_at
+		FROM app_reviews WHERE app_id = ? ORDER BY created_at DESC`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var reviews []store.AppReview
+	for rows.Next() {
+		var r store.AppReview
+		if err := rows.Scan(&r.ID, &r.AppID, &r.Action, &r.ActorID, &r.Reason, &r.Version, &r.Snapshot, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		reviews = append(reviews, r)
+	}
+	return reviews, rows.Err()
 }

@@ -264,7 +264,7 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 
 		err := s.UpdateApp(app.ID, "Full App Updated", "updated desc", "star", "https://new-icon.png",
 			"https://new-home.com", "https://new-setup.com", "https://new-redirect.com", "{}",
-			newTools, newEvents, newScopes)
+			"2.0.0", "updated readme", "updated guide", newTools, newEvents, newScopes)
 		if err != nil {
 			t.Fatalf("UpdateApp: %v", err)
 		}
@@ -280,6 +280,15 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		json.Unmarshal(got.Tools, &tools)
 		if len(tools) != 2 {
 			t.Errorf("expected 2 tools, got %d", len(tools))
+		}
+		if got.Version != "2.0.0" {
+			t.Errorf("version = %q, want %q", got.Version, "2.0.0")
+		}
+		if got.Readme != "updated readme" {
+			t.Errorf("readme = %q, want %q", got.Readme, "updated readme")
+		}
+		if got.Guide != "updated guide" {
+			t.Errorf("guide = %q, want %q", got.Guide, "updated guide")
 		}
 	})
 

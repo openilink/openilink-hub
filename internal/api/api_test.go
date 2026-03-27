@@ -1617,7 +1617,7 @@ func TestScopeSnapshotAtInstall(t *testing.T) {
 		newScopes, _ := json.Marshal([]string{"message:write", "message:read", "tools:write"})
 		env.store.UpdateApp(app.ID, app.Name, app.Description, app.Icon, app.IconURL,
 			app.Homepage, app.OAuthSetupURL, app.OAuthRedirectURL, app.ConfigSchema,
-			app.Tools, app.Events, newScopes)
+			app.Version, app.Readme, app.Guide, app.Tools, app.Events, newScopes)
 
 		// Existing installation should still have old scopes
 		installations, _ := env.store.ListInstallationsByApp(app.ID)
