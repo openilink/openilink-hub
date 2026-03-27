@@ -75,6 +75,7 @@ export function BotTracesTab({ botId }: { botId: string }) {
                   <TableCell><Skeleton className="h-4 w-10 ml-auto" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                 </TableRow>
               ))
             ) : rootSpans.length === 0 ? (
@@ -92,8 +93,7 @@ export function BotTracesTab({ botId }: { botId: string }) {
                 return (
                   <TableRow
                     key={root.id}
-                    className="cursor-pointer group"
-                    role="link"
+                    className="cursor-pointer focus-visible:bg-muted/50"
                     tabIndex={0}
                     onClick={() => navigate(`/dashboard/accounts/${botId}/traces/${root.trace_id}`)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/dashboard/accounts/${botId}/traces/${root.trace_id}`); } }}

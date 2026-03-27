@@ -692,8 +692,7 @@ function EventLogsSection({ appId, instId, botId }: { appId: string; instId: str
               {logs.map((log) => (
                 <TableRow
                   key={log.id || log.trace_id + log.created_at}
-                  className={log.trace_id ? "cursor-pointer" : ""}
-                  role={log.trace_id ? "link" : undefined}
+                  className={log.trace_id ? "cursor-pointer focus-visible:bg-muted/50" : ""}
                   tabIndex={log.trace_id ? 0 : undefined}
                   onClick={() => log.trace_id && navigate(`/dashboard/accounts/${botId}/traces/${log.trace_id}`)}
                   onKeyDown={(e) => { if (log.trace_id && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); navigate(`/dashboard/accounts/${botId}/traces/${log.trace_id}`); } }}
