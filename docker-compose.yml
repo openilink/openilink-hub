@@ -1,9 +1,18 @@
+# Environment variables (all optional, defaults for local dev):
+#   PASSWORD           - shared password for postgres, minio, storage (default: openilink)
+#                        must be URL-safe (avoid @, /, %, # characters)
+#   HUB_PORT           - hub listen port on host (default: 9800)
+#   RP_ORIGIN / RP_ID  - WebAuthn origin and relying party ID (default: localhost)
+#
+# Postgres and MinIO do not expose host ports by default.
+# To connect with GUI tools: docker compose exec postgres psql -U openilink
+
 services:
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: openilink
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openilink}
+      POSTGRES_PASSWORD: ${PASSWORD:-openilink}
       POSTGRES_DB: openilink
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U openilink -d openilink"]
@@ -18,7 +27,7 @@ services:
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: openilink
-      MINIO_ROOT_PASSWORD: ${POSTGRES_PASSWORD:-openilink}
+      MINIO_ROOT_PASSWORD: ${PASSWORD:-openilink}
     volumes:
       - miniodata:/data
 
@@ -28,12 +37,12 @@ services:
     ports:
       - "${HUB_PORT:-9800}:9800"
     environment:
-      DATABASE_URL: postgres://openilink:${POSTGRES_PASSWORD:-openilink}@postgres:5432/openilink?sslmode=disable
+      DATABASE_URL: postgres://openilink:${PASSWORD:-openilink}@postgres:5432/openilink?sslmode=disable
       RP_ORIGIN: ${RP_ORIGIN:-http://localhost:9800}
       RP_ID: ${RP_ID:-localhost}
       STORAGE_ENDPOINT: minio:9000
       STORAGE_ACCESS_KEY: openilink
-      STORAGE_SECRET_KEY: ${POSTGRES_PASSWORD:-openilink}
+      STORAGE_SECRET_KEY: ${PASSWORD:-openilink}
       STORAGE_BUCKET: openilink
       # STORAGE_PUBLIC_URL: https://s3.example.com/openilink
       # GITHUB_CLIENT_ID:
