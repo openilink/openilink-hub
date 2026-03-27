@@ -38,9 +38,14 @@ func (s *Server) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 		displayName = req.Username
 	}
 
-	// First user becomes admin
-	role := store.RoleMember
+	// First user becomes admin; subsequent registrations respect the registration gate
 	count, _ := s.Store.UserCount()
+	if count > 0 && !s.registrationEnabled() {
+		jsonError(w, "registration is disabled", http.StatusForbidden)
+		return
+	}
+
+	role := store.RoleMember
 	if count == 0 {
 		role = store.RoleSuperAdmin
 	}

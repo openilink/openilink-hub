@@ -241,8 +241,12 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	// Login mode: find or create user
 	user, err := s.findOrCreateOAuthUser(name, providerID, username, email, avatarURL)
 	if err != nil {
+		if err.Error() == "registration is disabled" {
+			http.Redirect(w, r, "/login?error=registration_disabled", http.StatusFound)
+			return
+		}
 		slog.Error("oauth user creation failed", "provider", name, "err", err)
-		jsonError(w, "login failed: "+err.Error(), http.StatusInternalServerError)
+		http.Redirect(w, r, "/login?error=login_failed", http.StatusFound)
 		return
 	}
 
