@@ -10,11 +10,16 @@ import {
   Loader2,
   Trash2,
   RefreshCw,
+  Key,
+  Settings,
+  ScrollText,
+  Terminal,
+  Sliders,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
-import { Card, CardHeader, CardTitle, CardAction, CardContent } from "../components/ui/card";
+import { Card, CardHeader, CardTitle, CardAction, CardContent, CardDescription } from "../components/ui/card";
 import {
   Table,
   TableBody,
@@ -38,6 +43,30 @@ import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 import { ToolsDisplay, parseTools } from "../components/tools-display";
 
+// ==================== Nav Definition ====================
+
+type SectionKey = "token" | "config" | "app-config" | "tools" | "event-logs" | "api-logs";
+
+function buildNavSections(app: any) {
+  const items: { key: SectionKey; label: string; icon: any }[] = [
+    { key: "token", label: "Token & 使用", icon: Key },
+  ];
+  if (parseTools(app?.tools).length > 0) {
+    items.push({ key: "tools", label: "命令 / 工具", icon: Terminal });
+  }
+  if (app?.config_schema) {
+    let parsed: any = {};
+    try { parsed = typeof app.config_schema === "string" ? JSON.parse(app.config_schema || "{}") : (app.config_schema || {}); } catch {}
+    if (Object.keys(parsed.properties || {}).length > 0) {
+      items.push({ key: "app-config", label: "应用配置", icon: Sliders });
+    }
+  }
+  items.push({ key: "config", label: "安装设置", icon: Settings });
+  items.push({ key: "event-logs", label: "事件日志", icon: ScrollText });
+  items.push({ key: "api-logs", label: "API 日志", icon: ScrollText });
+  return items;
+}
+
 // ==================== Page ====================
 
 export function InstallationDetailPage() {
@@ -48,6 +77,7 @@ export function InstallationDetailPage() {
   const [app, setApp] = useState<any>(null);
   const [botName, setBotName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [section, setSection] = useState<SectionKey>("token");
 
   const loadData = useCallback(async () => {
     try {
@@ -80,7 +110,6 @@ export function InstallationDetailPage() {
       <div className="space-y-6">
         <Skeleton className="h-20 w-full rounded-3xl" />
         <Skeleton className="h-64 w-full rounded-3xl" />
-        <Skeleton className="h-48 w-full rounded-3xl" />
       </div>
     );
   }
@@ -96,8 +125,10 @@ export function InstallationDetailPage() {
     );
   }
 
+  const navItems = buildNavSections(app);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div className="space-y-4">
         <button
@@ -144,33 +175,66 @@ export function InstallationDetailPage() {
         </div>
       </div>
 
-      {/* Token & Usage */}
-      <TokenSection app={app} inst={inst} />
+      {/* Mobile nav */}
+      <div className="md:hidden">
+        <select
+          value={section}
+          onChange={e => setSection(e.target.value as SectionKey)}
+          className="w-full h-9 px-3 rounded-md border bg-background text-sm"
+          aria-label="选择页面"
+        >
+          {navItems.map(item => (
+            <option key={item.key} value={item.key}>{item.label}</option>
+          ))}
+        </select>
+      </div>
 
-      {/* Tools (commands) */}
-      {parseTools(app?.tools).length > 0 && (
-        <Card className="space-y-3 p-5">
-          <ToolsDisplay tools={parseTools(app.tools)} />
-        </Card>
-      )}
+      {/* Desktop: Left nav + Right content */}
+      <div className="flex gap-8">
+        <nav className="hidden md:block w-48 shrink-0 space-y-1">
+          {navItems.map(item => (
+            <button
+              key={item.key}
+              onClick={() => setSection(item.key)}
+              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors ${
+                section === item.key
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </button>
+          ))}
+        </nav>
 
-      {/* App Config (config_schema) */}
-      {app.config_schema && <AppConfigForm app={app} inst={inst} onUpdate={loadData} />}
-
-      {/* Config */}
-      <ConfigSection
-        app={app}
-        inst={inst}
-        botId={botId!}
-        onUpdate={loadData}
-        onUninstall={() => navigate(`/dashboard/accounts/${botId}`)}
-      />
-
-      {/* Event Logs */}
-      <EventLogsSection appId={inst.app_id} instId={inst.id} />
-
-      {/* API Logs */}
-      <ApiLogsSection appId={inst.app_id} instId={inst.id} />
+        <div className="flex-1 min-w-0">
+          {section === "token" && <TokenSection app={app} inst={inst} />}
+          {section === "tools" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-base font-semibold">命令 / 工具</h2>
+                <p className="text-sm text-muted-foreground mt-1">此应用注册的命令和工具。</p>
+              </div>
+              <Card className="p-5">
+                <ToolsDisplay tools={parseTools(app.tools)} />
+              </Card>
+            </div>
+          )}
+          {section === "app-config" && <AppConfigForm app={app} inst={inst} onUpdate={loadData} />}
+          {section === "config" && (
+            <ConfigSection
+              app={app}
+              inst={inst}
+              botId={botId!}
+              onUpdate={loadData}
+              onUninstall={() => navigate(`/dashboard/accounts/${botId}`)}
+            />
+          )}
+          {section === "event-logs" && <EventLogsSection appId={inst.app_id} instId={inst.id} />}
+          {section === "api-logs" && <ApiLogsSection appId={inst.app_id} instId={inst.id} />}
+        </div>
+      </div>
     </div>
   );
 }
@@ -197,7 +261,6 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
     ? token.slice(0, 8) + "****" + token.slice(-4)
     : "---";
 
-  // Render guide with variable replacement
   function renderGuide(): string | null {
     if (app.guide) {
       return app.guide
@@ -212,14 +275,17 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
   const showUsageGuide = guideText || showGenericGuide;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Token & 使用方式</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Token display */}
-        <div className="space-y-1.5">
-          <Label className="text-muted-foreground">Token</Label>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-base font-semibold">Token & 使用方式</h2>
+        <p className="text-sm text-muted-foreground mt-1">应用的 Token 和接入指南。</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Token</CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="flex items-center gap-2 p-2 rounded-md border bg-background">
             <code className="text-xs font-mono flex-1 break-all select-all">
               {showToken ? token : maskedToken}
@@ -245,17 +311,28 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
               )}
             </button>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Guide content */}
-        {guideText && (
-          <div className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed p-3 rounded-md bg-muted/30 border overflow-x-auto">
-            {guideText}
-          </div>
-        )}
+      {guideText && (
+        <Card>
+          <CardHeader>
+            <CardTitle>使用指南</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed p-3 rounded-md bg-muted/30 border overflow-x-auto">
+              {guideText}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-        {showGenericGuide && (
-          <div className="space-y-3">
+      {showGenericGuide && (
+        <Card>
+          <CardHeader>
+            <CardTitle>接入方式</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
             <details className="group">
               <summary className="text-sm font-medium cursor-pointer flex items-center gap-2 select-none">
                 <ArrowRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
@@ -275,17 +352,20 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
                 {`curl -X POST ${hubUrl}/bot/v1/message/send \\\n  -H "Authorization: Bearer ${token || "<your_token>"}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"content":"hello"}'`}
               </pre>
             </details>
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Non-integration apps with no guide: just show the token (already shown above) */}
-        {!showUsageGuide && app.webhook_url && (
-          <p className="text-xs text-muted-foreground">
-            事件将推送到 <code className="font-mono">{app.webhook_url}</code>
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      {!showUsageGuide && app.webhook_url && (
+        <Card>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              事件将推送到 <code className="font-mono">{app.webhook_url}</code>
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -330,33 +410,37 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>应用配置</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {Object.entries(properties).map(([key, prop]: [string, any]) => (
-          <div key={key} className="space-y-1.5">
-            <Label className="text-muted-foreground">{prop.title || key}</Label>
-            <Input
-              value={form[key] || ""}
-              onChange={e => setForm({ ...form, [key]: e.target.value })}
-              className="h-8 text-xs font-mono"
-              placeholder={prop.description || ""}
-            />
-            {prop.description && (
-              <p className="text-xs text-muted-foreground">{prop.description}</p>
-            )}
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-base font-semibold">应用配置</h2>
+        <p className="text-sm text-muted-foreground mt-1">配置此应用的运行参数。</p>
+      </div>
+
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          {Object.entries(properties).map(([key, prop]: [string, any]) => (
+            <div key={key} className="space-y-1.5">
+              <Label className="text-muted-foreground">{prop.title || key}</Label>
+              <Input
+                value={form[key] || ""}
+                onChange={e => setForm({ ...form, [key]: e.target.value })}
+                className="h-8 text-xs font-mono"
+                placeholder={prop.description || ""}
+              />
+              {prop.description && (
+                <p className="text-xs text-muted-foreground">{prop.description}</p>
+              )}
+            </div>
+          ))}
+          <div className="flex items-center gap-2 pt-2 border-t">
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              保存配置
+            </Button>
           </div>
-        ))}
-        <div className="flex items-center gap-2 pt-2 border-t">
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-            保存配置
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -412,57 +496,61 @@ function ConfigSection({
   }
 
   return (
-    <>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-base font-semibold">安装设置</h2>
+        <p className="text-sm text-muted-foreground mt-1">管理此安装实例的 Handle、状态和生命周期。</p>
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>配置</CardTitle>
+          <CardTitle>Handle</CardTitle>
+          <CardDescription>用户通过 @handle 触发此应用</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="inst-handle" className="text-muted-foreground">
-              Handle
-            </Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="inst-handle"
-                value={handle}
-                onChange={(e) => setHandle(e.target.value)}
-                className="h-8 text-xs font-mono flex-1"
-                placeholder="如 notify-prod"
-              />
-              <span className="text-xs text-muted-foreground font-mono shrink-0">
-                @{handle || "handle"}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="inst-enabled">启用状态</Label>
-              <p className="text-xs text-muted-foreground">
-                {enabled ? "应用正在接收事件和处理消息" : "应用已停用，不会接收任何事件"}
-              </p>
-            </div>
-            <Switch id="inst-enabled" checked={enabled} onCheckedChange={setEnabled} />
-          </div>
-
-          <div className="flex items-center gap-2 pt-2 border-t">
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-              保存
-            </Button>
-            <div className="flex-1" />
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setShowUninstallDialog(true)}
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1" />
-              卸载
-            </Button>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <Input
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              className="h-8 text-xs font-mono flex-1"
+              placeholder="如 notify-prod"
+            />
+            <span className="text-xs text-muted-foreground font-mono shrink-0">
+              @{handle || "handle"}
+            </span>
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>启用状态</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {enabled ? "应用正在接收事件和处理消息" : "应用已停用，不会接收任何事件"}
+            </p>
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+          保存
+        </Button>
+        <div className="flex-1" />
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => setShowUninstallDialog(true)}
+        >
+          <Trash2 className="h-3.5 w-3.5 mr-1" />
+          卸载应用
+        </Button>
+      </div>
 
       <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
         <DialogContent className="sm:max-w-md">
@@ -483,7 +571,7 @@ function ConfigSection({
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 
@@ -515,74 +603,78 @@ function EventLogsSection({ appId, instId }: { appId: string; instId: string }) 
   }, [loadLogs]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>事件投递日志</CardTitle>
-        <CardAction>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={() => { setLoading(true); loadLogs(); }}
-          >
-            <RefreshCw className="h-3 w-3" />
-            刷新
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-8 w-full" />
-            ))}
-          </div>
-        ) : logs.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">暂无事件日志</p>
-        ) : (
-          <div className="rounded-md border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>事件类型</TableHead>
-                  <TableHead>Trace ID</TableHead>
-                  <TableHead>状态码</TableHead>
-                  <TableHead>耗时</TableHead>
-                  <TableHead>错误</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.map((log) => (
-                  <TableRow key={log.id || log.trace_id + log.created_at}>
-                    <TableCell className="font-mono whitespace-nowrap">
-                      {formatTime(log.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono">
-                        {log.event_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-muted-foreground">
-                      {log.trace_id ? log.trace_id.slice(0, 12) + "..." : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={log.status_code || log.status} />
-                    </TableCell>
-                    <TableCell className="font-mono">
-                      {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
-                    </TableCell>
-                    <TableCell className="text-destructive max-w-48 truncate">
-                      {log.error || "-"}
-                    </TableCell>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold">事件投递日志</h2>
+          <p className="text-sm text-muted-foreground mt-1">Hub 推送到此应用的事件记录。</p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs gap-1"
+          onClick={() => { setLoading(true); loadLogs(); }}
+        >
+          <RefreshCw className="h-3 w-3" />
+          刷新
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </div>
+          ) : logs.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">暂无事件日志</p>
+          ) : (
+            <div className="rounded-md border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>时间</TableHead>
+                    <TableHead>事件类型</TableHead>
+                    <TableHead>Trace ID</TableHead>
+                    <TableHead>状态码</TableHead>
+                    <TableHead>耗时</TableHead>
+                    <TableHead>错误</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((log) => (
+                    <TableRow key={log.id || log.trace_id + log.created_at}>
+                      <TableCell className="font-mono whitespace-nowrap">
+                        {formatTime(log.created_at)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono">
+                          {log.event_type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-muted-foreground">
+                        {log.trace_id ? log.trace_id.slice(0, 12) + "..." : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={log.status_code || log.status} />
+                      </TableCell>
+                      <TableCell className="font-mono">
+                        {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
+                      </TableCell>
+                      <TableCell className="text-destructive max-w-48 truncate">
+                        {log.error || "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -615,70 +707,74 @@ function ApiLogsSection({ appId, instId }: { appId: string; instId: string }) {
   }, [loadLogs]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>API 调用日志</CardTitle>
-        <CardAction>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={() => { setLoading(true); loadLogs(); }}
-          >
-            <RefreshCw className="h-3 w-3" />
-            刷新
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-8 w-full" />
-            ))}
-          </div>
-        ) : logs.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-8">暂无 API 日志</p>
-        ) : (
-          <div className="rounded-md border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>方法</TableHead>
-                  <TableHead>路径</TableHead>
-                  <TableHead>状态码</TableHead>
-                  <TableHead>耗时</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.map((log, idx) => (
-                  <TableRow key={log.id || idx}>
-                    <TableCell className="font-mono whitespace-nowrap">
-                      {formatTime(log.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono font-bold">
-                        {log.method}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-muted-foreground max-w-64 truncate">
-                      {log.path}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={log.status_code || log.status} />
-                    </TableCell>
-                    <TableCell className="font-mono">
-                      {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
-                    </TableCell>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold">API 调用日志</h2>
+          <p className="text-sm text-muted-foreground mt-1">此应用通过 Bot API 发起的调用记录。</p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs gap-1"
+          onClick={() => { setLoading(true); loadLogs(); }}
+        >
+          <RefreshCw className="h-3 w-3" />
+          刷新
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </div>
+          ) : logs.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">暂无 API 日志</p>
+          ) : (
+            <div className="rounded-md border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>时间</TableHead>
+                    <TableHead>方法</TableHead>
+                    <TableHead>路径</TableHead>
+                    <TableHead>状态码</TableHead>
+                    <TableHead>耗时</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((log, idx) => (
+                    <TableRow key={log.id || idx}>
+                      <TableCell className="font-mono whitespace-nowrap">
+                        {formatTime(log.created_at)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono font-bold">
+                          {log.method}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-muted-foreground max-w-64 truncate">
+                        {log.path}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={log.status_code || log.status} />
+                      </TableCell>
+                      <TableCell className="font-mono">
+                        {log.duration_ms != null ? `${log.duration_ms}ms` : "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
