@@ -154,19 +154,27 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 		model = defaultModel
 	}
 
-	// Append tool results as messages
+	// Append tool results as messages.
+	// OpenAI tool messages only support text content, so images are sent
+	// in a follow-up user message.
+	var toolImages []ImageData
 	for _, r := range results {
-		var content any
-		if len(r.Images) > 0 {
-			content = buildCurrentContent(r.Content, r.Images)
-		} else {
-			content = r.Content
+		content := r.Content
+		if content == "" {
+			content = "OK"
 		}
 		messages = append(messages, Message{
 			Role:       "tool",
 			ToolCallID: r.ID,
 			Name:       r.Name,
 			Content:    content,
+		})
+		toolImages = append(toolImages, r.Images...)
+	}
+	if len(toolImages) > 0 {
+		messages = append(messages, Message{
+			Role:    "user",
+			Content: buildCurrentContent("以上工具返回了图片，请查看并回复用户。", toolImages),
 		})
 	}
 

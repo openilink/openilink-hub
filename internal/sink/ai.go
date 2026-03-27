@@ -41,10 +41,14 @@ func (s *AI) Handle(d Delivery) {
 	if d.MsgType == "text" && d.Content == "" {
 		return
 	}
-	// Skip messages targeted at specific apps (commands and @mentions)
-	trimmed := strings.TrimSpace(d.Content)
-	if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "@") {
-		return
+	// Skip messages targeted at specific apps (commands and @mentions).
+	// For image messages, d.Content may be a placeholder; the real caption
+	// is checked after extraction in reply().
+	if d.MsgType == "text" {
+		trimmed := strings.TrimSpace(d.Content)
+		if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "@") {
+			return
+		}
 	}
 	s.reply(d)
 }
@@ -112,6 +116,11 @@ func (s *AI) reply(d Delivery) {
 			}
 		}
 		if len(currentImages) == 0 && text == "" {
+			return
+		}
+		// Check extracted caption for command/@mention prefixes
+		trimmed := strings.TrimSpace(text)
+		if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "@") {
 			return
 		}
 	}
@@ -349,17 +358,17 @@ func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequ
 	// Handle image replies: send image to user AND pass to LLM as multimodal content
 	if result.ReplyType == "image" {
 		images := s.resolveToolMedia(ctx, d.BotDBID, result)
-		// Send image directly to user so they see it immediately
-		s.sendMediaToUser(ctx, d, images)
+		// Only include images that were actually delivered to the user.
+		delivered := s.sendMediaToUser(ctx, d, images)
 		if span != nil {
 			span.SetAttr("tool.reply_type", result.ReplyType)
 			span.End()
 		}
 		content := result.Reply
-		if content == "" && len(images) == 0 {
+		if content == "" && len(delivered) == 0 {
 			content = fmt.Sprintf("tool returned HTTP %d with no content", result.StatusCode)
 		}
-		return ai.ToolCallResult{ID: tc.ID, Name: tc.Name, Content: content, Images: images}
+		return ai.ToolCallResult{ID: tc.ID, Name: tc.Name, Content: content, Images: delivered}
 	}
 
 	if span != nil {
@@ -374,8 +383,10 @@ func (s *AI) executeToolCall(ctx context.Context, d Delivery, tc ai.ToolCallRequ
 }
 
 // sendMediaToUser sends resolved images directly to the user via the provider.
-func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageData) {
+// Returns only images that were successfully sent.
+func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageData) []ai.ImageData {
 	sender := d.Message.Sender
+	var delivered []ai.ImageData
 	for _, img := range images {
 		ct := img.ContentType
 		fileName := "image.jpg"
@@ -393,6 +404,7 @@ func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageD
 			slog.Error("ai tool media: send to user failed", "bot", d.BotDBID, "err", err)
 			continue
 		}
+		delivered = append(delivered, img)
 		itemList, _ := json.Marshal([]map[string]any{{"type": "image", "file_name": fileName}})
 		mediaStatus := ""
 		mediaKeys := json.RawMessage(`{}`)
@@ -415,6 +427,7 @@ func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageD
 			ItemList: itemList, MediaStatus: mediaStatus, MediaKeys: mediaKeys,
 		})
 	}
+	return delivered
 }
 
 // resolveToolMedia resolves image data from a tool's media reply (base64 or URL).
