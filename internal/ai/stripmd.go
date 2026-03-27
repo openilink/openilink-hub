@@ -28,8 +28,10 @@ func StripMarkdown(s string) string {
 	s = reCodeBlock.ReplaceAllString(s, "")
 	s = reBold1.ReplaceAllString(s, "$1")
 	s = reBold2.ReplaceAllString(s, "${1}${2}${3}") // $1 and $3 restore boundary chars
+	s = reBold2.ReplaceAllString(s, "${1}${2}${3}") // second pass for adjacent spans
 	s = reItalic1.ReplaceAllString(s, "$1")
 	s = reItalic2.ReplaceAllString(s, "${1}${2}${3}") // $1 and $3 restore boundary chars
+	s = reItalic2.ReplaceAllString(s, "${1}${2}${3}") // second pass for adjacent spans
 	s = reStrike.ReplaceAllString(s, "$1")
 	s = reInlineCode.ReplaceAllString(s, "$1")
 	s = reAtxHeader.ReplaceAllString(s, "$1")

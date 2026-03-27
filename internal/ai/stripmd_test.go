@@ -38,6 +38,7 @@ func TestStripMarkdown(t *testing.T) {
 		{"consecutive italic", "a _foo_ and _bar_ b", "a foo and bar b"},
 		{"italic at start", "_start_ of line", "start of line"},
 		{"italic at end", "end of _line_", "end of line"},
+		{"consecutive italic adjacent", "a _x_ _y_ b", "a x y b"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
