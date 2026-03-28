@@ -467,11 +467,16 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
   useEffect(() => {
     const el = guideRef.current;
     if (!el) return;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
     el.querySelectorAll("pre").forEach((pre) => {
       if (pre.querySelector(".copy-btn")) return;
+      // Read code text before appending button to avoid including button label
+      const codeText = pre.querySelector("code")?.textContent || pre.textContent || "";
       const btn = document.createElement("button");
+      btn.type = "button";
       btn.className = "copy-btn";
       btn.textContent = "复制";
+      btn.setAttribute("aria-label", "复制代码");
       Object.assign(btn.style, {
         position: "absolute", top: "6px", right: "6px",
         fontSize: "11px", padding: "2px 8px", borderRadius: "4px",
@@ -479,14 +484,17 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
         color: "var(--muted-foreground)", cursor: "pointer",
       });
       btn.addEventListener("click", () => {
-        const code = pre.querySelector("code")?.textContent || pre.textContent || "";
-        navigator.clipboard.writeText(code).then(() => {
+        navigator.clipboard.writeText(codeText).then(() => {
           btn.textContent = "已复制";
-          setTimeout(() => { btn.textContent = "复制"; }, 2000);
+          timeouts.push(setTimeout(() => { btn.textContent = "复制"; }, 2000));
+        }).catch(() => {
+          btn.textContent = "失败";
+          timeouts.push(setTimeout(() => { btn.textContent = "复制"; }, 2000));
         });
       });
       pre.appendChild(btn);
     });
+    return () => { timeouts.forEach(clearTimeout); };
   }, [guideHtml]);
   const showGenericGuide = !guideText && app.registry === "builtin";
   const showUsageGuide = guideText || showGenericGuide;
