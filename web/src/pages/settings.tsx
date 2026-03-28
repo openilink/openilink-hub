@@ -352,6 +352,7 @@ function PasskeySection() {
   const [passkeys, setPasskeys] = useState<any[]>([]);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   async function load() {
     try {
@@ -369,6 +370,7 @@ function PasskeySection() {
     if (name === null) return; // user cancelled
     setAdding(true);
     setError("");
+    setSuccess("");
     try {
       const options = await api.passkeyBindBegin();
       options.publicKey.challenge = base64urlToBuffer(options.publicKey.challenge);
@@ -393,7 +395,8 @@ function PasskeySection() {
         }),
         name || "Passkey",
       );
-      load();
+      await load();
+      setSuccess("通行密钥注册成功！建议立即退出并尝试使用通行密钥登录，以确认可正常使用。");
     } catch (err: any) {
       if (err.name !== "NotAllowedError") setError(err.message || "Passkey 注册失败");
     }
@@ -425,6 +428,12 @@ function PasskeySection() {
         {error ? (
           <div className="text-xs p-3 rounded-lg bg-destructive/5 text-destructive border border-destructive/10">
             {error}
+          </div>
+        ) : null}
+
+        {success ? (
+          <div className="text-xs p-3 rounded-lg bg-green-500/5 text-green-600 border border-green-500/10">
+            {success}
           </div>
         ) : null}
 
