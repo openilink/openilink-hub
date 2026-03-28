@@ -452,9 +452,16 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
   const guideText = renderGuide();
   const guideHtml = useMemo(() => {
     if (!guideText) return "";
-    const html = DOMPurify.sanitize(marked.parse(guideText, { async: false }) as string);
     // Open links in new tab to avoid navigating away from the SPA
-    return html.replace(/<a /g, '<a target="_blank" rel="noopener noreferrer" ');
+    DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+      if (node.tagName === "A") {
+        node.setAttribute("target", "_blank");
+        node.setAttribute("rel", "noopener noreferrer");
+      }
+    });
+    const html = DOMPurify.sanitize(marked.parse(guideText, { async: false }));
+    DOMPurify.removeHook("afterSanitizeAttributes");
+    return html;
   }, [guideText]);
   const showGenericGuide = !guideText && app.registry === "builtin";
   const showUsageGuide = guideText || showGenericGuide;
