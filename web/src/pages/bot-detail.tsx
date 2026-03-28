@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+
+const DEFAULT_MODEL = DEFAULT_MODEL;
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -302,9 +304,9 @@ export function BotDetailPage() {
             <div className="flex items-center gap-1.5">
               <Label className="text-xs font-bold uppercase text-muted-foreground">模型</Label>
               <Select
-                value={bot.ai_model || "__default__"}
+                value={bot.ai_model || DEFAULT_MODEL}
                 onValueChange={async (val) => {
-                  const model = val === "__default__" ? "" : val;
+                  const model = val === DEFAULT_MODEL ? "" : val;
                   try {
                     await api.setBotAIModel(id!, model);
                     setBot({ ...bot, ai_model: model });
@@ -322,8 +324,8 @@ export function BotDetailPage() {
                   <SelectValue placeholder="使用全局默认" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__default__">使用全局默认</SelectItem>
-                  {availableModels.map((m) => (
+                  <SelectItem value=DEFAULT_MODEL>使用全局默认</SelectItem>
+                  {availableModels.filter(Boolean).map((m) => (
                     <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}
                 </SelectContent>
