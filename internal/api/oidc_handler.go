@@ -202,8 +202,17 @@ func (s *Server) handleOIDCRedirect(w http.ResponseWriter, r *http.Request, slug
 	scopes := cfg.Scopes
 	if scopes == "" {
 		scopes = "openid profile email"
-	} else if !strings.Contains(scopes, "openid") {
-		scopes = "openid " + scopes
+	} else {
+		hasOpenID := false
+		for _, s := range strings.Fields(scopes) {
+			if s == "openid" {
+				hasOpenID = true
+				break
+			}
+		}
+		if !hasOpenID {
+			scopes = "openid " + scopes
+		}
 	}
 	params.Set("scope", scopes)
 
@@ -222,6 +231,14 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request, prov
 	entry, valid := s.OAuthStates.Validate(state)
 	if !valid {
 		jsonError(w, "invalid oauth state", http.StatusBadRequest)
+		return
+	}
+
+	// Handle provider-returned OAuth errors (e.g. access_denied)
+	if oauthErr := r.URL.Query().Get("error"); oauthErr != "" {
+		desc := r.URL.Query().Get("error_description")
+		slog.Warn("oidc provider returned error", "provider", providerName, "error", oauthErr, "description", desc)
+		http.Redirect(w, r, "/login?error=oauth_"+oauthErr, http.StatusFound)
 		return
 	}
 
