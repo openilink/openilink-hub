@@ -1,6 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-
-const DEFAULT_MODEL = DEFAULT_MODEL;
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -38,6 +36,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { AppIcon } from "../components/app-icon";
 import { parseTools } from "../components/tools-display";
+
+const DEFAULT_MODEL = "__default__";
 
 // ==================== Page ====================
 
@@ -324,7 +324,7 @@ export function BotDetailPage() {
                   <SelectValue placeholder="使用全局默认" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value=DEFAULT_MODEL>使用全局默认</SelectItem>
+                  <SelectItem value={DEFAULT_MODEL}>使用全局默认</SelectItem>
                   {availableModels.filter(Boolean).map((m) => (
                     <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}
