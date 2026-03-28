@@ -219,6 +219,59 @@ func TestGetBotsNeedingReminder_MessageResetsTimer(t *testing.T) {
 	}
 }
 
+func TestGetBotsNeedingReminder_ReminderDisabledAfterSet(t *testing.T) {
+	db := openTestDB(t)
+	clock := &fakeClock{t: time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)}
+	db.SetClock(clock)
+
+	b := createTestBot(t, db)
+
+	// Enable reminder, send a message.
+	if err := db.UpdateBotReminder(b.ID, 23); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.IncrBotMsgCount(b.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Disable reminder.
+	if err := db.UpdateBotReminder(b.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Advance 24 hours — would be due, but reminder is disabled.
+	clock.Advance(24 * time.Hour)
+	bots, err := db.GetBotsNeedingReminder()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bots) != 0 {
+		t.Errorf("expected 0 bots (reminder disabled), got %d", len(bots))
+	}
+}
+
+func TestGetBotsNeedingReminder_NoMessages(t *testing.T) {
+	db := openTestDB(t)
+	clock := &fakeClock{t: time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)}
+	db.SetClock(clock)
+
+	b := createTestBot(t, db)
+
+	// Enable reminder but never send a message (last_msg_at IS NULL).
+	if err := db.UpdateBotReminder(b.ID, 23); err != nil {
+		t.Fatal(err)
+	}
+
+	clock.Advance(24 * time.Hour)
+	bots, err := db.GetBotsNeedingReminder()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bots) != 0 {
+		t.Errorf("expected 0 bots (no messages), got %d", len(bots))
+	}
+}
+
 func TestGetBotsNeedingReminder_DisconnectedBotIgnored(t *testing.T) {
 	db := openTestDB(t)
 	clock := &fakeClock{t: time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)}

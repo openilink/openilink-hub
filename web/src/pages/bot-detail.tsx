@@ -361,7 +361,10 @@ export function BotDetailPage() {
                   <p>上次消息: {bot.last_msg_at ? new Date(bot.last_msg_at * 1000).toLocaleString() : "无"}</p>
                   <p>上次提醒: {bot.last_reminded_at ? new Date(bot.last_reminded_at * 1000).toLocaleString() : "无"}</p>
                   <p>下次提醒: {bot.last_msg_at
-                    ? new Date((bot.last_msg_at + bot.reminder_hours * 3600) * 1000).toLocaleString()
+                    ? new Date(Math.max(
+                        bot.last_msg_at + bot.reminder_hours * 3600,
+                        (bot.last_reminded_at || 0) + 3600
+                      ) * 1000).toLocaleString()
                     : "等待首条消息"}</p>
                 </TooltipContent>
               </Tooltip>
