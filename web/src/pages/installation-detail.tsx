@@ -463,6 +463,34 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
     DOMPurify.removeHook("afterSanitizeAttributes");
     return html;
   }, [guideText]);
+  const guideRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = guideRef.current;
+    if (!el) return;
+    el.querySelectorAll("pre").forEach((pre) => {
+      if (pre.querySelector(".copy-btn")) return;
+      const btn = document.createElement("button");
+      btn.className = "copy-btn";
+      btn.textContent = "复制";
+      Object.assign(btn.style, {
+        position: "absolute", top: "6px", right: "6px",
+        fontSize: "11px", padding: "2px 8px", borderRadius: "4px",
+        border: "1px solid var(--border)", background: "var(--background)",
+        color: "var(--muted-foreground)", cursor: "pointer", opacity: "0",
+        transition: "opacity 0.15s",
+      });
+      pre.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
+      pre.addEventListener("mouseleave", () => { btn.style.opacity = "0"; });
+      btn.addEventListener("click", () => {
+        const code = pre.querySelector("code")?.textContent || pre.textContent || "";
+        navigator.clipboard.writeText(code).then(() => {
+          btn.textContent = "已复制";
+          setTimeout(() => { btn.textContent = "复制"; }, 2000);
+        });
+      });
+      pre.appendChild(btn);
+    });
+  }, [guideHtml]);
   const showGenericGuide = !guideText && app.registry === "builtin";
   const showUsageGuide = guideText || showGenericGuide;
 
@@ -515,6 +543,7 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
           </CardHeader>
           <CardContent>
             <div
+              ref={guideRef}
               className={[
                 "p-3 rounded-md bg-muted/30 border overflow-x-auto text-sm text-muted-foreground leading-relaxed",
                 "[&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2",
@@ -522,7 +551,7 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
                 "[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1",
                 "[&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-1",
                 "[&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono",
-                "[&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:mb-2 [&_pre_code]:p-0 [&_pre_code]:bg-transparent",
+                "[&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-md [&_pre]:overflow-x-auto [&_pre]:mb-2 [&_pre]:relative [&_pre_code]:p-0 [&_pre_code]:bg-transparent",
                 "[&_a]:text-primary [&_a]:underline [&_a:hover]:text-primary/80",
                 "[&_table]:w-full [&_table]:border-collapse [&_table]:mb-2",
                 "[&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:bg-muted",
