@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const statusConfig: Record<
   string,
@@ -221,13 +222,20 @@ function BotInstanceCard({
   onRebind: () => void;
 }) {
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const status = statusConfig[bot.status] || statusConfig.disconnected;
   const isOnline = bot.status === "connected";
 
   async function handleAction(action: string) {
     try {
       if (action === "delete") {
-        if (!confirm("确定要删除此账号？相关转发规则将停止工作。")) return;
+        const ok = await confirm({
+          title: "删除确认",
+          description: "确定要删除此账号？相关转发规则将停止工作。",
+          confirmText: "删除",
+          variant: "destructive",
+        });
+        if (!ok) return;
         await api.deleteBot(bot.id);
         toast({ title: "已删除账号" });
       } else if (action === "reconnect") {
@@ -242,6 +250,7 @@ function BotInstanceCard({
 
   return (
     <Card className="group flex flex-col border-border/50 hover:border-primary/20 hover:shadow-lg transition-all duration-200">
+      {ConfirmDialog}
       <CardContent className="p-5 flex-1 space-y-4">
         {/* Header row */}
         <div className="flex items-start justify-between gap-2">

@@ -25,6 +25,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "../co
 import { Badge } from "../components/ui/badge";
 import { api, botDisplayName } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { AppIcon } from "../components/app-icon";
 import { EVENT_TYPES, SCOPES } from "../lib/constants";
 
@@ -170,6 +171,7 @@ export function AppDetailPage() {
 
 function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void }) {
   const navigate = useNavigate();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [form, setForm] = useState({
     name: app.name || "",
     description: app.description || "",
@@ -199,7 +201,13 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
   }
 
   async function handleDelete() {
-    if (!confirm("确定删除此 App？所有安装也将被移除。")) return;
+    const ok = await confirm({
+      title: "删除确认",
+      description: "确定删除此 App？所有安装也将被移除。",
+      confirmText: "删除",
+      variant: "destructive",
+    });
+    if (!ok) return;
     try {
       await api.deleteApp(app.id);
       navigate("/dashboard/apps");
@@ -208,6 +216,7 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div>
         <h2 className="text-base font-semibold">基本信息</h2>
         <p className="text-sm text-muted-foreground mt-1">应用的基本信息和凭证。</p>
@@ -455,6 +464,7 @@ function InstallAppSection({ appId }: { appId: string }) {
   const [handle, setHandle] = useState("");
   const [installing, setInstalling] = useState(false);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   async function load() {
     try {
@@ -486,7 +496,13 @@ function InstallAppSection({ appId }: { appId: string }) {
   }
 
   async function handleDelete(instId: string) {
-    if (!confirm("确定卸载此安装？")) return;
+    const ok = await confirm({
+      title: "卸载确认",
+      description: "确定卸载此安装？",
+      confirmText: "卸载",
+      variant: "destructive",
+    });
+    if (!ok) return;
     try {
       await api.deleteInstallation(appId, instId);
       toast({ title: "已卸载" });
@@ -498,6 +514,7 @@ function InstallAppSection({ appId }: { appId: string }) {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div>
         <h2 className="text-base font-semibold">安装管理</h2>
         <p className="text-sm text-muted-foreground mt-1">

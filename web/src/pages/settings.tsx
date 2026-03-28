@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { api } from "../lib/api";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   Link2,
   Unlink,
@@ -44,6 +45,7 @@ export function SettingsPage() {
   const [oauthProviders, setOauthProviders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const { theme, setTheme } = useTheme();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const activeTab = location.pathname.split("/").pop() || "profile";
 
@@ -89,6 +91,7 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">账号设置</h1>
         <p className="text-sm text-muted-foreground mt-0.5">管理您的个人资料、安全选项和偏好。</p>
@@ -179,12 +182,18 @@ export function SettingsPage() {
                           size="sm"
                           className="text-destructive"
                           onClick={async () => {
-                            if (!confirm(`解绑？`)) return;
+                            const ok = await confirm({
+                              title: "解绑确认",
+                              description: `确定要解绑 ${providerLabels[provider]?.label || provider}？`,
+                              confirmText: "解绑",
+                              variant: "destructive",
+                            });
+                            if (!ok) return;
                             try {
                               await api.unlinkOAuth(provider);
                               load();
                             } catch (e: any) {
-                              alert(e.message);
+                              setOauthMsg(e.message);
                             }
                           }}
                         >
@@ -413,6 +422,7 @@ function PasskeySection() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showXiaomiGuide, setShowXiaomiGuide] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   async function load() {
     try {
@@ -467,6 +477,7 @@ function PasskeySection() {
 
   return (
     <Card className="border-border/50">
+      {ConfirmDialog}
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div className="space-y-1.5">
           <CardTitle className="flex items-center gap-2">
@@ -555,7 +566,13 @@ function PasskeySection() {
                   size="icon"
                   className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={async () => {
-                    if (!confirm("确定要删除此 Passkey 吗？")) return;
+                    const ok = await confirm({
+                      title: "删除确认",
+                      description: "确定要删除此 Passkey 吗？",
+                      confirmText: "删除",
+                      variant: "destructive",
+                    });
+                    if (!ok) return;
                     setSuccess("");
                     try {
                       await api.deletePasskey(pk.id);

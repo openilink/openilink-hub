@@ -18,11 +18,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   async function load() {
     setLoading(true);
@@ -44,6 +46,7 @@ export function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">用户管理</h1>
@@ -116,7 +119,13 @@ export function AdminUsersPage() {
                           <DropdownMenuItem
                             className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                             onClick={async () => {
-                              if (confirm("删除用户？")) {
+                              const ok = await confirm({
+                                title: "删除确认",
+                                description: "确定要删除此用户？",
+                                confirmText: "删除",
+                                variant: "destructive",
+                              });
+                              if (ok) {
                                 await api.deleteUser(u.id);
                                 load();
                               }

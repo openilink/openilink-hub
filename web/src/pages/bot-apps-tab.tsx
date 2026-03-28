@@ -6,6 +6,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { api } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Blocks, Plus, Trash2, Loader2, Eye, Zap, Search } from "lucide-react";
 import { AppIcon } from "../components/app-icon";
 import { SCOPE_DESCRIPTIONS } from "../lib/constants";
@@ -22,6 +23,7 @@ export function BotAppsTab({ botId }: { botId: string }) {
   const [installations, setInstallations] = useState<any[]>([]);
   const [showInstall, setShowInstall] = useState(false);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   async function load() {
     try {
@@ -34,7 +36,13 @@ export function BotAppsTab({ botId }: { botId: string }) {
   }, [botId]);
 
   async function handleUninstall(appId: string, instId: string) {
-    if (!confirm("确定要卸载？")) return;
+    const ok = await confirm({
+      title: "卸载确认",
+      description: "确定要卸载此应用？",
+      confirmText: "卸载",
+      variant: "destructive",
+    });
+    if (!ok) return;
     try {
       await api.deleteInstallation(appId, instId);
       toast({ title: "已卸载" });
@@ -53,6 +61,7 @@ export function BotAppsTab({ botId }: { botId: string }) {
 
   return (
     <div className="space-y-6 mt-4">
+      {ConfirmDialog}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold">已安装的应用</h3>

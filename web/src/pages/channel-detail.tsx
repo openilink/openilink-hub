@@ -47,12 +47,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export function ChannelDetailPage() {
   const { id: botId, cid: channelId } = useParams<{ id: string; cid: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [channel, setChannel] = useState<any>(null);
   const [bot, setBot] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -76,7 +78,13 @@ export function ChannelDetailPage() {
   }, [load]);
 
   async function handleDelete() {
-    if (!confirm("确定要删除此转发规则？API Key 将失效。")) return;
+    const ok = await confirm({
+      title: "删除确认",
+      description: "确定要删除此转发规则？API Key 将失效。",
+      confirmText: "删除",
+      variant: "destructive",
+    });
+    if (!ok) return;
     try {
       await api.deleteChannel(botId!, channelId!);
       toast({ title: "已删除" });
@@ -118,6 +126,7 @@ export function ChannelDetailPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {ConfirmDialog}
       {/* Page Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-4">

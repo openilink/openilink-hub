@@ -27,6 +27,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const METRIC_CONFIG = [
   {
@@ -321,6 +322,7 @@ function RegistryConfigCard() {
   const [newUrl, setNewUrl] = useState("");
   const [adding, setAdding] = useState(false);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   useEffect(() => {
     api
@@ -386,7 +388,13 @@ function RegistryConfigCard() {
   }
 
   async function handleDeleteRegistry(reg: any) {
-    if (!confirm(`确定删除 Registry "${reg.name}"？`)) return;
+    const ok = await confirm({
+      title: "删除确认",
+      description: `确定删除 Registry "${reg.name}"？`,
+      confirmText: "删除",
+      variant: "destructive",
+    });
+    if (!ok) return;
     try {
       await api.deleteRegistry(reg.id);
       const r = await api.getRegistries();
@@ -399,6 +407,7 @@ function RegistryConfigCard() {
 
   return (
     <Card className="border-border/50 bg-card/50">
+      {ConfirmDialog}
       <CardHeader>
         <CardTitle>Registry 配置</CardTitle>
         <CardDescription>管理应用市场 Registry 来源。</CardDescription>
