@@ -348,11 +348,14 @@ function ChangePasswordSection() {
   );
 }
 
+const isXiaomiDevice = () => /xiaomi|redmi|miui|hyperos/i.test(navigator.userAgent);
+
 function PasskeySection() {
   const [passkeys, setPasskeys] = useState<any[]>([]);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showXiaomiGuide, setShowXiaomiGuide] = useState(false);
 
   async function load() {
     try {
@@ -366,11 +369,16 @@ function PasskeySection() {
   }, []);
 
   async function handleAdd() {
+    if (isXiaomiDevice() && !showXiaomiGuide) {
+      setShowXiaomiGuide(true);
+      return;
+    }
     const name = window.prompt("为此通行密钥命名（如：工作电脑、iPhone）", "Passkey");
     if (name === null) return; // user cancelled
     setAdding(true);
     setError("");
     setSuccess("");
+    setShowXiaomiGuide(false);
     try {
       const options = await api.passkeyBindBegin();
       options.publicKey.challenge = base64urlToBuffer(options.publicKey.challenge);
@@ -434,6 +442,29 @@ function PasskeySection() {
         {success ? (
           <div className="text-xs p-3 rounded-lg bg-green-500/5 text-green-600 border border-green-500/10">
             {success}
+          </div>
+        ) : null}
+
+        {showXiaomiGuide ? (
+          <div className="text-xs p-4 rounded-lg bg-amber-500/5 text-amber-700 dark:text-amber-400 border border-amber-500/15 space-y-2.5">
+            <p className="font-bold flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5" />
+              小米 / 红米设备请先确认以下设置
+            </p>
+            <ol className="list-decimal ml-4 space-y-1.5 leading-relaxed">
+              <li>打开 <b>设置 &gt; 指纹、面部与密码 &gt; 智能密码管理</b>，<b>关闭</b>"自动填充密码与通行密钥"</li>
+              <li>打开 <b>设置 &gt; 更多设置 &gt; 语言与输入法 &gt; 密码与账号</b>，将"首选服务"设为 <b>Google</b> 或 <b>小米智能密码管理</b></li>
+              <li>确保 Google Play 服务已更新到最新版本</li>
+            </ol>
+            <p className="text-[10px] text-muted-foreground">设置完成后，点击下方按钮继续注册。如果注册后无法登录，请检查密码管理器中是否有保存的通行密钥。</p>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" className="h-7 text-xs" onClick={handleAdd}>
+                已确认，继续注册
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowXiaomiGuide(false)}>
+                取消
+              </Button>
+            </div>
           </div>
         ) : null}
 
