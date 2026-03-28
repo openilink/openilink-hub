@@ -37,7 +37,7 @@ curl -fsSL https://raw.githubusercontent.com/openilink/openilink-hub/main/instal
 oih
 
 # 或者用 Docker（二选一）
-docker run -d -p 9800:9800 docker.io/openilink/openilink-hub:latest
+docker run -d -p 9800:9800 openilink/openilink-hub:latest
 docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest
 ```
 
@@ -265,7 +265,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   hub:
-    image: docker.io/openilink/openilink-hub:latest  # 或 ghcr.io/openilink/openilink-hub:latest
+    image: openilink/openilink-hub:latest  # 或 ghcr.io/openilink/openilink-hub:latest
     ports:
       - "9800:9800"
     environment:
@@ -425,7 +425,7 @@ curl -fsSL https://raw.githubusercontent.com/openilink/openilink-hub/main/instal
 oih
 
 # Or use Docker (either registry works)
-docker run -d -p 9800:9800 docker.io/openilink/openilink-hub:latest
+docker run -d -p 9800:9800 openilink/openilink-hub:latest
 docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest
 ```
 
