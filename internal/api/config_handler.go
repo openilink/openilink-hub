@@ -89,10 +89,13 @@ func (s *Server) handleSetOAuthConfig(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "save failed", http.StatusInternalServerError)
 		return
 	}
-	if req.ClientSecret != "" && !strings.Contains(req.ClientSecret, "*") {
-		if err := s.Store.SetConfig("oauth."+name+".client_secret", req.ClientSecret); err != nil {
-			jsonError(w, "save failed", http.StatusInternalServerError)
-			return
+	if req.ClientSecret != "" {
+		current, _ := s.Store.GetConfig("oauth." + name + ".client_secret")
+		if req.ClientSecret != maskSecret(current) {
+			if err := s.Store.SetConfig("oauth."+name+".client_secret", req.ClientSecret); err != nil {
+				jsonError(w, "save failed", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 	jsonOK(w)
@@ -166,8 +169,11 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if req.BaseURL != "" {
 		s.Store.SetConfig("ai.base_url", req.BaseURL)
 	}
-	if req.APIKey != "" && !strings.Contains(req.APIKey, "*") {
-		s.Store.SetConfig("ai.api_key", req.APIKey)
+	if req.APIKey != "" {
+		current, _ := s.Store.GetConfig("ai.api_key")
+		if req.APIKey != maskSecret(current) {
+			s.Store.SetConfig("ai.api_key", req.APIKey)
+		}
 	}
 	if req.Model != "" {
 		s.Store.SetConfig("ai.model", req.Model)
