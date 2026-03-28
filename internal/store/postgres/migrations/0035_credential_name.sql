@@ -1,0 +1,2 @@
+-- +goose Up
+ALTER TABLE credentials ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '';
