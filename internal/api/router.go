@@ -72,11 +72,8 @@ func (s *Server) Handler() http.Handler {
 	// --- Webhook plugins (public: list approved) ---
 	mux.HandleFunc("GET /api/webhook-plugins", s.handleListPlugins)
 	mux.HandleFunc("GET /api/webhook-plugins/{id}", s.handleGetPlugin)
-	mux.HandleFunc("GET /api/webhook-plugins/skill.md", handlePluginSkill)
 	mux.HandleFunc("GET /api/webhook-plugins/{id}/versions", s.handlePluginVersions)
 
-	// --- App skill.md ---
-	mux.HandleFunc("GET /api/apps/skill.md", handleAppSkill)
 
 	// --- OAuth complete (popup callback page, no auth needed) ---
 	mux.HandleFunc("GET /oauth/complete", s.handleOAuthComplete)

@@ -183,6 +183,24 @@ App 通过以下方式与 Hub 交互：
 
 参考 [openilink-app-echo](https://github.com/openilink/openilink-app-echo) 快速上手。
 
+#### Mock Server（本地开发调试）
+
+不用跑真实 Hub + 微信 Bot，用 Mock Server 在本地开发和测试 App：
+
+```bash
+# 启动 Mock Server，将事件通过 Webhook 投递到你的 App
+go run ./cmd/appmock --webhook-url http://localhost:8080/webhook
+
+# 注入一条模拟消息，触发你的 App
+curl -X POST http://localhost:9801/mock/event \
+  -d '{"sender":"alice","content":"@test-app hello"}'
+
+# 查看你的 App 发了什么消息
+curl http://localhost:9801/mock/messages
+```
+
+Mock Server 复用真实的 Bot API handler，行为与生产环境完全一致。完整文档见 [`docs/mock-server.md`](docs/mock-server.md)。
+
 ## 架构总览
 
 ```mermaid
