@@ -170,7 +170,7 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
                       }`}
                     >
                       <span className="text-blue-500 font-semibold shrink-0 min-w-[100px]">{key}</span>
-                      <span className="text-foreground/80 break-all">
+                      <span className="text-foreground/80 whitespace-pre-wrap break-words">
                         {key === "reply.media_key" ? (
                           <MediaPreview mediaKey={String(value)} attrs={Object.fromEntries(attrs)} />
                         ) : (
