@@ -20,6 +20,7 @@ import {
   Smartphone,
   Fingerprint,
   Clock,
+  Pencil,
 } from "lucide-react";
 import { useTheme, type Theme } from "../lib/theme";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -364,6 +365,8 @@ function PasskeySection() {
   }, []);
 
   async function handleAdd() {
+    const name = window.prompt("为此通行密钥命名（如：工作电脑、iPhone）", "Passkey");
+    if (name === null) return; // user cancelled
     setAdding(true);
     setError("");
     try {
@@ -388,6 +391,7 @@ function PasskeySection() {
             clientDataJSON: bufferToBase64url(response.clientDataJSON),
           },
         }),
+        name || "Passkey",
       );
       load();
     } catch (err: any) {
@@ -441,29 +445,48 @@ function PasskeySection() {
                     <Smartphone className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-xs font-mono font-bold">{pk.id.slice(0, 12)}...</p>
+                    <p className="text-xs font-bold">{pk.name || pk.id.slice(0, 12) + "..."}</p>
                     <p className="text-[10px] text-muted-foreground flex items-center gap-1.5 uppercase font-medium">
                       <Clock className="h-2.5 w-2.5" />{" "}
                       {new Date(pk.created_at * 1000).toLocaleDateString()} 绑定
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={async () => {
-                    if (!confirm("确定要删除此 Passkey 吗？")) return;
-                    try {
-                      await api.deletePasskey(pk.id);
-                      load();
-                    } catch (e: any) {
-                      setError(e.message || "删除失败");
-                    }
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={async () => {
+                      const newName = window.prompt("重命名通行密钥", pk.name || "");
+                      if (!newName) return;
+                      try {
+                        await api.renamePasskey(pk.id, newName);
+                        load();
+                      } catch (e: any) {
+                        setError(e.message || "重命名失败");
+                      }
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={async () => {
+                      if (!confirm("确定要删除此 Passkey 吗？")) return;
+                      try {
+                        await api.deletePasskey(pk.id);
+                        load();
+                      } catch (e: any) {
+                        setError(e.message || "删除失败");
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>

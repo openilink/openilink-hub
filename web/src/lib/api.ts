@@ -59,8 +59,8 @@ export const api = {
   // Passkeys
   listPasskeys: () => request<any[]>("/api/me/passkeys"),
   passkeyBindBegin: () => request<any>("/api/me/passkeys/register/begin", { method: "POST" }),
-  passkeyBindFinishRaw: (body: string) =>
-    fetch("/api/me/passkeys/register/finish", {
+  passkeyBindFinishRaw: (body: string, name?: string) =>
+    fetch(`/api/me/passkeys/register/finish${name ? `?name=${encodeURIComponent(name)}` : ''}`, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
@@ -69,6 +69,8 @@ export const api = {
       if (!r.ok) throw new Error((await r.json()).error);
     }),
   deletePasskey: (id: string) => request(`/api/me/passkeys/${id}`, { method: "DELETE" }),
+  renamePasskey: (id: string, name: string) =>
+    request(`/api/me/passkeys/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
 
   // Profile
   updateProfile: (data: { display_name?: string; email?: string }) =>
