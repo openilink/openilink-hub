@@ -260,7 +260,9 @@ func (db *DB) ReviewPluginVersion(id, status, reviewedBy, reason string) error {
 		var pluginID string
 		db.QueryRow("SELECT plugin_id FROM plugin_versions WHERE id = ?", id).Scan(&pluginID)
 		if pluginID != "" {
-			db.Exec("UPDATE plugins SET latest_version_id = ?, updated_at = ? WHERE id = ?", id, db.now(), pluginID)
+			if _, err := db.Exec("UPDATE plugins SET latest_version_id = ?, updated_at = ? WHERE id = ?", id, db.now(), pluginID); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
