@@ -34,7 +34,7 @@ func cors(next http.Handler) http.Handler {
 		if origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		}
 		if r.Method == "OPTIONS" {
@@ -109,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("POST /api/me/passkeys/register/begin", s.handlePasskeyBindBegin)
 	protected.HandleFunc("POST /api/me/passkeys/register/finish", s.handlePasskeyBindFinish)
 	protected.HandleFunc("DELETE /api/me/passkeys/{id}", s.handleDeletePasskey)
+	protected.HandleFunc("PATCH /api/me/passkeys/{id}", s.handleRenamePasskey)
 
 	// OAuth account binding (authenticated)
 	protected.HandleFunc("GET /api/me/linked-accounts", s.handleOAuthAccounts)

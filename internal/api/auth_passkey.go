@@ -94,6 +94,7 @@ func (s *Server) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.SaveCredential(&store.Credential{
 		ID:              base64.RawURLEncoding.EncodeToString(cred.ID),
 		UserID:          user.ID,
+		Name:            "Passkey",
 		PublicKey:       cred.PublicKey,
 		AttestationType: cred.AttestationType,
 		Transport:       string(transportsJSON),
@@ -220,11 +221,12 @@ func (s *Server) handleListPasskeys(w http.ResponseWriter, r *http.Request) {
 	}
 	type passkeyResp struct {
 		ID        string `json:"id"`
+		Name      string `json:"name"`
 		CreatedAt int64  `json:"created_at"`
 	}
 	result := make([]passkeyResp, len(creds))
 	for i, c := range creds {
-		result[i] = passkeyResp{ID: c.ID, CreatedAt: c.CreatedAt}
+		result[i] = passkeyResp{ID: c.ID, Name: c.Name, CreatedAt: c.CreatedAt}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
@@ -271,10 +273,16 @@ func (s *Server) handlePasskeyBindFinish(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		name = "Passkey"
+	}
+
 	transportsJSON, _ := json.Marshal(cred.Transport)
 	if err := s.Store.SaveCredential(&store.Credential{
 		ID:              base64.RawURLEncoding.EncodeToString(cred.ID),
 		UserID:          user.ID,
+		Name:            name,
 		PublicKey:       cred.PublicKey,
 		AttestationType: cred.AttestationType,
 		Transport:       string(transportsJSON),
@@ -294,6 +302,27 @@ func (s *Server) handleDeletePasskey(w http.ResponseWriter, r *http.Request) {
 	credID := r.PathValue("id")
 	if err := s.Store.DeleteCredential(credID, userID); err != nil {
 		jsonError(w, "delete failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w)
+}
+
+func (s *Server) handleRenamePasskey(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
+	credID := r.PathValue("id")
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		jsonError(w, "name required", http.StatusBadRequest)
+		return
+	}
+	if len([]rune(req.Name)) > 50 {
+		jsonError(w, "name too long", http.StatusBadRequest)
+		return
+	}
+	if err := s.Store.UpdateCredentialName(credID, userID, req.Name); err != nil {
+		jsonError(w, "rename failed", http.StatusInternalServerError)
 		return
 	}
 	jsonOK(w)
