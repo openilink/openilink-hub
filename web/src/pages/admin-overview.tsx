@@ -543,11 +543,16 @@ function OIDCConfigCard() {
   }
 
   async function handleAdd() {
-    if (!slug.trim() || !issuerUrl.trim() || !clientId.trim()) return;
+    const normalizedSlug = slug.trim();
+    if (!normalizedSlug || !issuerUrl.trim() || !clientId.trim()) return;
+    if (providers.some((p) => p.slug === normalizedSlug)) {
+      toast({ variant: "destructive", title: "Slug 已存在", description: "请先删除再重新创建。" });
+      return;
+    }
     setAdding(true);
     try {
-      await api.setOIDCConfig(slug.trim(), {
-        display_name: displayName.trim() || slug.trim(),
+      await api.setOIDCConfig(normalizedSlug, {
+        display_name: displayName.trim() || normalizedSlug,
         issuer_url: issuerUrl.trim(),
         client_id: clientId.trim(),
         client_secret: clientSecret.trim(),
