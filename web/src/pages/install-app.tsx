@@ -216,19 +216,14 @@ export function InstallAppPage() {
         {botName || "返回"}
       </button>
 
-      <div className="flex flex-col md:flex-row gap-8">
-        {/* Left: App info + install */}
-        <div className="md:w-64 shrink-0 space-y-6">
-          <div className="space-y-3">
-            <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-14 w-14" />
-            <div className="space-y-1">
-              <h1 className="text-xl font-bold">{app.name}</h1>
-              {app.slug && (
-                <p className="text-sm text-muted-foreground font-mono">{app.slug}</p>
-              )}
-            </div>
-            {app.description && (
-              <p className="text-sm text-muted-foreground">{app.description}</p>
+      {/* Header: icon + info + handle + install */}
+      <div className="flex items-start gap-4">
+        <AppIcon icon={app.icon} iconUrl={app.icon_url} size="h-14 w-14" />
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight">{app.name}</h1>
+            {app.slug && (
+              <span className="text-sm text-muted-foreground font-mono">{app.slug}</span>
             )}
             {app.homepage && (
               <a
@@ -242,48 +237,50 @@ export function InstallAppPage() {
               </a>
             )}
           </div>
-
-          {/* Handle */}
-          <div className="space-y-1.5">
-            <Label htmlFor="install-handle" className="text-muted-foreground">Handle</Label>
+          {app.description && (
+            <p className="text-sm text-muted-foreground">{app.description}</p>
+          )}
+          <div className="flex items-center gap-3 pt-2">
             <div className="flex items-center gap-2">
               <Input
                 id="install-handle"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value)}
-                className="h-8 text-xs font-mono flex-1"
+                className="h-8 text-xs font-mono w-40"
                 placeholder="如 notify-prod"
               />
               <span className="text-xs text-muted-foreground font-mono shrink-0">
                 @{handle || "handle"}
               </span>
             </div>
+            <Button size="sm" onClick={handleInstall} disabled={installing}>
+              {installing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              允许并安装
+            </Button>
           </div>
-
-          <Button className="w-full" onClick={handleInstall} disabled={installing}>
-            {installing && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            允许并安装
-          </Button>
         </div>
+      </div>
 
-        {/* Right: Tabs */}
-        {hasTabs && <div className="flex-1 min-w-0 space-y-4">
-          {/* Mobile tab select */}
-          <div className="md:hidden">
-            <select
-              value={activeTab}
-              onChange={(e) => setTab(e.target.value as TabKey)}
-              className="w-full h-9 px-3 rounded-md border bg-background text-sm"
-            >
-              {tabs.map((t) => (
-                <option key={t.key} value={t.key}>{t.label}</option>
-              ))}
-            </select>
-          </div>
+      {/* Mobile nav */}
+      {hasTabs && tabs.length > 1 && (
+        <div className="md:hidden">
+          <select
+            value={activeTab}
+            onChange={(e) => setTab(e.target.value as TabKey)}
+            className="w-full h-9 px-3 rounded-md border bg-background text-sm"
+          >
+            {tabs.map((t) => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
-          {/* Desktop: nav + content */}
-          <div className="flex gap-8">
-            <nav className="hidden md:block w-40 shrink-0 space-y-1">
+      {/* Desktop: Left nav + Right content */}
+      {hasTabs && (
+        <div className="flex gap-8">
+          {tabs.length > 1 && (
+            <nav className="hidden md:block w-48 shrink-0 space-y-1">
               {tabs.map((t) => (
                 <Button
                   key={t.key}
@@ -301,124 +298,123 @@ export function InstallAppPage() {
                 </Button>
               ))}
             </nav>
+          )}
 
-            {/* Tab content */}
-            <div className="flex-1 min-w-0">
-              {activeTab === "permissions" && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-base font-semibold">权限</h2>
-                    <p className="text-sm text-muted-foreground mt-1">安装后此应用将获得以下权限。</p>
-                  </div>
-                  <Card>
-                    <CardContent className="pt-6 space-y-4">
-                      {readScopes.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">读取权限</p>
-                          <div className="space-y-1.5">
-                            {readScopes.map((scope: string) => (
-                              <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Eye className="h-3.5 w-3.5 shrink-0" />
-                                <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                                <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {writeScopes.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">写入权限</p>
-                          <div className="space-y-1.5">
-                            {writeScopes.map((scope: string) => (
-                              <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Zap className="h-3.5 w-3.5 shrink-0" />
-                                <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                                <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {otherScopes.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">其他权限</p>
-                          <div className="space-y-1.5">
-                            {otherScopes.map((scope: string) => (
-                              <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                                <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                                <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {events.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {events.map((event: string) => {
-                              const found = EVENT_TYPES.find((e) => e.key === event);
-                              return (
-                                <Badge key={event} variant="outline" className="text-xs">
-                                  {found ? found.label : event}
-                                  {found && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
-                                </Badge>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+          <div className="flex-1 min-w-0">
+            {activeTab === "permissions" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-base font-semibold">权限</h2>
+                  <p className="text-sm text-muted-foreground mt-1">安装后此应用将获得以下权限。</p>
                 </div>
-              )}
+                <Card>
+                  <CardContent className="pt-6 space-y-4">
+                    {readScopes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">读取权限</p>
+                        <div className="space-y-1.5">
+                          {readScopes.map((scope: string) => (
+                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Eye className="h-3.5 w-3.5 shrink-0" />
+                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {writeScopes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">写入权限</p>
+                        <div className="space-y-1.5">
+                          {writeScopes.map((scope: string) => (
+                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Zap className="h-3.5 w-3.5 shrink-0" />
+                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {otherScopes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">其他权限</p>
+                        <div className="space-y-1.5">
+                          {otherScopes.map((scope: string) => (
+                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                              <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {events.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {events.map((event: string) => {
+                            const found = EVENT_TYPES.find((e) => e.key === event);
+                            return (
+                              <Badge key={event} variant="outline" className="text-xs">
+                                {found ? found.label : event}
+                                {found && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
-              {activeTab === "tools" && tools.length > 0 && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-base font-semibold">命令 / 工具</h2>
-                    <p className="text-sm text-muted-foreground mt-1">此应用提供的命令和工具。</p>
-                  </div>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <ToolsDisplay tools={tools} />
-                    </CardContent>
-                  </Card>
+            {activeTab === "tools" && tools.length > 0 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-base font-semibold">命令 / 工具</h2>
+                  <p className="text-sm text-muted-foreground mt-1">此应用提供的命令和工具。</p>
                 </div>
-              )}
+                <Card>
+                  <CardContent className="pt-6">
+                    <ToolsDisplay tools={tools} />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
-              {activeTab === "config" && Object.keys(schemaProperties).length > 0 && (
-                <div className="space-y-6">
-                  <div>
-                    <h2 className="text-base font-semibold">应用配置</h2>
-                    <p className="text-sm text-muted-foreground mt-1">安装前填写此应用所需的配置。</p>
-                  </div>
-                  <Card>
-                    <CardContent className="space-y-4 pt-6">
-                      {Object.entries(schemaProperties).map(([key, prop]: [string, any]) => (
-                        <div key={key} className="space-y-1.5">
-                          <Label className="text-muted-foreground">{prop.title || key}</Label>
-                          <Input
-                            value={configForm[key] || ""}
-                            onChange={(e) => setConfigForm({ ...configForm, [key]: e.target.value })}
-                            className="h-8 text-xs font-mono"
-                            placeholder={prop.description || ""}
-                          />
-                          {prop.description && (
-                            <p className="text-xs text-muted-foreground">{prop.description}</p>
-                          )}
-                        </div>
-                      ))}
-                    </CardContent>
-                  </Card>
+            {activeTab === "config" && Object.keys(schemaProperties).length > 0 && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-base font-semibold">应用配置</h2>
+                  <p className="text-sm text-muted-foreground mt-1">安装前填写此应用所需的配置。</p>
                 </div>
-              )}
-            </div>
+                <Card>
+                  <CardContent className="space-y-4 pt-6">
+                    {Object.entries(schemaProperties).map(([key, prop]: [string, any]) => (
+                      <div key={key} className="space-y-1.5">
+                        <Label className="text-muted-foreground">{prop.title || key}</Label>
+                        <Input
+                          value={configForm[key] || ""}
+                          onChange={(e) => setConfigForm({ ...configForm, [key]: e.target.value })}
+                          className="h-8 text-xs font-mono"
+                          placeholder={prop.description || ""}
+                        />
+                        {prop.description && (
+                          <p className="text-xs text-muted-foreground">{prop.description}</p>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
-        </div>}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
