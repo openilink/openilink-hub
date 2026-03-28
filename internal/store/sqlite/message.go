@@ -65,7 +65,7 @@ func (db *DB) SaveMessage(m *store.Message) (store.SaveResult, error) {
 	// Insert new
 	processedAt := sql.NullInt64{}
 	if m.Direction == "outbound" {
-		processedAt = sql.NullInt64{Int64: time.Now().Unix(), Valid: true}
+		processedAt = sql.NullInt64{Int64: db.now(), Valid: true}
 	}
 	result, err := tx.Exec(`INSERT INTO messages (bot_id, channel_id, direction,
 		seq, message_id, from_user_id, to_user_id, client_id,
