@@ -204,7 +204,7 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
                           {Object.entries(evt.attributes).map(([k, v]) => (
                             <div key={k} className="flex gap-2 text-[10px]">
                               <span className="text-blue-500 font-bold shrink-0">{k}:</span>
-                              <span className="text-foreground/70 break-all">{String(v)}</span>
+                              <span className="text-foreground/70 whitespace-pre-wrap break-words">{String(v)}</span>
                             </div>
                           ))}
                         </div>
