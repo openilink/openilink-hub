@@ -1,20 +1,7 @@
 import { useEffect, useState } from "react";
-import { Check, X, ExternalLink } from "lucide-react";
+import { Check, X, ExternalLink, Inbox, Globe, Terminal, Radio, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +43,7 @@ export function AdminReviewsPage() {
       .then((data) => {
         setApps(data);
         setSelected((prev: any) =>
-          prev ? (data.find((a: any) => a.id === prev.id) ?? prev) : null
+          prev ? (data.find((a: any) => a.id === prev.id) ?? null) : null
         );
       })
       .catch(() => {
@@ -91,6 +78,7 @@ export function AdminReviewsPage() {
       toast({ title: `「${rejectTarget.name}」已拒绝` });
       setRejectTarget(null);
       setRejectReason("");
+      setSelected(null);
       loadApps();
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
@@ -113,231 +101,289 @@ export function AdminReviewsPage() {
     }
   }
 
+  // Pending apps first, then listed, then unlisted
+  const sorted = [...apps].sort((a, b) => {
+    const order: Record<string, number> = { pending: 0, listed: 1, unlisted: 2 };
+    return (order[a.listing] ?? 3) - (order[b.listing] ?? 3)
+      || (b.updated_at ?? 0) - (a.updated_at ?? 0);
+  });
+
+  const pendingCount = apps.filter((a) => a.listing === "pending").length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">审核中心</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">审核应用上架请求。</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            审核应用上架请求
+            {pendingCount > 0 && (
+              <Badge variant="destructive" className="ml-2 text-[10px] px-1.5 py-0">
+                {pendingCount} 待审核
+              </Badge>
+            )}
+          </p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/50 overflow-hidden">
-        <Table className="table-fixed">
-          <TableHeader className="bg-muted/30">
-            <TableRow>
-              <TableHead className="w-[280px]">应用</TableHead>
-              <TableHead>开发者</TableHead>
-              <TableHead>更新时间</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead className="text-right">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <>
-                {[1, 2, 3].map((i) => (
-                  <TableRow key={i}>
-                    <TableCell>
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-7 w-7 rounded-lg bg-muted animate-pulse shrink-0" />
-                        <div className="space-y-1.5 flex-1">
-                          <div className="h-3 w-28 rounded bg-muted animate-pulse" />
-                          <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell><div className="h-3 w-16 rounded bg-muted animate-pulse" /></TableCell>
-                    <TableCell><div className="h-3 w-12 rounded bg-muted animate-pulse" /></TableCell>
-                    <TableCell><div className="h-5 w-14 rounded bg-muted animate-pulse" /></TableCell>
-                    <TableCell />
-                  </TableRow>
-                ))}
-              </>
-            ) : (
-              <>
-                {apps.map((a) => (
-                  <TableRow
-                    key={a.id}
-                    className="cursor-pointer"
-                    onClick={() => setSelected(a)}
-                  >
-                    <TableCell>
-                      <div className="flex items-center gap-2.5">
-                        <AppIcon icon={a.icon} iconUrl={a.icon_url} size="h-7 w-7" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium leading-tight truncate">{a.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono truncate">{a.slug}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">{a.owner_username}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {timeAgo(a.updated_at)}
-                    </TableCell>
-                    <TableCell><ListingBadge listing={a.listing} /></TableCell>
-                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        {a.listing === "pending" ? (
-                          <>
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              className="gap-1 text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                              onClick={() => handleApprove(a)}
-                              disabled={submitting}
-                            >
-                              <Check className="h-3 w-3" /> 通过
-                            </Button>
-                            <Button
-                              size="xs"
-                              variant="outline"
-                              className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/5"
-                              onClick={() => { setRejectTarget(a); setRejectReason(""); }}
-                              disabled={submitting}
-                            >
-                              <X className="h-3 w-3" /> 拒绝
-                            </Button>
-                          </>
-                        ) : (
-                          <Button size="xs" variant="outline" onClick={() => handleToggle(a)} disabled={submitting}>
-                            {a.listing === "listed" ? "下架" : "上架"}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {apps.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-10">
-                      暂无应用
-                    </TableCell>
-                  </TableRow>
-                )}
-              </>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* 详情 Drawer */}
-      <Sheet open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto">
-          {selected && (
-            <>
-              <SheetHeader className="pb-4">
-                <div className="flex items-center gap-3">
-                  <AppIcon icon={selected.icon} iconUrl={selected.icon_url} size="h-10 w-10" />
-                  <div className="flex-1 min-w-0">
-                    <SheetTitle className="text-left leading-tight">{selected.name}</SheetTitle>
-                    <p className="text-xs text-muted-foreground font-mono mt-0.5">{selected.slug}</p>
-                  </div>
-                  <ListingBadge listing={selected.listing} />
-                </div>
-              </SheetHeader>
-
-              <div className="space-y-5">
-                {/* 基本信息 */}
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">基本信息</p>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex gap-2">
-                      <span className="text-muted-foreground w-16 shrink-0">开发者</span>
-                      <span>{selected.owner_username}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <span className="text-muted-foreground w-16 shrink-0">版本</span>
-                      <span className="font-mono">{selected.version || "—"}</span>
-                    </div>
-                    {selected.homepage && (
-                      <div className="flex gap-2">
-                        <span className="text-muted-foreground w-16 shrink-0">主页</span>
-                        <a
-                          href={selected.homepage}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline flex items-center gap-1 truncate"
-                        >
-                          {selected.homepage}
-                          <ExternalLink className="h-3 w-3 shrink-0" />
-                        </a>
-                      </div>
-                    )}
-                    {selected.listing_reject_reason && (
-                      <div className="flex gap-2">
-                        <span className="text-muted-foreground w-16 shrink-0">拒绝原因</span>
-                        <span className="text-destructive">{selected.listing_reject_reason}</span>
-                      </div>
-                    )}
+      <div className="flex flex-col md:flex-row gap-6 min-h-[calc(100vh-14rem)]">
+        {/* Left: App List */}
+        <div className="md:w-80 shrink-0 space-y-1 overflow-y-auto">
+          {loading ? (
+            <div className="space-y-1">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center gap-3 p-3 rounded-lg">
+                  <div className="h-9 w-9 rounded-lg bg-muted animate-pulse shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3.5 w-28 rounded bg-muted animate-pulse" />
+                    <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
                   </div>
                 </div>
+              ))}
+            </div>
+          ) : sorted.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+              <Inbox className="h-10 w-10 mb-3 opacity-30" />
+              <p className="text-sm">暂无应用</p>
+            </div>
+          ) : (
+            sorted.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setSelected(a)}
+                className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
+                  selected?.id === a.id
+                    ? "bg-primary/10 border border-primary/20"
+                    : "hover:bg-muted/50 border border-transparent"
+                }`}
+              >
+                <AppIcon icon={a.icon} iconUrl={a.icon_url} size="h-9 w-9" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate">{a.name}</p>
+                    <ListingBadge listing={a.listing} />
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {a.owner_username} · {timeAgo(a.updated_at)}
+                  </p>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
 
-                {selected.description && (
-                  <>
-                    <Separator />
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">描述</p>
-                      <p className="text-sm leading-relaxed">{selected.description}</p>
-                    </div>
-                  </>
-                )}
+        {/* Right: Detail Panel */}
+        <div className="flex-1 min-w-0">
+          {selected ? (
+            <div className="rounded-xl border border-border/50 bg-card p-6 space-y-6 md:sticky md:top-6 md:max-h-[calc(100vh-10rem)] md:overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-start gap-4">
+                <AppIcon icon={selected.icon} iconUrl={selected.icon_url} size="h-12 w-12" />
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg font-bold leading-tight">{selected.name}</h2>
+                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{selected.slug}</p>
+                </div>
+                <ListingBadge listing={selected.listing} />
+              </div>
 
-                {selected.readme && (
-                  <>
-                    <Separator />
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">README</p>
-                      <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-muted/40 rounded-lg p-3 max-h-48 overflow-y-auto">
-                        {selected.readme}
-                      </pre>
-                    </div>
-                  </>
-                )}
-
-                {/* 操作按钮 */}
-                {selected.listing === "pending" && (
-                  <>
-                    <Separator />
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1 gap-1.5 bg-emerald-600 hover:bg-emerald-700"
-                        onClick={() => handleApprove(selected)}
-                        disabled={submitting}
-                      >
-                        <Check className="h-4 w-4" /> 通过上架
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="flex-1 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5"
-                        onClick={() => { setRejectTarget(selected); setRejectReason(""); }}
-                        disabled={submitting}
-                      >
-                        <X className="h-4 w-4" /> 拒绝
-                      </Button>
-                    </div>
-                  </>
-                )}
-                {selected.listing !== "pending" && (
-                  <>
-                    <Separator />
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => handleToggle(selected)}
-                      disabled={submitting}
+              {/* Info */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">开发者</p>
+                  <p className="font-medium">{selected.owner_username}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">版本</p>
+                  <p className="font-mono">{selected.version || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">更新时间</p>
+                  <p>{timeAgo(selected.updated_at)}</p>
+                </div>
+                {selected.homepage && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">主页</p>
+                    <a
+                      href={selected.homepage}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline flex items-center gap-1 text-sm truncate"
                     >
-                      {selected.listing === "listed" ? "下架" : "上架"}
-                    </Button>
-                  </>
+                      {selected.homepage.replace(/^https?:\/\//, "")}
+                      <ExternalLink className="h-3 w-3 shrink-0" />
+                    </a>
+                  </div>
                 )}
               </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
 
-      {/* 拒绝 Dialog */}
+              {selected.listing_reject_reason && (
+                <div className="rounded-lg bg-destructive/5 border border-destructive/20 p-3">
+                  <p className="text-xs font-semibold text-destructive mb-1">拒绝原因</p>
+                  <p className="text-sm">{selected.listing_reject_reason}</p>
+                </div>
+              )}
+
+              {/* Core fields for review */}
+              <Separator />
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">核心配置</p>
+
+                {/* Webhook URL */}
+                <div className="flex items-start gap-2 text-sm">
+                  <Globe className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs text-muted-foreground">Webhook URL</p>
+                    {selected.webhook_url ? (
+                      <p className="font-mono text-xs truncate">{selected.webhook_url}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground/50">未配置</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tools */}
+                <div className="flex items-start gap-2 text-sm">
+                  <Terminal className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground mb-1">Tools</p>
+                    {(() => {
+                      const tools = Array.isArray(selected.tools) ? selected.tools : [];
+                      return tools.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {tools.map((t: any, i: number) => (
+                            <Badge key={i} variant="secondary" className="text-[10px] font-mono gap-1">
+                              {t.command ? `/${t.command}` : t.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground/50">无</p>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Events */}
+                <div className="flex items-start gap-2 text-sm">
+                  <Radio className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground mb-1">Events</p>
+                    {(() => {
+                      const events = Array.isArray(selected.events) ? selected.events : [];
+                      return events.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {events.map((e: string, i: number) => (
+                            <Badge key={i} variant="outline" className="text-[10px] font-mono">
+                              {e}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground/50">无</p>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Scopes */}
+                <div className="flex items-start gap-2 text-sm">
+                  <Shield className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground mb-1">Scopes</p>
+                    {(() => {
+                      const scopes = Array.isArray(selected.scopes) ? selected.scopes : [];
+                      return scopes.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {scopes.map((s: string, i: number) => (
+                            <Badge key={i} variant="outline" className="text-[10px] font-mono">
+                              {s}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground/50">无</p>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Config Schema */}
+                {selected.config_schema && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <Terminal className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-muted-foreground mb-1">Config Schema</p>
+                      <pre className="text-[10px] font-mono bg-muted/40 rounded p-2 max-h-32 overflow-auto whitespace-pre-wrap">
+                        {typeof selected.config_schema === "string" ? selected.config_schema : JSON.stringify(selected.config_schema, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {selected.description && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">描述</p>
+                    <p className="text-sm leading-relaxed">{selected.description}</p>
+                  </div>
+                </>
+              )}
+
+              {selected.readme && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">README</p>
+                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-muted/40 rounded-lg p-3 max-h-60 overflow-y-auto">
+                      {selected.readme}
+                    </pre>
+                  </div>
+                </>
+              )}
+
+              {/* Actions */}
+              <Separator />
+              {selected.listing === "pending" ? (
+                <div className="flex gap-3">
+                  <Button
+                    className="flex-1 gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                    onClick={() => handleApprove(selected)}
+                    disabled={submitting}
+                  >
+                    <Check className="h-4 w-4" /> 通过上架
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5"
+                    onClick={() => { setRejectTarget(selected); setRejectReason(""); }}
+                    disabled={submitting}
+                  >
+                    <X className="h-4 w-4" /> 拒绝
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => handleToggle(selected)}
+                  disabled={submitting}
+                >
+                  {selected.listing === "listed" ? "下架" : "上架"}
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <Inbox className="h-12 w-12 mb-3 opacity-20" />
+              <p className="text-sm">选择一个应用查看详情</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Reject Dialog */}
       <Dialog
         open={!!rejectTarget}
         onOpenChange={(o) => { if (!o) { setRejectTarget(null); setRejectReason(""); } }}
