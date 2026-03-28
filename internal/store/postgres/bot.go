@@ -99,33 +99,34 @@ func (db *DB) FindBotByCredential(key, value string) (*store.Bot, error) {
 }
 
 func (db *DB) UpdateBotCredentials(id, providerID string, credentials json.RawMessage) error {
+	now := db.now()
 	_, err := db.Exec(
-		"UPDATE bots SET credentials = $1, provider_id = $2, status = 'connected', sync_state = '{}', updated_at = NOW() WHERE id = $3",
-		credentials, providerID, id)
+		"UPDATE bots SET credentials = $1, provider_id = $2, status = 'connected', sync_state = '{}', updated_at = $3 WHERE id = $4",
+		credentials, providerID, now, id)
 	if err != nil {
 		return err
 	}
-	db.Exec("UPDATE messages SET context_token = '' WHERE bot_id = $1 AND context_token != '' AND created_at > NOW() - INTERVAL '1 day'", id)
+	db.Exec("UPDATE messages SET context_token = '' WHERE bot_id = $1 AND context_token != '' AND created_at > $2 - INTERVAL '1 day'", id, now)
 	return nil
 }
 
 func (db *DB) UpdateBotName(id, name string) error {
-	_, err := db.Exec("UPDATE bots SET name = $1, updated_at = NOW() WHERE id = $2", name, id)
+	_, err := db.Exec("UPDATE bots SET name = $1, updated_at = $2 WHERE id = $3", name, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateBotDisplayName(id, displayName string) error {
-	_, err := db.Exec("UPDATE bots SET display_name = $1, updated_at = NOW() WHERE id = $2", displayName, id)
+	_, err := db.Exec("UPDATE bots SET display_name = $1, updated_at = $2 WHERE id = $3", displayName, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateBotStatus(id, status string) error {
-	_, err := db.Exec("UPDATE bots SET status = $1, updated_at = NOW() WHERE id = $2", status, id)
+	_, err := db.Exec("UPDATE bots SET status = $1, updated_at = $2 WHERE id = $3", status, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateBotSyncState(id string, syncState json.RawMessage) error {
-	_, err := db.Exec("UPDATE bots SET sync_state = $1, updated_at = NOW() WHERE id = $2", syncState, id)
+	_, err := db.Exec("UPDATE bots SET sync_state = $1, updated_at = $2 WHERE id = $3", syncState, db.now(), id)
 	return err
 }
 
@@ -169,12 +170,12 @@ func (db *DB) GetBotsNeedingReminder() ([]store.Bot, error) {
 }
 
 func (db *DB) UpdateBotAIEnabled(id string, enabled bool) error {
-	_, err := db.Exec("UPDATE bots SET ai_enabled = $1, updated_at = NOW() WHERE id = $2", enabled, id)
+	_, err := db.Exec("UPDATE bots SET ai_enabled = $1, updated_at = $2 WHERE id = $3", enabled, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateBotAIModel(id, model string) error {
-	_, err := db.Exec("UPDATE bots SET ai_model = $1, updated_at = NOW() WHERE id = $2", model, id)
+	_, err := db.Exec("UPDATE bots SET ai_model = $1, updated_at = $2 WHERE id = $3", model, db.now(), id)
 	return err
 }
 
