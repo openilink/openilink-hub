@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Check, X, ExternalLink, Inbox, Globe, Terminal, Radio, Shield } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Check, X, ExternalLink, Inbox, Globe, Terminal, Radio, Shield, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -28,14 +28,37 @@ function timeAgo(ts: number) {
   return `${Math.floor(diff / 86400)}天前`;
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  request: "申请上架",
+  approve: "通过",
+  reject: "拒绝",
+  withdraw: "撤回",
+  auto_revert: "自动撤回",
+  admin_set: "管理员设置",
+};
+
+const ACTION_VARIANTS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  request: "outline",
+  approve: "default",
+  reject: "destructive",
+  withdraw: "secondary",
+  auto_revert: "secondary",
+  admin_set: "outline",
+};
+
 export function AdminReviewsPage() {
   const [apps, setApps] = useState<any[]>([]);
   const [selected, setSelected] = useState<any>(null);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [rejectTarget, setRejectTarget] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+
+  const loadReviews = useCallback((appId: string) => {
+    api.listAppReviews(appId).then(setReviews).catch(() => setReviews([]));
+  }, []);
 
   function loadApps() {
     setLoading(true);
@@ -56,12 +79,21 @@ export function AdminReviewsPage() {
     loadApps();
   }, []);
 
+  useEffect(() => {
+    if (selected) {
+      loadReviews(selected.id);
+    } else {
+      setReviews([]);
+    }
+  }, [selected?.id]);
+
   async function handleApprove(a: any) {
     setSubmitting(true);
     try {
       await api.reviewListing(a.id, true);
       toast({ title: `「${a.name}」已通过上架` });
       loadApps();
+      loadReviews(a.id);
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
     } finally {
@@ -94,6 +126,7 @@ export function AdminReviewsPage() {
       await api.setAppListing(a.id, newListing);
       toast({ title: newListing === "listed" ? `「${a.name}」已上架` : `「${a.name}」已下架` });
       loadApps();
+      loadReviews(a.id);
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
     } finally {
@@ -339,6 +372,39 @@ export function AdminReviewsPage() {
                     <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-muted/40 rounded-lg p-3 max-h-60 overflow-y-auto">
                       {selected.readme}
                     </pre>
+                  </div>
+                </>
+              )}
+
+              {/* Review History */}
+              {reviews.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                      <History className="h-3.5 w-3.5" /> 审核记录
+                    </p>
+                    <div className="space-y-2">
+                      {reviews.map((review: any) => (
+                        <div key={review.id} className="flex items-start gap-2 text-xs">
+                          <span className="text-muted-foreground whitespace-nowrap mt-0.5 tabular-nums">
+                            {new Date(review.created_at * 1000).toLocaleString("zh-CN", {
+                              month: "2-digit", day: "2-digit",
+                              hour: "2-digit", minute: "2-digit",
+                            })}
+                          </span>
+                          <Badge variant={ACTION_VARIANTS[review.action] || "outline"} className="text-[10px] shrink-0">
+                            {ACTION_LABELS[review.action] || review.action}
+                          </Badge>
+                          {review.version && (
+                            <span className="text-muted-foreground font-mono">v{review.version}</span>
+                          )}
+                          {review.reason && (
+                            <span className="text-muted-foreground truncate">{review.reason}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </>
               )}
