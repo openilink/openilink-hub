@@ -274,62 +274,56 @@ export function AdminReviewsPage() {
                 )}
 
                 {/* Review Highlights — most important for reviewers */}
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">审核要点</p>
+                {(() => {
+                  const scopes = Array.isArray(selected.scopes) ? selected.scopes : [];
+                  const tools = Array.isArray(selected.tools) ? selected.tools : [];
+                  const events = Array.isArray(selected.events) ? selected.events : [];
+                  return (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">审核要点</p>
 
-                  {/* Scopes */}
-                  <ReviewField icon={<Shield className="h-3.5 w-3.5" />} label="权限">
-                    {(() => {
-                      const scopes = Array.isArray(selected.scopes) ? selected.scopes : [];
-                      return scopes.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {scopes.map((s: string, i: number) => (
-                            <Badge key={i} variant="outline" className="text-[10px] font-mono">{s}</Badge>
-                          ))}
-                        </div>
-                      ) : <span className="text-xs text-muted-foreground/50">无</span>;
-                    })()}
-                  </ReviewField>
+                      <ReviewField icon={<Shield className="h-3.5 w-3.5" />} label="权限">
+                        {scopes.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {scopes.map((s: string, i: number) => (
+                              <Badge key={i} variant="outline" className="text-[10px] font-mono">{s}</Badge>
+                            ))}
+                          </div>
+                        ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                      </ReviewField>
 
-                  {/* Tools */}
-                  <ReviewField icon={<Terminal className="h-3.5 w-3.5" />} label="工具">
-                    {(() => {
-                      const tools = Array.isArray(selected.tools) ? selected.tools : [];
-                      return tools.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {tools.map((t: any, i: number) => (
-                            <Badge key={i} variant="secondary" className="text-[10px] font-mono gap-1">
-                              {t.command ? `/${t.command}` : t.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : <span className="text-xs text-muted-foreground/50">无</span>;
-                    })()}
-                  </ReviewField>
+                      <ReviewField icon={<Terminal className="h-3.5 w-3.5" />} label="工具">
+                        {tools.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {tools.map((t: any, i: number) => (
+                              <Badge key={i} variant="secondary" className="text-[10px] font-mono gap-1">
+                                {t.command ? `/${t.command}` : t.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                      </ReviewField>
 
-                  {/* Events */}
-                  <ReviewField icon={<Radio className="h-3.5 w-3.5" />} label="事件">
-                    {(() => {
-                      const events = Array.isArray(selected.events) ? selected.events : [];
-                      return events.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {events.map((e: string, i: number) => (
-                            <Badge key={i} variant="outline" className="text-[10px] font-mono">{e}</Badge>
-                          ))}
-                        </div>
-                      ) : <span className="text-xs text-muted-foreground/50">无</span>;
-                    })()}
-                  </ReviewField>
+                      <ReviewField icon={<Radio className="h-3.5 w-3.5" />} label="事件">
+                        {events.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {events.map((e: string, i: number) => (
+                              <Badge key={i} variant="outline" className="text-[10px] font-mono">{e}</Badge>
+                            ))}
+                          </div>
+                        ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                      </ReviewField>
 
-                  {/* Webhook */}
-                  <ReviewField icon={<Globe className="h-3.5 w-3.5" />} label="Webhook">
-                    {selected.webhook_url ? (
-                      <p className="font-mono text-xs truncate">{selected.webhook_url}</p>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/50">未配置</span>
-                    )}
-                  </ReviewField>
-                </div>
+                      <ReviewField icon={<Globe className="h-3.5 w-3.5" />} label="Webhook">
+                        {selected.webhook_url ? (
+                          <p className="font-mono text-xs truncate">{selected.webhook_url}</p>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/50">未配置</span>
+                        )}
+                      </ReviewField>
+                    </div>
+                  );
+                })()}
 
                 {/* Review History */}
                 {reviews.length > 0 && (
