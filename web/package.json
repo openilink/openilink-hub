@@ -32,6 +32,8 @@
     "@radix-ui/react-toast": "^1.2.15",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@xyflow/react": "^12.10.1",
+    "dompurify": "^3.3.3",
+    "marked": "^17.0.5",
     "qrcode": "^1.5.4",
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",
