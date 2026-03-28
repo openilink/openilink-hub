@@ -131,27 +131,29 @@ func (db *DB) UpdateBotSyncState(id string, syncState json.RawMessage) error {
 }
 
 func (db *DB) IncrBotMsgCount(id string) error {
-	_, err := db.Exec("UPDATE bots SET msg_count = msg_count + 1, last_msg_at = unixepoch(), updated_at = unixepoch() WHERE id = ?", id)
+	now := db.now()
+	_, err := db.Exec("UPDATE bots SET msg_count = msg_count + 1, last_msg_at = ?, updated_at = ? WHERE id = ?", now, now, id)
 	return err
 }
 
 func (db *DB) UpdateBotReminder(id string, hours int) error {
-	_, err := db.Exec("UPDATE bots SET reminder_hours = ?, updated_at = unixepoch() WHERE id = ?", hours, id)
+	_, err := db.Exec("UPDATE bots SET reminder_hours = ?, updated_at = ? WHERE id = ?", hours, db.now(), id)
 	return err
 }
 
 func (db *DB) MarkBotReminded(id string) error {
-	_, err := db.Exec("UPDATE bots SET last_reminded_at = unixepoch() WHERE id = ?", id)
+	_, err := db.Exec("UPDATE bots SET last_reminded_at = ? WHERE id = ?", db.now(), id)
 	return err
 }
 
 func (db *DB) GetBotsNeedingReminder() ([]store.Bot, error) {
+	now := db.now()
 	rows, err := db.Query(`SELECT `+botSelectCols+` FROM bots
 		WHERE status = 'connected'
 		AND reminder_hours > 0
 		AND last_msg_at IS NOT NULL
-		AND last_msg_at < unixepoch() - 3600 * reminder_hours
-		AND (last_reminded_at IS NULL OR last_reminded_at < unixepoch() - 3600)`)
+		AND last_msg_at < ? - 3600 * reminder_hours
+		AND (last_reminded_at IS NULL OR last_reminded_at < ? - 3600)`, now, now)
 	if err != nil {
 		return nil, err
 	}

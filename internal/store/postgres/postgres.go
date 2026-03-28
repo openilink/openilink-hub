@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openilink/openilink-hub/internal/store"
@@ -12,6 +13,7 @@ import (
 // DB implements store.Store for PostgreSQL.
 type DB struct {
 	*sql.DB
+	clock store.Clock
 }
 
 // Verify interface compliance at compile time.
@@ -37,5 +39,11 @@ func Open(dsn string) (*DB, error) {
 	}
 
 	slog.Info("PostgreSQL connected")
-	return &DB{db}, nil
+	return &DB{DB: db, clock: store.RealClock{}}, nil
 }
+
+// SetClock replaces the clock used by time-sensitive queries (e.g. reminders).
+func (db *DB) SetClock(c store.Clock) { db.clock = c }
+
+// now returns the current time from the configured clock.
+func (db *DB) now() time.Time { return db.clock.Now() }

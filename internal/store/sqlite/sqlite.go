@@ -12,6 +12,7 @@ import (
 // DB implements store.Store for SQLite.
 type DB struct {
 	*sql.DB
+	clock store.Clock
 }
 
 // Verify interface compliance at compile time.
@@ -48,5 +49,12 @@ func Open(dsn string) (*DB, error) {
 	}
 
 	slog.Info("SQLite connected")
-	return &DB{db}, nil
+	return &DB{DB: db, clock: store.RealClock{}}, nil
 }
+
+// SetClock replaces the clock used by time-sensitive queries (e.g. reminders).
+// Intended for testing with a fake clock.
+func (db *DB) SetClock(c store.Clock) { db.clock = c }
+
+// now returns the current unix epoch from the configured clock.
+func (db *DB) now() int64 { return db.clock.Now().Unix() }

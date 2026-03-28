@@ -9,6 +9,8 @@ export interface Bot {
   ai_enabled: boolean;
   msg_count: number;
   reminder_hours: number;
+  last_msg_at?: number;
+  last_reminded_at?: number;
   created_at: number;
   extra?: Record<string, any>;
 }

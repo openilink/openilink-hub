@@ -130,27 +130,29 @@ func (db *DB) UpdateBotSyncState(id string, syncState json.RawMessage) error {
 }
 
 func (db *DB) IncrBotMsgCount(id string) error {
-	_, err := db.Exec("UPDATE bots SET msg_count = msg_count + 1, last_msg_at = NOW(), updated_at = NOW() WHERE id = $1", id)
+	now := db.now()
+	_, err := db.Exec("UPDATE bots SET msg_count = msg_count + 1, last_msg_at = $1, updated_at = $1 WHERE id = $2", now, id)
 	return err
 }
 
 func (db *DB) UpdateBotReminder(id string, hours int) error {
-	_, err := db.Exec("UPDATE bots SET reminder_hours = $1, updated_at = NOW() WHERE id = $2", hours, id)
+	_, err := db.Exec("UPDATE bots SET reminder_hours = $1, updated_at = $2 WHERE id = $3", hours, db.now(), id)
 	return err
 }
 
 func (db *DB) MarkBotReminded(id string) error {
-	_, err := db.Exec("UPDATE bots SET last_reminded_at = NOW() WHERE id = $1", id)
+	_, err := db.Exec("UPDATE bots SET last_reminded_at = $1 WHERE id = $2", db.now(), id)
 	return err
 }
 
 func (db *DB) GetBotsNeedingReminder() ([]store.Bot, error) {
+	now := db.now()
 	rows, err := db.Query(`SELECT `+botSelectCols+` FROM bots
 		WHERE status = 'connected'
 		AND reminder_hours > 0
 		AND last_msg_at IS NOT NULL
-		AND last_msg_at < NOW() - INTERVAL '1 hour' * reminder_hours
-		AND (last_reminded_at IS NULL OR last_reminded_at < NOW() - INTERVAL '1 hour')`)
+		AND last_msg_at < $1 - INTERVAL '1 hour' * reminder_hours
+		AND (last_reminded_at IS NULL OR last_reminded_at < $1 - INTERVAL '1 hour')`, now)
 	if err != nil {
 		return nil, err
 	}

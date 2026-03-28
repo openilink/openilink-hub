@@ -39,6 +39,16 @@ import { parseTools } from "../components/tools-display";
 
 // ==================== Page ====================
 
+function formatRelativeTime(ts: number) {
+  if (!ts) return "—";
+  const diff = Math.floor((Date.now() - ts * 1000) / 1000);
+  if (diff < 0) return "刚刚";
+  if (diff < 60) return `${diff}秒前`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  return `${Math.floor(diff / 86400)}天前`;
+}
+
 export function BotDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -338,6 +348,24 @@ export function BotDetailPage() {
                 <SelectItem value="22">提前 2 小时</SelectItem>
               </SelectContent>
             </Select>
+            {bot.reminder_hours > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-[10px] text-muted-foreground/60 cursor-help">
+                    {bot.last_reminded_at
+                      ? `上次 ${formatRelativeTime(bot.last_reminded_at)}`
+                      : "尚未提醒"}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs space-y-1">
+                  <p>上次消息: {bot.last_msg_at ? new Date(bot.last_msg_at * 1000).toLocaleString() : "无"}</p>
+                  <p>上次提醒: {bot.last_reminded_at ? new Date(bot.last_reminded_at * 1000).toLocaleString() : "无"}</p>
+                  <p>下次提醒: {bot.last_msg_at
+                    ? new Date((bot.last_msg_at + bot.reminder_hours * 3600) * 1000).toLocaleString()
+                    : "等待首条消息"}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
 
           <Separator orientation="vertical" className="h-6 mx-1" />
