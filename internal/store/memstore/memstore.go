@@ -425,6 +425,7 @@ func (s *Store) CountChannelsByBot(string) (int, error)        { return 0, nil }
 func (s *Store) SaveCredential(*store.Credential) error                  { return nil }
 func (s *Store) GetCredentialsByUserID(string) ([]store.Credential, error) { return nil, nil }
 func (s *Store) UpdateCredentialSignCount(string, uint32) error          { return nil }
+func (s *Store) UpdateCredentialName(string, string, string) error       { return nil }
 func (s *Store) DeleteCredential(string, string) error                   { return nil }
 
 // --- OAuthStore (stub) ---
