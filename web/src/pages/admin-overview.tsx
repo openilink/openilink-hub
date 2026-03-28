@@ -427,13 +427,12 @@ function RegistryConfigCard() {
           </p>
           {registries.length === 0 ? (
             <div className="flex items-center justify-between p-3 rounded-lg border border-dashed bg-muted/10">
-              <div>
-                <p className="text-sm text-muted-foreground">暂无 Registry 来源</p>
-                <p className="text-xs text-muted-foreground">添加官方 Registry 以浏览应用市场</p>
-              </div>
-              <Button size="sm" onClick={handleImportDefault} disabled={adding}>
-                <Globe className="w-3.5 h-3.5 mr-1" /> 一键导入官方源
-              </Button>
+              <p className="text-sm text-muted-foreground">暂无 Registry 来源</p>
+              {window.location.origin !== "https://hub.openilink.com" && (
+                <Button size="sm" onClick={handleImportDefault} disabled={adding}>
+                  <Globe className="w-3.5 h-3.5 mr-1" /> 一键导入官方源
+                </Button>
+              )}
             </div>
           ) : (
             registries.map((reg) => (
