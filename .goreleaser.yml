@@ -64,8 +64,11 @@ dockers:
       - "docker.io/openilink/openilink-hub:{{ .Version }}-amd64"
     use: buildx
     dockerfile: Dockerfile.release
-    build_flag_templates:
+    build_flag_templates: &build_flags_amd64
       - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.source=https://github.com/openilink/openilink-hub"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
     ids: [linux-amd64]
   - image_templates:
       - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
@@ -74,6 +77,9 @@ dockers:
     dockerfile: Dockerfile.release
     build_flag_templates:
       - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.source=https://github.com/openilink/openilink-hub"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
     ids: [linux-arm64]
     goarch: arm64
 docker_manifests:
