@@ -64,7 +64,7 @@ dockers:
       - "docker.io/openilink/openilink-hub:{{ .Version }}-amd64"
     use: buildx
     dockerfile: Dockerfile.release
-    build_flag_templates: &build_flags_amd64
+    build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.source=https://github.com/openilink/openilink-hub"
       - "--label=org.opencontainers.image.version={{ .Version }}"
