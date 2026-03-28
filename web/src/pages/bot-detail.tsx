@@ -302,8 +302,9 @@ export function BotDetailPage() {
             <div className="flex items-center gap-1.5">
               <Label className="text-xs font-bold uppercase text-muted-foreground">模型</Label>
               <Select
-                value={bot.ai_model || ""}
-                onValueChange={async (model) => {
+                value={bot.ai_model || "__default__"}
+                onValueChange={async (val) => {
+                  const model = val === "__default__" ? "" : val;
                   try {
                     await api.setBotAIModel(id!, model);
                     setBot({ ...bot, ai_model: model });
@@ -321,7 +322,7 @@ export function BotDetailPage() {
                   <SelectValue placeholder="使用全局默认" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">使用全局默认</SelectItem>
+                  <SelectItem value="__default__">使用全局默认</SelectItem>
                   {availableModels.map((m) => (
                     <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}
