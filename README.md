@@ -17,7 +17,7 @@
 [![License](https://img.shields.io/github/license/openilink/openilink-hub?style=flat-square)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](docker-compose.yml)
+[![Docker](https://img.shields.io/docker/pulls/openilink/openilink-hub?style=flat-square&logo=docker&logoColor=white)](https://hub.docker.com/r/openilink/openilink-hub)
 [![GitHub Stars](https://img.shields.io/github/stars/openilink/openilink-hub?style=flat-square&logo=github)](https://github.com/openilink/openilink-hub/stargazers)
 [![Release](https://img.shields.io/github/v/release/openilink/openilink-hub?style=flat-square)](https://github.com/openilink/openilink-hub/releases)
 
@@ -36,7 +36,8 @@ curl -fsSL https://raw.githubusercontent.com/openilink/openilink-hub/main/instal
 # 启动
 oih
 
-# 或者用 Docker
+# 或者用 Docker（二选一）
+docker run -d -p 9800:9800 docker.io/openilink/openilink-hub:latest
 docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest
 ```
 
@@ -264,7 +265,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   hub:
-    image: ghcr.io/openilink/openilink-hub:latest
+    image: docker.io/openilink/openilink-hub:latest  # 或 ghcr.io/openilink/openilink-hub:latest
     ports:
       - "9800:9800"
     environment:
@@ -372,7 +373,7 @@ go build -o oih .
 | 认证 | WebAuthn (Passkey), OAuth 2.0 (PKCE), 密码 |
 | App 系统 | PKCE OAuth 安装, WebSocket/Webhook 事件投递 |
 | 存储 | MinIO / S3（可选） |
-| 部署 | 单文件二进制 / Docker / Docker Compose |
+| 部署 | 单文件二进制 / Docker ([Docker Hub](https://hub.docker.com/r/openilink/openilink-hub) / [GHCR](https://ghcr.io/openilink/openilink-hub)) / Docker Compose |
 
 ## 参与贡献
 
@@ -423,7 +424,8 @@ curl -fsSL https://raw.githubusercontent.com/openilink/openilink-hub/main/instal
 # Start
 oih
 
-# Or use Docker
+# Or use Docker (either registry works)
+docker run -d -p 9800:9800 docker.io/openilink/openilink-hub:latest
 docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest
 ```
 
