@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -273,9 +274,12 @@ func (s *Server) handlePasskeyBindFinish(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	name := r.URL.Query().Get("name")
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	if name == "" {
 		name = "Passkey"
+	}
+	if len([]rune(name)) > 50 {
+		name = string([]rune(name)[:50])
 	}
 
 	transportsJSON, _ := json.Marshal(cred.Transport)
@@ -313,7 +317,12 @@ func (s *Server) handleRenamePasskey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "name required", http.StatusBadRequest)
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
 		jsonError(w, "name required", http.StatusBadRequest)
 		return
 	}
