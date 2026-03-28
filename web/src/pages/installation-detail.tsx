@@ -476,11 +476,8 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
         position: "absolute", top: "6px", right: "6px",
         fontSize: "11px", padding: "2px 8px", borderRadius: "4px",
         border: "1px solid var(--border)", background: "var(--background)",
-        color: "var(--muted-foreground)", cursor: "pointer", opacity: "0",
-        transition: "opacity 0.15s",
+        color: "var(--muted-foreground)", cursor: "pointer",
       });
-      pre.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
-      pre.addEventListener("mouseleave", () => { btn.style.opacity = "0"; });
       btn.addEventListener("click", () => {
         const code = pre.querySelector("code")?.textContent || pre.textContent || "";
         navigator.clipboard.writeText(code).then(() => {
