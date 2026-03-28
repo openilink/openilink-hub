@@ -37,8 +37,9 @@ curl -fsSL https://raw.githubusercontent.com/openilink/openilink-hub/main/instal
 oih
 
 # 或者用 Docker（二选一）
-docker run -d -p 9800:9800 openilink/openilink-hub:latest
-docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest
+docker run -d -p 9800:9800 openilink/openilink-hub:latest              # Docker Hub
+# 或者 / or:
+docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest     # GHCR
 ```
 
 打开 `http://localhost:9800`，注册账号（**第一个注册的自动当管理员**），扫码绑定微信号，完事。
@@ -373,7 +374,7 @@ go build -o oih .
 | 认证 | WebAuthn (Passkey), OAuth 2.0 (PKCE), 密码 |
 | App 系统 | PKCE OAuth 安装, WebSocket/Webhook 事件投递 |
 | 存储 | MinIO / S3（可选） |
-| 部署 | 单文件二进制 / Docker ([Docker Hub](https://hub.docker.com/r/openilink/openilink-hub) / [GHCR](https://ghcr.io/openilink/openilink-hub)) / Docker Compose |
+| 部署 | 单文件二进制 / Docker ([Docker Hub](https://hub.docker.com/r/openilink/openilink-hub) / [GHCR](https://github.com/openilink/openilink-hub/pkgs/container/openilink-hub)) / Docker Compose |
 
 ## 参与贡献
 
@@ -425,8 +426,9 @@ curl -fsSL https://raw.githubusercontent.com/openilink/openilink-hub/main/instal
 oih
 
 # Or use Docker (either registry works)
-docker run -d -p 9800:9800 openilink/openilink-hub:latest
-docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest
+docker run -d -p 9800:9800 openilink/openilink-hub:latest              # Docker Hub
+# or:
+docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest     # GHCR
 ```
 
 Visit `http://localhost:9800` — first user becomes admin. Zero config needed.
