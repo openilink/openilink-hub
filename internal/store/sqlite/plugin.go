@@ -110,8 +110,8 @@ func (db *DB) ListPluginsByOwner(ownerID string) ([]store.PluginWithLatest, erro
 }
 
 func (db *DB) UpdatePluginMeta(id string, p *store.Plugin) error {
-	_, err := db.Exec(`UPDATE plugins SET description=?, author=?, icon=?, license=?, homepage=?, namespace=?, updated_at=unixepoch() WHERE id=?`,
-		p.Description, p.Author, p.Icon, p.License, p.Homepage, p.Namespace, id)
+	_, err := db.Exec(`UPDATE plugins SET description=?, author=?, icon=?, license=?, homepage=?, namespace=?, updated_at=? WHERE id=?`,
+		p.Description, p.Author, p.Icon, p.License, p.Homepage, p.Namespace, db.now(), id)
 	return err
 }
 
@@ -260,7 +260,7 @@ func (db *DB) ReviewPluginVersion(id, status, reviewedBy, reason string) error {
 		var pluginID string
 		db.QueryRow("SELECT plugin_id FROM plugin_versions WHERE id = ?", id).Scan(&pluginID)
 		if pluginID != "" {
-			db.Exec("UPDATE plugins SET latest_version_id = ?, updated_at = unixepoch() WHERE id = ?", id, pluginID)
+			db.Exec("UPDATE plugins SET latest_version_id = ?, updated_at = ? WHERE id = ?", id, db.now(), pluginID)
 		}
 	}
 	return nil
@@ -273,7 +273,7 @@ func (db *DB) DeletePluginVersion(id string) error {
 
 func (db *DB) RecordPluginInstall(pluginID, userID string) error {
 	_, err := db.Exec(`INSERT INTO plugin_installs (plugin_id, user_id) VALUES (?, ?)
-		ON CONFLICT (plugin_id, user_id) DO UPDATE SET installed_at = unixepoch()`, pluginID, userID)
+		ON CONFLICT (plugin_id, user_id) DO UPDATE SET installed_at = ?`, pluginID, userID, db.now())
 	if err != nil {
 		return err
 	}

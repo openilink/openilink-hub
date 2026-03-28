@@ -117,8 +117,8 @@ func (db *DB) UpdateChannel(id, name, handle string, filter *store.FilterRule, a
 	webhookJSON, _ := json.Marshal(webhook)
 	_, err := db.Exec(
 		`UPDATE channels SET name = ?, handle = ?, filter_rule = ?, ai_config = ?,
-		 webhook_config = ?, enabled = ?, updated_at = unixepoch() WHERE id = ?`,
-		name, handle, filterJSON, aiJSON, webhookJSON, enabled, id,
+		 webhook_config = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+		name, handle, filterJSON, aiJSON, webhookJSON, enabled, db.now(), id,
 	)
 	return err
 }
@@ -130,12 +130,12 @@ func (db *DB) DeleteChannel(id string) error {
 
 func (db *DB) RotateChannelKey(id string) (string, error) {
 	newKey := generateAPIKey()
-	_, err := db.Exec("UPDATE channels SET api_key = ?, updated_at = unixepoch() WHERE id = ?", newKey, id)
+	_, err := db.Exec("UPDATE channels SET api_key = ?, updated_at = ? WHERE id = ?", newKey, db.now(), id)
 	return newKey, err
 }
 
 func (db *DB) UpdateChannelLastSeq(channelID string, seq int64) error {
-	_, err := db.Exec("UPDATE channels SET last_seq = ?, updated_at = unixepoch() WHERE id = ?", seq, channelID)
+	_, err := db.Exec("UPDATE channels SET last_seq = ?, updated_at = ? WHERE id = ?", seq, db.now(), channelID)
 	return err
 }
 

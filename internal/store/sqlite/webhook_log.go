@@ -19,21 +19,21 @@ func (db *DB) CreateWebhookLog(log *store.WebhookLog) (int64, error) {
 }
 
 func (db *DB) UpdateWebhookLogRequest(id int64, status, url, method, body string) error {
-	_, err := db.Exec(`UPDATE webhook_logs SET status=?, request_url=?, request_method=?, request_body=?, updated_at=unixepoch() WHERE id=?`,
-		status, url, method, body, id)
+	_, err := db.Exec(`UPDATE webhook_logs SET status=?, request_url=?, request_method=?, request_body=?, updated_at=? WHERE id=?`,
+		status, url, method, body, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateWebhookLogResponse(id int64, status string, respStatus int, respBody string, durationMs int) error {
-	_, err := db.Exec(`UPDATE webhook_logs SET status=?, response_status=?, response_body=?, duration_ms=?, updated_at=unixepoch() WHERE id=?`,
-		status, respStatus, respBody, durationMs, id)
+	_, err := db.Exec(`UPDATE webhook_logs SET status=?, response_status=?, response_body=?, duration_ms=?, updated_at=? WHERE id=?`,
+		status, respStatus, respBody, durationMs, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateWebhookLogResult(id int64, status, scriptError string, replies []string) error {
 	repliesJSON, _ := json.Marshal(replies)
-	_, err := db.Exec(`UPDATE webhook_logs SET status=?, script_error=?, replies=?, updated_at=unixepoch() WHERE id=?`,
-		status, scriptError, repliesJSON, id)
+	_, err := db.Exec(`UPDATE webhook_logs SET status=?, script_error=?, replies=?, updated_at=? WHERE id=?`,
+		status, scriptError, repliesJSON, db.now(), id)
 	return err
 }
 
@@ -82,6 +82,6 @@ func (db *DB) ListWebhookLogs(botID, channelID string, limit int) ([]store.Webho
 }
 
 func (db *DB) CleanOldWebhookLogs(days int) error {
-	_, err := db.Exec("DELETE FROM webhook_logs WHERE created_at < unixepoch() - 86400 * ?", days)
+	_, err := db.Exec("DELETE FROM webhook_logs WHERE created_at < ? - 86400 * ?", db.now(), days)
 	return err
 }

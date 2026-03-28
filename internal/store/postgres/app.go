@@ -218,16 +218,16 @@ func (db *DB) ListMarketplaceApps() ([]store.App, error) {
 func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide string, tools, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=$1, description=$2, icon=$3, icon_url=$4, homepage=$5,
 		tools=$6, events=$7, scopes=$8, oauth_setup_url=$9, oauth_redirect_url=$10, config_schema=$11,
-		version=$12, readme=$13, guide=$14, updated_at=NOW() WHERE id=$15`,
-		name, description, icon, iconURL, homepage, tools, events, scopes, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide, id)
+		version=$12, readme=$13, guide=$14, updated_at=$15 WHERE id=$16`,
+		name, description, icon, iconURL, homepage, tools, events, scopes, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide string, tools, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=$1, description=$2, icon_url=$3, homepage=$4,
 		webhook_url=$5, oauth_setup_url=$6, oauth_redirect_url=$7, version=$8, readme=$9, guide=$10,
-		tools=$11, events=$12, scopes=$13, updated_at=NOW() WHERE id=$14`,
-		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide, tools, events, scopes, id)
+		tools=$11, events=$12, scopes=$13, updated_at=$14 WHERE id=$15`,
+		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide, tools, events, scopes, db.now(), id)
 	return err
 }
 
@@ -337,24 +337,24 @@ func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation,
 }
 
 func (db *DB) UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool) error {
-	_, err := db.Exec(`UPDATE app_installations SET handle=$1, config=$2, scopes=$3, enabled=$4, updated_at=NOW() WHERE id=$5`,
-		handle, config, scopes, enabled, id)
+	_, err := db.Exec(`UPDATE app_installations SET handle=$1, config=$2, scopes=$3, enabled=$4, updated_at=$5 WHERE id=$6`,
+		handle, config, scopes, enabled, db.now(), id)
 	return err
 }
 
 func (db *DB) SetAppWebhookVerified(id string, verified bool) error {
-	_, err := db.Exec("UPDATE apps SET webhook_verified=$1, updated_at=NOW() WHERE id=$2", verified, id)
+	_, err := db.Exec("UPDATE apps SET webhook_verified=$1, updated_at=$2 WHERE id=$3", verified, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateAppWebhookURL(id, webhookURL string) error {
-	_, err := db.Exec("UPDATE apps SET webhook_url=$1, webhook_verified=FALSE, updated_at=NOW() WHERE id=$2", webhookURL, id)
+	_, err := db.Exec("UPDATE apps SET webhook_url=$1, webhook_verified=FALSE, updated_at=$2 WHERE id=$3", webhookURL, db.now(), id)
 	return err
 }
 
 func (db *DB) RegenerateInstallationToken(id string) (string, error) {
 	token := "app_" + generateToken(32)
-	_, err := db.Exec("UPDATE app_installations SET app_token=$1, updated_at=NOW() WHERE id=$2", token, id)
+	_, err := db.Exec("UPDATE app_installations SET app_token=$1, updated_at=$2 WHERE id=$3", token, db.now(), id)
 	return token, err
 }
 
@@ -392,46 +392,46 @@ func (db *DB) CreateOAuthCode(code, appID, botID, state, codeChallenge string) e
 }
 
 func (db *DB) ExchangeOAuthCode(code string) (appID, botID, codeChallenge string, err error) {
-	err = db.QueryRow(`DELETE FROM app_oauth_codes WHERE code = $1 AND expires_at > NOW() RETURNING app_id, bot_id, code_challenge`,
-		code).Scan(&appID, &botID, &codeChallenge)
+	err = db.QueryRow(`DELETE FROM app_oauth_codes WHERE code = $1 AND expires_at > $2 RETURNING app_id, bot_id, code_challenge`,
+		code, db.now()).Scan(&appID, &botID, &codeChallenge)
 	return
 }
 
 func (db *DB) CleanExpiredOAuthCodes() {
-	db.Exec("DELETE FROM app_oauth_codes WHERE expires_at < NOW()")
+	db.Exec("DELETE FROM app_oauth_codes WHERE expires_at < $1", db.now())
 }
 
 func (db *DB) RequestListing(id string) error {
-	_, err := db.Exec("UPDATE apps SET listing='pending', updated_at=NOW() WHERE id=$1", id)
+	_, err := db.Exec("UPDATE apps SET listing='pending', updated_at=$1 WHERE id=$2", db.now(), id)
 	return err
 }
 
 func (db *DB) ReviewListing(id string, approve bool, reason string) error {
 	if approve {
-		_, err := db.Exec("UPDATE apps SET listing='listed', listing_reject_reason='', updated_at=NOW() WHERE id=$1", id)
+		_, err := db.Exec("UPDATE apps SET listing='listed', listing_reject_reason='', updated_at=$1 WHERE id=$2", db.now(), id)
 		return err
 	}
-	_, err := db.Exec("UPDATE apps SET listing='rejected', listing_reject_reason=$1, updated_at=NOW() WHERE id=$2", reason, id)
+	_, err := db.Exec("UPDATE apps SET listing='rejected', listing_reject_reason=$1, updated_at=$2 WHERE id=$3", reason, db.now(), id)
 	return err
 }
 
 func (db *DB) WithdrawListing(id string) error {
-	_, err := db.Exec("UPDATE apps SET listing='unlisted', updated_at=NOW() WHERE id=$1", id)
+	_, err := db.Exec("UPDATE apps SET listing='unlisted', updated_at=$1 WHERE id=$2", db.now(), id)
 	return err
 }
 
 func (db *DB) SetListing(id, listing string) error {
-	_, err := db.Exec("UPDATE apps SET listing=$1, updated_at=NOW() WHERE id=$2", listing, id)
+	_, err := db.Exec("UPDATE apps SET listing=$1, updated_at=$2 WHERE id=$3", listing, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateAppTools(id string, tools json.RawMessage) error {
-	_, err := db.Exec(`UPDATE apps SET tools = $1, updated_at = NOW() WHERE id = $2`, tools, id)
+	_, err := db.Exec(`UPDATE apps SET tools = $1, updated_at = $2 WHERE id = $3`, tools, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateInstallationTools(id string, tools json.RawMessage) error {
-	_, err := db.Exec(`UPDATE app_installations SET tools = $1, updated_at = NOW() WHERE id = $2`, tools, id)
+	_, err := db.Exec(`UPDATE app_installations SET tools = $1, updated_at = $2 WHERE id = $3`, tools, db.now(), id)
 	return err
 }
 
@@ -440,8 +440,8 @@ func (db *DB) CreateAppReview(review *store.AppReview) error {
 		review.ID = uuid.New().String()
 	}
 	_, err := db.Exec(`INSERT INTO app_reviews (id, app_id, action, actor_id, reason, version, snapshot, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, EXTRACT(EPOCH FROM NOW())::BIGINT)`,
-		review.ID, review.AppID, review.Action, review.ActorID, review.Reason, review.Version, review.Snapshot)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, EXTRACT(EPOCH FROM $8::TIMESTAMPTZ)::BIGINT)`,
+		review.ID, review.AppID, review.Action, review.ActorID, review.Reason, review.Version, review.Snapshot, db.now())
 	return err
 }
 

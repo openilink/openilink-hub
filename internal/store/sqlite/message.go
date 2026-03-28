@@ -158,8 +158,8 @@ func (db *DB) GetLatestContextToken(botID string) string {
 func (db *DB) HasFreshContextToken(botID string, maxAge time.Duration) bool {
 	var count int
 	db.QueryRow(
-		"SELECT COUNT(*) FROM messages WHERE bot_id = ? AND context_token != '' AND created_at > unixepoch() - ? LIMIT 1",
-		botID, int(maxAge.Seconds()),
+		"SELECT COUNT(*) FROM messages WHERE bot_id = ? AND context_token != '' AND created_at > ? - ? LIMIT 1",
+		botID, db.now(), int(maxAge.Seconds()),
 	).Scan(&count)
 	return count > 0
 }
@@ -211,7 +211,7 @@ func (db *DB) UpdateMediaPayloads(botID, eqp string, newPayload json.RawMessage)
 }
 
 func (db *DB) MarkProcessed(id int64) error {
-	_, err := db.Exec("UPDATE messages SET processed_at = unixepoch() WHERE id = ?", id)
+	_, err := db.Exec("UPDATE messages SET processed_at = ? WHERE id = ?", db.now(), id)
 	return err
 }
 
@@ -220,13 +220,13 @@ func (db *DB) GetUnprocessedMessages(botID string, limit int) ([]store.Message, 
 		limit = 100
 	}
 	return scanMessages(db,
-		"SELECT "+msgSelectCols+" FROM messages WHERE bot_id = ? AND direction = 'inbound' AND processed_at IS NULL AND created_at > unixepoch() - 86400 ORDER BY id ASC LIMIT ?",
-		botID, limit,
+		"SELECT "+msgSelectCols+" FROM messages WHERE bot_id = ? AND direction = 'inbound' AND processed_at IS NULL AND created_at > ? - 86400 ORDER BY id ASC LIMIT ?",
+		botID, db.now(), limit,
 	)
 }
 
 func (db *DB) PruneMessages(maxAgeDays int) (int64, error) {
-	result, err := db.Exec("DELETE FROM messages WHERE created_at < unixepoch() - 86400 * ?", maxAgeDays)
+	result, err := db.Exec("DELETE FROM messages WHERE created_at < ? - 86400 * ?", db.now(), maxAgeDays)
 	if err != nil {
 		return 0, err
 	}

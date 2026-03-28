@@ -258,15 +258,15 @@ func (db *DB) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration) m
 	secs := int(maxAge.Seconds())
 
 	placeholders := make([]string, len(botIDs))
-	args := make([]any, 0, len(botIDs)+1)
-	args = append(args, secs)
+	args := make([]any, 0, len(botIDs)+2)
+	args = append(args, db.now(), secs)
 	for i, id := range botIDs {
-		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		placeholders[i] = fmt.Sprintf("$%d", i+3)
 		args = append(args, id)
 	}
 
 	rows, err := db.Query(
-		"SELECT DISTINCT bot_id FROM messages WHERE bot_id IN ("+strings.Join(placeholders, ",")+") AND context_token != '' AND created_at > NOW() - $1 * INTERVAL '1 second'",
+		"SELECT DISTINCT bot_id FROM messages WHERE bot_id IN ("+strings.Join(placeholders, ",")+") AND context_token != '' AND created_at > $1 - $2 * INTERVAL '1 second'",
 		args...,
 	)
 	if err != nil {

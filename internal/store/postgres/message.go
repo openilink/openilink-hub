@@ -37,9 +37,9 @@ func (db *DB) SaveMessage(m *store.Message) (store.SaveResult, error) {
 	if m.MediaKeys == nil {
 		m.MediaKeys = json.RawMessage(`{}`)
 	}
-	processedExpr := "NULL"
+	var processedAt any
 	if m.Direction == "outbound" {
-		processedExpr = "NOW()"
+		processedAt = db.now()
 	}
 
 	var r store.SaveResult
@@ -49,7 +49,7 @@ func (db *DB) SaveMessage(m *store.Message) (store.SaveResult, error) {
 			create_time_ms, update_time_ms, delete_time_ms,
 			session_id, group_id, message_type, message_state, item_list, context_token,
 			media_status, media_keys, raw, processed_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20, `+processedExpr+`)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
 		ON CONFLICT (bot_id, message_id) WHERE message_id IS NOT NULL DO UPDATE SET
 			message_state  = EXCLUDED.message_state,
 			item_list      = EXCLUDED.item_list,
@@ -61,7 +61,7 @@ func (db *DB) SaveMessage(m *store.Message) (store.SaveResult, error) {
 		m.Seq, m.MessageID, m.FromUserID, m.ToUserID, m.ClientID,
 		m.CreateTimeMs, m.UpdateTimeMs, m.DeleteTimeMs,
 		m.SessionID, m.GroupID, m.MessageType, m.MessageState, m.ItemList, m.ContextToken,
-		m.MediaStatus, m.MediaKeys, m.Raw,
+		m.MediaStatus, m.MediaKeys, m.Raw, processedAt,
 	).Scan(&r.ID, &r.Inserted)
 	return r, err
 }
@@ -132,8 +132,8 @@ func (db *DB) GetLatestContextToken(botID string) string {
 func (db *DB) HasFreshContextToken(botID string, maxAge time.Duration) bool {
 	var exists bool
 	db.QueryRow(
-		"SELECT EXISTS(SELECT 1 FROM messages WHERE bot_id = $1 AND context_token != '' AND created_at > NOW() - $2 * INTERVAL '1 second')",
-		botID, int(maxAge.Seconds()),
+		"SELECT EXISTS(SELECT 1 FROM messages WHERE bot_id = $1 AND context_token != '' AND created_at > $2 - $3 * INTERVAL '1 second')",
+		botID, db.now(), int(maxAge.Seconds()),
 	).Scan(&exists)
 	return exists
 }
@@ -185,7 +185,7 @@ func (db *DB) UpdateMediaPayloads(botID, eqp string, newPayload json.RawMessage)
 }
 
 func (db *DB) MarkProcessed(id int64) error {
-	_, err := db.Exec("UPDATE messages SET processed_at = NOW() WHERE id = $1", id)
+	_, err := db.Exec("UPDATE messages SET processed_at = $1 WHERE id = $2", db.now(), id)
 	return err
 }
 
@@ -194,13 +194,13 @@ func (db *DB) GetUnprocessedMessages(botID string, limit int) ([]store.Message, 
 		limit = 100
 	}
 	return scanMessages(db,
-		"SELECT "+msgSelectCols+" FROM messages WHERE bot_id = $1 AND direction = 'inbound' AND processed_at IS NULL AND created_at > NOW() - INTERVAL '1 day' ORDER BY id ASC LIMIT $2",
-		botID, limit,
+		"SELECT "+msgSelectCols+" FROM messages WHERE bot_id = $1 AND direction = 'inbound' AND processed_at IS NULL AND created_at > $2 - INTERVAL '1 day' ORDER BY id ASC LIMIT $3",
+		botID, db.now(), limit,
 	)
 }
 
 func (db *DB) PruneMessages(maxAgeDays int) (int64, error) {
-	result, err := db.Exec("DELETE FROM messages WHERE created_at < NOW() - INTERVAL '1 day' * $1", maxAgeDays)
+	result, err := db.Exec("DELETE FROM messages WHERE created_at < $1 - INTERVAL '1 day' * $2", db.now(), maxAgeDays)
 	if err != nil {
 		return 0, err
 	}

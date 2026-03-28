@@ -20,7 +20,7 @@ func (db *DB) DeleteSession(token string) error {
 }
 
 func (db *DB) DeleteExpiredSessions() error {
-	_, err := db.Exec("DELETE FROM sessions WHERE expires_at < NOW()")
+	_, err := db.Exec("DELETE FROM sessions WHERE expires_at < $1", db.now())
 	return err
 }
 

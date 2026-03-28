@@ -12,10 +12,11 @@ func (db *DB) GetConfig(key string) (string, error) {
 }
 
 func (db *DB) SetConfig(key, value string) error {
+	now := db.now()
 	_, err := db.Exec(`
-		INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, unixepoch())
-		ON CONFLICT (key) DO UPDATE SET value = ?, updated_at = unixepoch()`,
-		key, value, value,
+		INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = ?, updated_at = ?`,
+		key, value, now, value, now,
 	)
 	return err
 }

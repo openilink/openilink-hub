@@ -271,8 +271,8 @@ func (db *DB) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration) m
 	}
 
 	rows, err := db.Query(
-		"SELECT DISTINCT bot_id FROM messages WHERE bot_id IN ("+strings.Join(placeholders, ",")+") AND context_token != '' AND created_at > unixepoch() - ?",
-		append(args[1:], args[0])...,
+		"SELECT DISTINCT bot_id FROM messages WHERE bot_id IN ("+strings.Join(placeholders, ",")+") AND context_token != '' AND created_at > ? - ?",
+		append(append(args[1:], db.now()), args[0])...,
 	)
 	if err != nil {
 		return result

@@ -89,32 +89,32 @@ func (db *DB) UserCount() (int, error) {
 
 func (db *DB) UpdateUserProfile(id, displayName, email string) error {
 	_, err := db.Exec(
-		"UPDATE users SET display_name = $1, email = $2, updated_at = NOW() WHERE id = $3",
-		displayName, email, id,
+		"UPDATE users SET display_name = $1, email = $2, updated_at = $3 WHERE id = $4",
+		displayName, email, db.now(), id,
 	)
 	return err
 }
 
 func (db *DB) UpdateUserPassword(id, passwordHash string) error {
 	_, err := db.Exec(
-		"UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
-		passwordHash, id,
+		"UPDATE users SET password_hash = $1, updated_at = $2 WHERE id = $3",
+		passwordHash, db.now(), id,
 	)
 	return err
 }
 
 func (db *DB) UpdateUserRole(id, role string) error {
 	_, err := db.Exec(
-		"UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2",
-		role, id,
+		"UPDATE users SET role = $1, updated_at = $2 WHERE id = $3",
+		role, db.now(), id,
 	)
 	return err
 }
 
 func (db *DB) UpdateUserStatus(id, status string) error {
 	_, err := db.Exec(
-		"UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2",
-		status, id,
+		"UPDATE users SET status = $1, updated_at = $2 WHERE id = $3",
+		status, db.now(), id,
 	)
 	return err
 }

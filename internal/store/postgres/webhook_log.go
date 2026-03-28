@@ -17,21 +17,21 @@ func (db *DB) CreateWebhookLog(log *store.WebhookLog) (int64, error) {
 }
 
 func (db *DB) UpdateWebhookLogRequest(id int64, status, url, method, body string) error {
-	_, err := db.Exec(`UPDATE webhook_logs SET status=$1, request_url=$2, request_method=$3, request_body=$4, updated_at=NOW() WHERE id=$5`,
-		status, url, method, body, id)
+	_, err := db.Exec(`UPDATE webhook_logs SET status=$1, request_url=$2, request_method=$3, request_body=$4, updated_at=$5 WHERE id=$6`,
+		status, url, method, body, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateWebhookLogResponse(id int64, status string, respStatus int, respBody string, durationMs int) error {
-	_, err := db.Exec(`UPDATE webhook_logs SET status=$1, response_status=$2, response_body=$3, duration_ms=$4, updated_at=NOW() WHERE id=$5`,
-		status, respStatus, respBody, durationMs, id)
+	_, err := db.Exec(`UPDATE webhook_logs SET status=$1, response_status=$2, response_body=$3, duration_ms=$4, updated_at=$5 WHERE id=$6`,
+		status, respStatus, respBody, durationMs, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateWebhookLogResult(id int64, status, scriptError string, replies []string) error {
 	repliesJSON, _ := json.Marshal(replies)
-	_, err := db.Exec(`UPDATE webhook_logs SET status=$1, script_error=$2, replies=$3, updated_at=NOW() WHERE id=$4`,
-		status, scriptError, repliesJSON, id)
+	_, err := db.Exec(`UPDATE webhook_logs SET status=$1, script_error=$2, replies=$3, updated_at=$4 WHERE id=$5`,
+		status, scriptError, repliesJSON, db.now(), id)
 	return err
 }
 
@@ -78,6 +78,6 @@ func (db *DB) ListWebhookLogs(botID, channelID string, limit int) ([]store.Webho
 }
 
 func (db *DB) CleanOldWebhookLogs(days int) error {
-	_, err := db.Exec("DELETE FROM webhook_logs WHERE created_at < NOW() - INTERVAL '1 day' * $1", days)
+	_, err := db.Exec("DELETE FROM webhook_logs WHERE created_at < $1 - INTERVAL '1 day' * $2", db.now(), days)
 	return err
 }

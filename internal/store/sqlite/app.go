@@ -221,16 +221,16 @@ func (db *DB) ListMarketplaceApps() ([]store.App, error) {
 func (db *DB) UpdateApp(id string, name, description, icon, iconURL, homepage, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide string, tools, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=?, description=?, icon=?, icon_url=?, homepage=?,
 		tools=?, events=?, scopes=?, oauth_setup_url=?, oauth_redirect_url=?, config_schema=?,
-		version=?, readme=?, guide=?, updated_at=unixepoch() WHERE id=?`,
-		name, description, icon, iconURL, homepage, tools, events, scopes, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide, id)
+		version=?, readme=?, guide=?, updated_at=? WHERE id=?`,
+		name, description, icon, iconURL, homepage, tools, events, scopes, oauthSetupURL, oauthRedirectURL, configSchema, version, readme, guide, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateMarketplaceApp(id, name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide string, tools, events, scopes json.RawMessage) error {
 	_, err := db.Exec(`UPDATE apps SET name=?, description=?, icon_url=?, homepage=?,
 		webhook_url=?, oauth_setup_url=?, oauth_redirect_url=?, version=?, readme=?, guide=?,
-		tools=?, events=?, scopes=?, updated_at=unixepoch() WHERE id=?`,
-		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide, tools, events, scopes, id)
+		tools=?, events=?, scopes=?, updated_at=? WHERE id=?`,
+		name, description, iconURL, homepage, webhookURL, oauthSetupURL, oauthRedirectURL, version, readme, guide, tools, events, scopes, db.now(), id)
 	return err
 }
 
@@ -344,24 +344,24 @@ func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation,
 }
 
 func (db *DB) UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool) error {
-	_, err := db.Exec(`UPDATE app_installations SET handle=?, config=?, scopes=?, enabled=?, updated_at=unixepoch() WHERE id=?`,
-		handle, config, scopes, enabled, id)
+	_, err := db.Exec(`UPDATE app_installations SET handle=?, config=?, scopes=?, enabled=?, updated_at=? WHERE id=?`,
+		handle, config, scopes, enabled, db.now(), id)
 	return err
 }
 
 func (db *DB) SetAppWebhookVerified(id string, verified bool) error {
-	_, err := db.Exec("UPDATE apps SET webhook_verified=?, updated_at=unixepoch() WHERE id=?", verified, id)
+	_, err := db.Exec("UPDATE apps SET webhook_verified=?, updated_at=? WHERE id=?", verified, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateAppWebhookURL(id, webhookURL string) error {
-	_, err := db.Exec("UPDATE apps SET webhook_url=?, webhook_verified=0, updated_at=unixepoch() WHERE id=?", webhookURL, id)
+	_, err := db.Exec("UPDATE apps SET webhook_url=?, webhook_verified=0, updated_at=? WHERE id=?", webhookURL, db.now(), id)
 	return err
 }
 
 func (db *DB) RegenerateInstallationToken(id string) (string, error) {
 	token := "app_" + generateToken(32)
-	_, err := db.Exec("UPDATE app_installations SET app_token=?, updated_at=unixepoch() WHERE id=?", token, id)
+	_, err := db.Exec("UPDATE app_installations SET app_token=?, updated_at=? WHERE id=?", token, db.now(), id)
 	return token, err
 }
 
@@ -405,7 +405,7 @@ func (db *DB) ExchangeOAuthCode(code string) (appID, botID, codeChallenge string
 	}
 	defer tx.Rollback()
 
-	err = tx.QueryRow("SELECT app_id, bot_id, code_challenge FROM app_oauth_codes WHERE code = ? AND expires_at > unixepoch()", code).
+	err = tx.QueryRow("SELECT app_id, bot_id, code_challenge FROM app_oauth_codes WHERE code = ? AND expires_at > ?", code, db.now()).
 		Scan(&appID, &botID, &codeChallenge)
 	if err != nil {
 		return "", "", "", err
@@ -418,40 +418,40 @@ func (db *DB) ExchangeOAuthCode(code string) (appID, botID, codeChallenge string
 }
 
 func (db *DB) CleanExpiredOAuthCodes() {
-	db.Exec("DELETE FROM app_oauth_codes WHERE expires_at < unixepoch()")
+	db.Exec("DELETE FROM app_oauth_codes WHERE expires_at < ?", db.now())
 }
 
 func (db *DB) RequestListing(id string) error {
-	_, err := db.Exec("UPDATE apps SET listing='pending', updated_at=unixepoch() WHERE id=?", id)
+	_, err := db.Exec("UPDATE apps SET listing='pending', updated_at=? WHERE id=?", db.now(), id)
 	return err
 }
 
 func (db *DB) ReviewListing(id string, approve bool, reason string) error {
 	if approve {
-		_, err := db.Exec("UPDATE apps SET listing='listed', listing_reject_reason='', updated_at=unixepoch() WHERE id=?", id)
+		_, err := db.Exec("UPDATE apps SET listing='listed', listing_reject_reason='', updated_at=? WHERE id=?", db.now(), id)
 		return err
 	}
-	_, err := db.Exec("UPDATE apps SET listing='rejected', listing_reject_reason=?, updated_at=unixepoch() WHERE id=?", reason, id)
+	_, err := db.Exec("UPDATE apps SET listing='rejected', listing_reject_reason=?, updated_at=? WHERE id=?", reason, db.now(), id)
 	return err
 }
 
 func (db *DB) WithdrawListing(id string) error {
-	_, err := db.Exec("UPDATE apps SET listing='unlisted', updated_at=unixepoch() WHERE id=?", id)
+	_, err := db.Exec("UPDATE apps SET listing='unlisted', updated_at=? WHERE id=?", db.now(), id)
 	return err
 }
 
 func (db *DB) SetListing(id, listing string) error {
-	_, err := db.Exec("UPDATE apps SET listing=?, updated_at=unixepoch() WHERE id=?", listing, id)
+	_, err := db.Exec("UPDATE apps SET listing=?, updated_at=? WHERE id=?", listing, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateAppTools(id string, tools json.RawMessage) error {
-	_, err := db.Exec(`UPDATE apps SET tools = ?, updated_at = unixepoch() WHERE id = ?`, tools, id)
+	_, err := db.Exec(`UPDATE apps SET tools = ?, updated_at = ? WHERE id = ?`, tools, db.now(), id)
 	return err
 }
 
 func (db *DB) UpdateInstallationTools(id string, tools json.RawMessage) error {
-	_, err := db.Exec(`UPDATE app_installations SET tools = ?, updated_at = unixepoch() WHERE id = ?`, tools, id)
+	_, err := db.Exec(`UPDATE app_installations SET tools = ?, updated_at = ? WHERE id = ?`, tools, db.now(), id)
 	return err
 }
 
@@ -460,8 +460,8 @@ func (db *DB) CreateAppReview(review *store.AppReview) error {
 		review.ID = uuid.New().String()
 	}
 	_, err := db.Exec(`INSERT INTO app_reviews (id, app_id, action, actor_id, reason, version, snapshot, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())`,
-		review.ID, review.AppID, review.Action, review.ActorID, review.Reason, review.Version, review.Snapshot)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		review.ID, review.AppID, review.Action, review.ActorID, review.Reason, review.Version, review.Snapshot, db.now())
 	return err
 }
 

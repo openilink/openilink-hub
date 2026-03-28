@@ -104,8 +104,8 @@ func (db *DB) ListAPILogs(installationID string, limit int) ([]store.AppAPILog, 
 }
 
 func (db *DB) CleanOldAppLogs(days int) error {
-	interval := fmt.Sprintf("%d", days)
-	_, _ = db.Exec("DELETE FROM app_event_logs WHERE created_at < unixepoch() - 86400 * " + interval)
-	_, _ = db.Exec("DELETE FROM app_api_logs WHERE created_at < unixepoch() - 86400 * " + interval)
+	now := db.now()
+	_, _ = db.Exec("DELETE FROM app_event_logs WHERE created_at < ? - 86400 * ?", now, days)
+	_, _ = db.Exec("DELETE FROM app_api_logs WHERE created_at < ? - 86400 * ?", now, days)
 	return nil
 }
