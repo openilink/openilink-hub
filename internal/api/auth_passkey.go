@@ -330,8 +330,13 @@ func (s *Server) handleRenamePasskey(w http.ResponseWriter, r *http.Request) {
 	if len([]rune(req.Name)) > 50 {
 		req.Name = string([]rune(req.Name)[:50])
 	}
-	if err := s.Store.UpdateCredentialName(credID, userID, req.Name); err != nil {
+	found, err := s.Store.UpdateCredentialName(credID, userID, req.Name)
+	if err != nil {
 		jsonError(w, "rename failed", http.StatusInternalServerError)
+		return
+	}
+	if !found {
+		jsonError(w, "passkey not found", http.StatusNotFound)
 		return
 	}
 	jsonOK(w)

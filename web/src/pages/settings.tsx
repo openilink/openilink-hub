@@ -498,8 +498,9 @@ function PasskeySection() {
                     size="icon"
                     className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={async () => {
-                      const newName = window.prompt("重命名通行密钥", pk.name || "");
+                      const newName = window.prompt("重命名通行密钥", pk.name || "")?.trim();
                       if (!newName) return;
+                      setSuccess("");
                       try {
                         await api.renamePasskey(pk.id, newName);
                         load();
@@ -516,6 +517,7 @@ function PasskeySection() {
                     className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={async () => {
                       if (!confirm("确定要删除此 Passkey 吗？")) return;
+                      setSuccess("");
                       try {
                         await api.deletePasskey(pk.id);
                         load();

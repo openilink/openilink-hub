@@ -38,9 +38,13 @@ func (db *DB) UpdateCredentialSignCount(id string, signCount uint32) error {
 	return err
 }
 
-func (db *DB) UpdateCredentialName(id, userID, name string) error {
-	_, err := db.Exec("UPDATE credentials SET name = $1 WHERE id = $2 AND user_id = $3", name, id, userID)
-	return err
+func (db *DB) UpdateCredentialName(id, userID, name string) (bool, error) {
+	res, err := db.Exec("UPDATE credentials SET name = $1 WHERE id = $2 AND user_id = $3", name, id, userID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }
 
 func (db *DB) DeleteCredential(id, userID string) error {

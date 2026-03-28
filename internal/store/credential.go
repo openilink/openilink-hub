@@ -17,6 +17,6 @@ type CredentialStore interface {
 	SaveCredential(c *Credential) error
 	GetCredentialsByUserID(userID string) ([]Credential, error)
 	UpdateCredentialSignCount(id string, signCount uint32) error
-	UpdateCredentialName(id, userID, name string) error
+	UpdateCredentialName(id, userID, name string) (bool, error)
 	DeleteCredential(id, userID string) error
 }
