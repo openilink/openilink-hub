@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Check, X, Inbox, Globe, Terminal, Radio, Shield, History, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +65,7 @@ export function AdminReviewsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabFilter>("pending");
+  const tabListRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   const loadReviews = useCallback((appId: string) => {
@@ -160,6 +161,11 @@ export function AdminReviewsPage() {
   const filtered = tab === "all" ? reviewed : reviewed.filter((a) => a.listing === tab);
   const sorted = [...filtered].sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
 
+  // Computed arrays for review highlights (avoids IIFE in JSX)
+  const selScopes = Array.isArray(selected?.scopes) ? selected.scopes : [];
+  const selTools = Array.isArray(selected?.tools) ? selected.tools : [];
+  const selEvents = Array.isArray(selected?.events) ? selected.events : [];
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -169,12 +175,32 @@ export function AdminReviewsPage() {
       </div>
 
       {/* Tabs */}
-      <div role="tablist" className="inline-flex h-9 items-center rounded-lg bg-muted p-1 text-muted-foreground">
+      <div
+        role="tablist"
+        ref={tabListRef}
+        className="inline-flex h-9 items-center rounded-lg bg-muted p-1 text-muted-foreground"
+        onKeyDown={(e) => {
+          const keys = TABS.map((t) => t.key);
+          const idx = keys.indexOf(tab);
+          let next = -1;
+          if (e.key === "ArrowRight") next = (idx + 1) % keys.length;
+          else if (e.key === "ArrowLeft") next = (idx - 1 + keys.length) % keys.length;
+          if (next >= 0) {
+            e.preventDefault();
+            setTab(keys[next]);
+            setSelected(null);
+            tabListRef.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+          }
+        }}
+      >
         {TABS.map(({ key, label }) => (
           <button
             key={key}
             role="tab"
+            id={`tab-${key}`}
             aria-selected={tab === key}
+            aria-controls="review-tabpanel"
+            tabIndex={tab === key ? 0 : -1}
             onClick={() => { setTab(key); setSelected(null); }}
             className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-all ${
               tab === key
@@ -197,7 +223,7 @@ export function AdminReviewsPage() {
       </div>
 
       {/* Main content */}
-      <div className="flex flex-col md:flex-row gap-6 min-h-[calc(100vh-16rem)]">
+      <div id="review-tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="flex flex-col md:flex-row gap-6 min-h-[calc(100vh-16rem)]">
         {/* Left: App Queue */}
         <div className="md:w-72 shrink-0 space-y-1 overflow-y-auto max-h-[50vh] md:max-h-none">
           {loading ? (
@@ -223,7 +249,7 @@ export function AdminReviewsPage() {
                 key={a.id}
                 onClick={() => setSelected(a)}
                 aria-current={selected?.id === a.id ? "true" : undefined}
-                className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   selected?.id === a.id
                     ? "bg-primary/10 border border-primary/20"
                     : "hover:bg-muted/50 border border-transparent"
@@ -274,56 +300,49 @@ export function AdminReviewsPage() {
                 )}
 
                 {/* Review Highlights — most important for reviewers */}
-                {(() => {
-                  const scopes = Array.isArray(selected.scopes) ? selected.scopes : [];
-                  const tools = Array.isArray(selected.tools) ? selected.tools : [];
-                  const events = Array.isArray(selected.events) ? selected.events : [];
-                  return (
-                    <div className="space-y-3">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">审核要点</p>
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">审核要点</p>
 
-                      <ReviewField icon={<Shield className="h-3.5 w-3.5" />} label="权限">
-                        {scopes.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {scopes.map((s: string, i: number) => (
-                              <Badge key={i} variant="outline" className="text-[10px] font-mono">{s}</Badge>
-                            ))}
-                          </div>
-                        ) : <span className="text-xs text-muted-foreground/50">无</span>}
-                      </ReviewField>
+                  <ReviewField icon={<Shield className="h-3.5 w-3.5" />} label="权限">
+                    {selScopes.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {selScopes.map((s: string, i: number) => (
+                          <Badge key={i} variant="outline" className="text-[10px] font-mono">{s}</Badge>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                  </ReviewField>
 
-                      <ReviewField icon={<Terminal className="h-3.5 w-3.5" />} label="工具">
-                        {tools.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {tools.map((t: any, i: number) => (
-                              <Badge key={i} variant="secondary" className="text-[10px] font-mono gap-1">
-                                {t.command ? `/${t.command}` : t.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : <span className="text-xs text-muted-foreground/50">无</span>}
-                      </ReviewField>
+                  <ReviewField icon={<Terminal className="h-3.5 w-3.5" />} label="工具">
+                    {selTools.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {selTools.map((t: any, i: number) => (
+                          <Badge key={i} variant="secondary" className="text-[10px] font-mono gap-1">
+                            {t.command ? `/${t.command}` : t.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                  </ReviewField>
 
-                      <ReviewField icon={<Radio className="h-3.5 w-3.5" />} label="事件">
-                        {events.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {events.map((e: string, i: number) => (
-                              <Badge key={i} variant="outline" className="text-[10px] font-mono">{e}</Badge>
-                            ))}
-                          </div>
-                        ) : <span className="text-xs text-muted-foreground/50">无</span>}
-                      </ReviewField>
+                  <ReviewField icon={<Radio className="h-3.5 w-3.5" />} label="事件">
+                    {selEvents.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {selEvents.map((e: string, i: number) => (
+                          <Badge key={i} variant="outline" className="text-[10px] font-mono">{e}</Badge>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                  </ReviewField>
 
-                      <ReviewField icon={<Globe className="h-3.5 w-3.5" />} label="Webhook">
-                        {selected.webhook_url ? (
-                          <p className="font-mono text-xs truncate">{selected.webhook_url}</p>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/50">未配置</span>
-                        )}
-                      </ReviewField>
-                    </div>
-                  );
-                })()}
+                  <ReviewField icon={<Globe className="h-3.5 w-3.5" />} label="Webhook">
+                    {selected.webhook_url ? (
+                      <p className="font-mono text-xs truncate">{selected.webhook_url}</p>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50">未配置</span>
+                    )}
+                  </ReviewField>
+                </div>
 
                 {/* Review History */}
                 {reviews.length > 0 && (
@@ -377,7 +396,7 @@ export function AdminReviewsPage() {
                         <p>{timeAgo(selected.updated_at)}</p>
                       </div>
                       {selected.homepage && (
-                        <div className="col-span-2">
+                        <div className="sm:col-span-2">
                           <p className="text-xs text-muted-foreground">主页</p>
                           <a
                             href={selected.homepage}
