@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, type FormEvent } from "react";
+import { Input } from "./input";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -55,7 +56,7 @@ export function useConfirm() {
     resolveRef.current = null;
   }, []);
 
-  const isDestructive = (options.variant || "destructive") === "destructive";
+  const isDestructive = options.variant === "destructive";
 
   const ConfirmDialog = (
     <AlertDialog open={open} onOpenChange={(v) => { if (!v) handleCancel(); }}>
@@ -85,4 +86,92 @@ export function useConfirm() {
   );
 
   return { confirm, ConfirmDialog };
+}
+
+// --- usePrompt: text input variant ---
+
+interface PromptOptions {
+  title?: string;
+  description: string;
+  placeholder?: string;
+  confirmText?: string;
+  cancelText?: string;
+}
+
+type PromptResolveRef = ((value: string | null) => void) | null;
+
+export function usePrompt() {
+  const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState<PromptOptions>({ description: "" });
+  const [inputValue, setInputValue] = useState("");
+  const resolveRef = useRef<PromptResolveRef>(null);
+
+  const prompt = useCallback((opts: PromptOptions | string) => {
+    if (resolveRef.current) {
+      resolveRef.current(null);
+      resolveRef.current = null;
+    }
+    const o = typeof opts === "string" ? { description: opts } : opts;
+    setOptions(o);
+    setInputValue("");
+    setOpen(true);
+    return new Promise<string | null>((resolve) => {
+      resolveRef.current = resolve;
+    });
+  }, []);
+
+  const handleConfirm = useCallback(() => {
+    setOpen(false);
+    const trimmed = inputValue.trim();
+    resolveRef.current?.(trimmed || null);
+    resolveRef.current = null;
+  }, [inputValue]);
+
+  const handleCancel = useCallback(() => {
+    setOpen(false);
+    resolveRef.current?.(null);
+    resolveRef.current = null;
+  }, []);
+
+  const handleSubmit = useCallback((e: FormEvent) => {
+    e.preventDefault();
+    handleConfirm();
+  }, [handleConfirm]);
+
+  const PromptDialog = (
+    <AlertDialog open={open} onOpenChange={(v: boolean) => { if (!v) handleCancel(); }}>
+      <AlertDialogContent className="max-w-sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-base">{options.title || "请输入"}</AlertDialogTitle>
+          <AlertDialogDescription className="text-sm">{options.description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <form onSubmit={handleSubmit}>
+          <Input
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder={options.placeholder}
+            className="mb-4"
+            autoFocus
+          />
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel
+              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "mt-0 border-0")}
+              onClick={handleCancel}
+            >
+              {options.cancelText || "取消"}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className={cn(buttonVariants({ size: "sm" }))}
+              onClick={handleConfirm}
+              disabled={!inputValue.trim()}
+            >
+              {options.confirmText || "确认"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </form>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  return { prompt, PromptDialog };
 }
