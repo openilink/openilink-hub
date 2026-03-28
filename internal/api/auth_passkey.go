@@ -314,6 +314,7 @@ func (s *Server) handleDeletePasskey(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRenamePasskey(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	credID := r.PathValue("id")
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -327,8 +328,7 @@ func (s *Server) handleRenamePasskey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len([]rune(req.Name)) > 50 {
-		jsonError(w, "name too long", http.StatusBadRequest)
-		return
+		req.Name = string([]rune(req.Name)[:50])
 	}
 	if err := s.Store.UpdateCredentialName(credID, userID, req.Name); err != nil {
 		jsonError(w, "rename failed", http.StatusInternalServerError)
