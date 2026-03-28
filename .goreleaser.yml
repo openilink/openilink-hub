@@ -61,6 +61,7 @@ release:
 dockers:
   - image_templates:
       - "ghcr.io/openilink/openilink-hub:{{ .Version }}-amd64"
+      - "docker.io/openilink/openilink-hub:{{ .Version }}-amd64"
     use: buildx
     dockerfile: Dockerfile.release
     build_flag_templates:
@@ -68,6 +69,7 @@ dockers:
     ids: [linux-amd64]
   - image_templates:
       - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
+      - "docker.io/openilink/openilink-hub:{{ .Version }}-arm64"
     use: buildx
     dockerfile: Dockerfile.release
     build_flag_templates:
@@ -83,3 +85,11 @@ docker_manifests:
     image_templates:
       - "ghcr.io/openilink/openilink-hub:{{ .Version }}-amd64"
       - "ghcr.io/openilink/openilink-hub:{{ .Version }}-arm64"
+  - name_template: "docker.io/openilink/openilink-hub:{{ .Version }}"
+    image_templates:
+      - "docker.io/openilink/openilink-hub:{{ .Version }}-amd64"
+      - "docker.io/openilink/openilink-hub:{{ .Version }}-arm64"
+  - name_template: "docker.io/openilink/openilink-hub:latest"
+    image_templates:
+      - "docker.io/openilink/openilink-hub:{{ .Version }}-amd64"
+      - "docker.io/openilink/openilink-hub:{{ .Version }}-arm64"
