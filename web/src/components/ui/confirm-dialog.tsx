@@ -135,8 +135,9 @@ export function usePrompt() {
 
   const handleSubmit = useCallback((e: FormEvent) => {
     e.preventDefault();
+    if (!inputValue.trim()) return;
     handleConfirm();
-  }, [handleConfirm]);
+  }, [handleConfirm, inputValue]);
 
   const PromptDialog = (
     <AlertDialog open={open} onOpenChange={(v: boolean) => { if (!v) handleCancel(); }}>
@@ -155,14 +156,15 @@ export function usePrompt() {
           />
           <AlertDialogFooter className="gap-2 sm:gap-0">
             <AlertDialogCancel
+              type="button"
               className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "mt-0 border-0")}
               onClick={handleCancel}
             >
               {options.cancelText || "取消"}
             </AlertDialogCancel>
             <AlertDialogAction
+              type="submit"
               className={cn(buttonVariants({ size: "sm" }))}
-              onClick={handleConfirm}
               disabled={!inputValue.trim()}
             >
               {options.confirmText || "确认"}
