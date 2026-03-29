@@ -34,6 +34,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		CanSend            bool            `json:"can_send"`
 		SendDisabledReason string          `json:"send_disabled_reason,omitempty"`
 		AIEnabled          bool            `json:"ai_enabled"`
+		AIModel            string          `json:"ai_model"`
 		MsgCount           int64           `json:"msg_count"`
 		ReminderHours      int             `json:"reminder_hours"`
 		LastMsgAt          *int64          `json:"last_msg_at,omitempty"`
@@ -59,7 +60,7 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		result = append(result, botResp{
 			ID: b.ID, Name: b.Name, DisplayName: b.DisplayName, Provider: b.Provider,
 			Status: status, CanSend: canSend, SendDisabledReason: reason,
-			AIEnabled: b.AIEnabled,
+			AIEnabled: b.AIEnabled, AIModel: b.AIModel,
 			MsgCount: b.MsgCount, ReminderHours: b.ReminderHours,
 			LastMsgAt: b.LastMsgAt, LastRemindedAt: b.LastRemindedAt,
 			CreatedAt: b.CreatedAt, Extra: extra,

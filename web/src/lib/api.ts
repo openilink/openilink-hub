@@ -7,6 +7,7 @@ export interface Bot {
   can_send: boolean;
   send_disabled_reason?: string;
   ai_enabled: boolean;
+  ai_model: string;
   msg_count: number;
   reminder_hours: number;
   last_msg_at?: number;
