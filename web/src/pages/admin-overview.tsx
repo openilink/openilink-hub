@@ -574,11 +574,15 @@ function OIDCConfigCard() {
     }
   }
 
-  function handleCopyCallback(providerSlug: string) {
+  async function handleCopyCallback(providerSlug: string) {
     const callbackUrl = `${window.location.origin}/api/auth/oidc/${providerSlug}/callback`;
-    navigator.clipboard.writeText(callbackUrl);
-    setCopiedSlug(providerSlug);
-    setTimeout(() => setCopiedSlug(null), 2000);
+    try {
+      await navigator.clipboard.writeText(callbackUrl);
+      setCopiedSlug(providerSlug);
+      setTimeout(() => setCopiedSlug(null), 2000);
+    } catch {
+      toast({ variant: "destructive", title: "复制失败", description: "请手动复制回调地址" });
+    }
   }
 
   return (
