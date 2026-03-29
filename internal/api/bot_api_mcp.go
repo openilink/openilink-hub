@@ -25,32 +25,32 @@ func (s *Server) setupMCP() http.Handler {
 		server.WithInstructions("OpeniLink Hub MCP Server. Use these tools to send messages and manage contacts through your Bot."),
 	)
 
-	// send_message tool
+	// send_message — send text or media through the Bot
 	mcpSrv.AddTool(
 		mcp.NewTool("send_message",
-			mcp.WithDescription("Send a message through the Bot. For text messages, provide content. For media messages (image/video/file/voice), provide url or base64."),
-			mcp.WithString("to", mcp.Description("Recipient user ID"), mcp.Required()),
-			mcp.WithString("type", mcp.Description("Message type: text, image, video, file, voice"), mcp.DefaultString("text")),
-			mcp.WithString("content", mcp.Description("Text content (required for text type)")),
-			mcp.WithString("url", mcp.Description("Media URL (for image/video/file/voice type)")),
-			mcp.WithString("base64", mcp.Description("Base64 encoded media data, supports data URI format (for image/video/file/voice type)")),
-			mcp.WithString("filename", mcp.Description("File name for media messages")),
+			mcp.WithDescription("Send a message through the Bot to a contact. Supports text and media (image/video/file/voice). For text: set type=text and provide content. For media: set type to image/video/file/voice and provide either url or base64."),
+			mcp.WithString("to", mcp.Description("Recipient user ID (use list_contacts to find IDs)"), mcp.Required()),
+			mcp.WithString("type", mcp.Description("Message type"), mcp.DefaultString("text"), mcp.Enum("text", "image", "video", "file", "voice")),
+			mcp.WithString("content", mcp.Description("Text content, required when type=text")),
+			mcp.WithString("url", mcp.Description("URL to download media from, for non-text types")),
+			mcp.WithString("base64", mcp.Description("Base64-encoded media data (supports data:mime;base64,... URI), for non-text types")),
+			mcp.WithString("filename", mcp.Description("File name for the media attachment")),
 		),
 		s.mcpSendMessage,
 	)
 
-	// list_contacts tool
+	// list_contacts — list recent contacts with user IDs
 	mcpSrv.AddTool(
 		mcp.NewTool("list_contacts",
-			mcp.WithDescription("List recent contacts of the Bot"),
+			mcp.WithDescription("List the Bot's recent contacts. Returns user_id, last_msg_at, and msg_count for each contact. Use the user_id as the 'to' parameter in send_message."),
 		),
 		s.mcpListContacts,
 	)
 
-	// get_bot_info tool
+	// get_bot_info — get Bot status and metadata
 	mcpSrv.AddTool(
 		mcp.NewTool("get_bot_info",
-			mcp.WithDescription("Get information about the Bot"),
+			mcp.WithDescription("Get Bot information including name, provider, connection status, and message count."),
 		),
 		s.mcpGetBotInfo,
 	)
