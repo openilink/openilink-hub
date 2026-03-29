@@ -476,7 +476,7 @@ function RegistryConfigCard() {
               className="flex-1"
             />
             <Input
-              placeholder="URL"
+              placeholder="https://hub.openilink.com"
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               className="flex-[2]"

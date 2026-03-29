@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -133,7 +134,9 @@ func (c *Client) fetchSource(src *Source) ([]App, error) {
 		return src.cache.Apps, nil
 	}
 
-	url := src.URL + "/api/registry/v1/apps.json"
+	base := strings.TrimRight(src.URL, "/")
+	base = strings.TrimSuffix(base, "/api/registry/v1/apps.json")
+	url := base + "/api/registry/v1/apps.json"
 	resp, err := c.client.Get(url)
 	if err != nil {
 		if src.cache != nil {

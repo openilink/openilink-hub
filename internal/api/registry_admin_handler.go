@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/openilink/openilink-hub/internal/store"
 )
@@ -37,9 +38,15 @@ func (s *Server) handleCreateRegistry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize URL: strip the well-known registry path suffix if the user
+	// pasted the full manifest URL instead of the base URL.
+	u := strings.TrimRight(req.URL, "/")
+	u = strings.TrimSuffix(u, "/api/registry/v1/apps.json")
+	u = strings.TrimRight(u, "/")
+
 	reg := &store.Registry{
 		Name:    req.Name,
-		URL:     req.URL,
+		URL:     u,
 		Enabled: true,
 	}
 	if err := s.Store.CreateRegistry(reg); err != nil {
