@@ -259,6 +259,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /bot/v1/ws", s.handleBotAPIWebSocket)          // per-installation
 	mux.HandleFunc("GET /bot/v1/app/ws", s.handleAppLevelWebSocket)    // per-app (all installations)
 
+	// MCP endpoint (app_token auth, stateless streamable HTTP)
+	mux.Handle("/mcp", s.setupMCP())
+
 	// Serve embedded frontend (production) or skip (dev mode uses vite)
 	if handler := web.Handler(); handler != nil {
 		mux.Handle("/", handler)
