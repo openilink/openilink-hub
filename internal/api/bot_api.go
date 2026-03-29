@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/provider"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // generateTraceID creates a random trace ID with the "tr_" prefix.
@@ -461,7 +463,57 @@ func (s *Server) handleBotAPIUpdateInstallationTools(w http.ResponseWriter, r *h
 	json.NewEncoder(w).Encode(map[string]any{"ok": true, "tool_count": len(toolsCheck)})
 }
 
+// isSafeURL checks that a URL is not targeting internal/private network addresses.
+func isSafeURL(rawURL string) error {
+	u, err := neturl.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("unsupported scheme: %s", scheme)
+	}
+
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("empty host")
+	}
+
+	// Block well-known internal hostnames
+	lower := strings.ToLower(host)
+	if lower == "localhost" || strings.HasSuffix(lower, ".local") || lower == "metadata.google.internal" {
+		return fmt.Errorf("internal host not allowed: %s", host)
+	}
+
+	// Resolve and check IP
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// Hostname — resolve it
+		ips, err := net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return fmt.Errorf("cannot resolve host: %s", host)
+		}
+		ip = ips[0]
+	}
+
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return fmt.Errorf("private/internal IP not allowed: %s", ip)
+	}
+
+	// Block cloud metadata IPs (169.254.169.254, fd00::, etc.)
+	if ip.Equal(net.ParseIP("169.254.169.254")) {
+		return fmt.Errorf("metadata endpoint not allowed")
+	}
+
+	return nil
+}
+
 func downloadURL(ctx context.Context, url string) ([]byte, string, error) {
+	if err := isSafeURL(url); err != nil {
+		return nil, "", fmt.Errorf("blocked: %w", err)
+	}
+
 	dlCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, url, nil)
