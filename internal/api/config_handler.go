@@ -216,6 +216,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"ai":                   globalAI["ai.api_key"] != "",
 		"storage":              s.Config.StorageEndpoint != "",
 		"registration_enabled": s.registrationEnabled(),
+		"version":              s.Version,
 	})
 }
 

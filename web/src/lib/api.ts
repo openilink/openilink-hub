@@ -54,7 +54,7 @@ export const api = {
   oauthProviders: () => request<{ providers: string[] }>("/api/auth/oauth/providers"),
   me: () =>
     request<{ id: string; username: string; display_name: string; role: string }>("/api/me"),
-  info: () => request<{ ai: boolean; registration_enabled: boolean }>("/api/info"),
+  info: () => request<{ ai: boolean; registration_enabled: boolean; version: string }>("/api/info"),
 
   // Passkeys
   listPasskeys: () => request<any[]>("/api/me/passkeys"),

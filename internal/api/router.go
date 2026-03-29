@@ -26,6 +26,7 @@ type Server struct {
 	ObjectStore  *storage.Storage // optional
 	Registry     *registry.Client
 	AppWSHub     *app.WSHub
+	Version      string
 }
 
 func cors(next http.Handler) http.Handler {

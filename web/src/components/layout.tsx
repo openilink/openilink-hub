@@ -245,12 +245,14 @@ export function Layout() {
   const location = useLocation();
   const [user, setUser] = useState<any>(null);
   const [bots, setBots] = useState<any[]>([]);
+  const [version, setVersion] = useState("");
 
   useEffect(() => {
     api
       .me()
       .then(setUser)
       .catch(() => navigate("/login", { replace: true }));
+    api.info().then((data) => setVersion(data.version || "")).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -493,6 +495,11 @@ export function Layout() {
                     <LogOut className="mr-2 h-4 w-4" />
                     退出登录
                   </DropdownMenuItem>
+                  {version && (
+                    <div className="px-2 py-1.5 text-[10px] text-muted-foreground text-center border-t mt-1 pt-1.5">
+                      v{version.replace(/^v/, "")}
+                    </div>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </SidebarMenuItem>

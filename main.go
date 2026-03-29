@@ -135,6 +135,7 @@ func main() {
 		Config:       cfg,
 		OAuthStates:  api.SetupOAuth(cfg),
 		Registry:     regClient,
+		Version:      version,
 	}
 
 	// Storage (optional)
