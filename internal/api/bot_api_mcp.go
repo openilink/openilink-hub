@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -24,12 +25,16 @@ func (s *Server) setupMCP() http.Handler {
 		server.WithInstructions("OpeniLink Hub MCP Server. Use these tools to send messages and manage contacts through your Bot."),
 	)
 
-	// send_message tool — text only for now
+	// send_message tool
 	mcpSrv.AddTool(
 		mcp.NewTool("send_message",
-			mcp.WithDescription("Send a text message through the Bot"),
+			mcp.WithDescription("Send a message through the Bot. For text messages, provide content. For media messages (image/video/file/voice), provide url or base64."),
 			mcp.WithString("to", mcp.Description("Recipient user ID"), mcp.Required()),
-			mcp.WithString("content", mcp.Description("Message text content"), mcp.Required()),
+			mcp.WithString("type", mcp.Description("Message type: text, image, video, file, voice"), mcp.DefaultString("text")),
+			mcp.WithString("content", mcp.Description("Text content (required for text type)")),
+			mcp.WithString("url", mcp.Description("Media URL (for image/video/file/voice type)")),
+			mcp.WithString("base64", mcp.Description("Base64 encoded media data, supports data URI format (for image/video/file/voice type)")),
+			mcp.WithString("filename", mcp.Description("File name for media messages")),
 		),
 		s.mcpSendMessage,
 	)
@@ -95,6 +100,7 @@ func (s *Server) mcpAuth(next http.Handler) http.Handler {
 }
 
 // mcpSendMessage handles the send_message MCP tool call.
+// Mirrors handleBotAPISend: supports text and media, ObjectStore, tracing.
 func (s *Server) mcpSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	inst := installationFromContext(ctx)
 	if inst == nil {
@@ -106,13 +112,20 @@ func (s *Server) mcpSendMessage(ctx context.Context, req mcp.CallToolRequest) (*
 	}
 
 	to := req.GetString("to", "")
+	msgType := req.GetString("type", "text")
 	content := req.GetString("content", "")
+	mediaURL := req.GetString("url", "")
+	mediaBase64 := req.GetString("base64", "")
+	fileName := req.GetString("filename", "")
 
 	if to == "" {
 		return mcp.NewToolResultError("'to' is required"), nil
 	}
-	if content == "" {
-		return mcp.NewToolResultError("'content' is required"), nil
+	if msgType == "text" && content == "" {
+		return mcp.NewToolResultError("'content' is required for text messages"), nil
+	}
+	if msgType != "text" && content == "" && mediaURL == "" && mediaBase64 == "" {
+		return mcp.NewToolResultError("content, url, or base64 is required"), nil
 	}
 
 	botInst, ok := s.BotManager.GetInstance(inst.BotID)
@@ -131,11 +144,53 @@ func (s *Server) mcpSendMessage(ctx context.Context, req mcp.CallToolRequest) (*
 		return mcp.NewToolResultError(reason), nil
 	}
 
+	traceID := generateTraceID()
 	contextToken := s.Store.GetLatestContextToken(inst.BotID)
+
+	// Build outbound message
 	outMsg := provider.OutboundMessage{
 		Recipient:    to,
-		Text:         content,
 		ContextToken: contextToken,
+	}
+
+	itemType := msgType
+	if msgType == "text" {
+		outMsg.Text = content
+	} else {
+		// Media message: resolve data from base64, url, or content fallback
+		var mediaData []byte
+		if mediaBase64 != "" {
+			var decErr error
+			var mime string
+			mediaData, mime, decErr = base64Decode(mediaBase64)
+			if decErr != nil {
+				return mcp.NewToolResultError("invalid base64: " + decErr.Error()), nil
+			}
+			if mime != "" && fileName == "" {
+				fileName = defaultFileNameFromMIME(mime)
+			}
+		} else if mediaURL != "" {
+			var dlErr error
+			var mime string
+			mediaData, mime, dlErr = downloadURL(ctx, mediaURL)
+			if dlErr != nil {
+				return mcp.NewToolResultError("download failed: " + dlErr.Error()), nil
+			}
+			if mime != "" && fileName == "" {
+				fileName = defaultFileNameFromMIME(mime)
+			}
+		} else {
+			// Fallback: send content as text
+			outMsg.Text = content
+			itemType = "text"
+		}
+		if mediaData != nil {
+			outMsg.Data = mediaData
+			outMsg.FileName = fileName
+			if outMsg.FileName == "" {
+				outMsg.FileName = defaultFileName(msgType, mediaData)
+			}
+		}
 	}
 
 	clientID, err := botInst.Send(ctx, outMsg)
@@ -144,8 +199,35 @@ func (s *Server) mcpSendMessage(ctx context.Context, req mcp.CallToolRequest) (*
 		return mcp.NewToolResultError("send failed: " + err.Error()), nil
 	}
 
+	// Store media to ObjectStore if available
+	mediaStatus := ""
+	mediaKeys := json.RawMessage(`{}`)
+	mediaKey := ""
+	if len(outMsg.Data) > 0 && s.ObjectStore != nil {
+		ct := detectContentType(itemType)
+		ext := detectExt(outMsg.FileName, itemType)
+		now := time.Now()
+		var rnd [4]byte
+		rand.Read(rnd[:])
+		key := fmt.Sprintf("%s/%s/out_%d_%x%s", inst.BotID,
+			now.Format("2006/01/02"), now.UnixMilli(), rnd, ext)
+		if _, err := s.ObjectStore.Put(ctx, key, ct, outMsg.Data); err == nil {
+			mediaStatus = "ready"
+			mediaKeys, _ = json.Marshal(map[string]string{"0": key})
+			mediaKey = key
+		} else {
+			slog.Warn("mcp: objectstore put failed", "key", key, "err", err)
+		}
+	}
+
 	// Save outbound message to DB
-	item := map[string]any{"type": "text", "text": content}
+	item := map[string]any{"type": itemType}
+	if outMsg.Text != "" {
+		item["text"] = outMsg.Text
+	}
+	if outMsg.FileName != "" {
+		item["file_name"] = outMsg.FileName
+	}
 	itemList, err := json.Marshal([]any{item})
 	if err != nil {
 		slog.Warn("mcp: failed to marshal message item", "err", err)
@@ -156,12 +238,30 @@ func (s *Server) mcpSendMessage(ctx context.Context, req mcp.CallToolRequest) (*
 		ToUserID:    to,
 		MessageType: 2,
 		ItemList:    itemList,
+		MediaStatus: mediaStatus,
+		MediaKeys:   mediaKeys,
 	}); err != nil {
 		slog.Warn("mcp: failed to save outbound message", "bot_id", inst.BotID, "err", err)
 	}
 
-	slog.Info("mcp: message sent", "bot_id", inst.BotID, "to", to, "client_id", clientID)
-	return mcp.NewToolResultText(fmt.Sprintf("Message sent successfully (client_id: %s)", clientID)), nil
+	// Append span to message trace
+	replyContent := content
+	if msgType != "text" {
+		replyContent = "[" + msgType + "] " + outMsg.FileName
+	}
+	spanAttrs := map[string]any{
+		"app.name":      inst.AppName,
+		"reply.type":    itemType,
+		"reply.to":      to,
+		"reply.content": replyContent,
+	}
+	if mediaKey != "" {
+		spanAttrs["reply.media_key"] = mediaKey
+	}
+	_ = s.Store.AppendSpan(traceID, inst.BotID, "MCP send_message", store.SpanKindServer, store.StatusOK, "", spanAttrs)
+
+	slog.Info("mcp: message sent", "bot_id", inst.BotID, "to", to, "type", itemType, "client_id", clientID)
+	return mcp.NewToolResultText(fmt.Sprintf("Message sent successfully (client_id: %s, trace_id: %s)", clientID, traceID)), nil
 }
 
 // mcpListContacts handles the list_contacts MCP tool call.
