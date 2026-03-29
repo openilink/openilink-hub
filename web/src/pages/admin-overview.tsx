@@ -402,6 +402,7 @@ function RegistryConfigCard() {
             <p className="text-xs text-muted-foreground">允许其他 Hub 从此实例拉取应用</p>
           </div>
           <Switch
+            aria-label="对外暴露 Registry"
             checked={registryConfig?.enabled === "true"}
             onCheckedChange={handleToggleExpose}
             disabled={setRegistryConfigMutation.isPending}
@@ -434,8 +435,10 @@ function RegistryConfigCard() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Switch
+                    aria-label={`启用 ${reg.name}`}
                     checked={reg.enabled}
                     onCheckedChange={() => handleToggleRegistry(reg)}
+                    disabled={updateRegistryMutation.isPending}
                   />
                   <Tooltip>
                     <TooltipTrigger asChild>
