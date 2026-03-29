@@ -39,17 +39,17 @@ func (s *Server) handleCreateRegistry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize URL: strip the well-known registry path suffix if the user
-	// pasted the full manifest URL instead of the base URL.
-	u := strings.TrimSpace(req.URL)
-	u = strings.TrimRight(u, "/")
-	u = strings.TrimSuffix(u, "/api/registry/v1/apps.json")
-	u = strings.TrimRight(u, "/")
-	parsed, err := url.Parse(u)
-	if u == "" || err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	// Normalize URL: parse structurally, strip the well-known registry path
+	// suffix, and discard query/fragment so the stored base URL is always clean.
+	parsed, err := url.Parse(strings.TrimSpace(req.URL))
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		jsonError(w, "invalid url: must be an absolute http(s) URL", http.StatusBadRequest)
 		return
 	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	parsed.Path = strings.TrimSuffix(strings.TrimRight(parsed.Path, "/"), "/api/registry/v1/apps.json")
+	u := strings.TrimRight(parsed.String(), "/")
 
 	reg := &store.Registry{
 		Name:    req.Name,
