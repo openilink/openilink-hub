@@ -86,8 +86,8 @@ func (s *Server) mcpAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		// Verify this is an MCP Server installation
-		if inst.AppSlug != "mcp-server" {
+		// Verify this is a builtin MCP Server installation (not a local app with the same slug)
+		if inst.AppSlug != "mcp-server" || inst.AppRegistry != "builtin" {
 			http.Error(w, "token is not for MCP Server app", http.StatusForbidden)
 			return
 		}

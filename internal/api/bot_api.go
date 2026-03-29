@@ -463,68 +463,114 @@ func (s *Server) handleBotAPIUpdateInstallationTools(w http.ResponseWriter, r *h
 	json.NewEncoder(w).Encode(map[string]any{"ok": true, "tool_count": len(toolsCheck)})
 }
 
-// isSafeURL checks that a URL is not targeting internal/private network addresses.
-func isSafeURL(rawURL string) error {
-	u, err := neturl.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
+// isPrivateIP returns true if the IP is loopback, private, link-local,
+// unspecified, or the cloud metadata endpoint.
+func isPrivateIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return true
 	}
-
-	scheme := strings.ToLower(u.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return fmt.Errorf("unsupported scheme: %s", scheme)
-	}
-
-	host := u.Hostname()
-	if host == "" {
-		return fmt.Errorf("empty host")
-	}
-
-	// Block well-known internal hostnames
-	lower := strings.ToLower(host)
-	if lower == "localhost" || strings.HasSuffix(lower, ".local") || lower == "metadata.google.internal" {
-		return fmt.Errorf("internal host not allowed: %s", host)
-	}
-
-	// Resolve and check IP
-	ip := net.ParseIP(host)
-	if ip == nil {
-		// Hostname — resolve it
-		ips, err := net.LookupIP(host)
-		if err != nil || len(ips) == 0 {
-			return fmt.Errorf("cannot resolve host: %s", host)
-		}
-		ip = ips[0]
-	}
-
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-		return fmt.Errorf("private/internal IP not allowed: %s", ip)
-	}
-
-	// Block cloud metadata IPs (169.254.169.254, fd00::, etc.)
+	// Cloud metadata endpoint
 	if ip.Equal(net.ParseIP("169.254.169.254")) {
-		return fmt.Errorf("metadata endpoint not allowed")
+		return true
 	}
-
-	return nil
+	return false
 }
 
-func downloadURL(ctx context.Context, url string) ([]byte, string, error) {
-	if err := isSafeURL(url); err != nil {
-		return nil, "", fmt.Errorf("blocked: %w", err)
+// ssrfSafeDialContext returns a DialContext that rejects connections to private IPs.
+// This protects against DNS rebinding and redirect-based SSRF because the check
+// happens at actual connect time, not at URL parse time.
+func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address: %w", err)
+	}
+
+	// Resolve and check ALL IPs
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve host: %w", err)
+	}
+
+	// Filter to only safe IPs
+	var safeAddrs []string
+	for _, ipAddr := range ips {
+		if isPrivateIP(ipAddr.IP) {
+			continue
+		}
+		safeAddrs = append(safeAddrs, net.JoinHostPort(ipAddr.IP.String(), port))
+	}
+
+	if len(safeAddrs) == 0 {
+		return nil, fmt.Errorf("all resolved IPs for %s are private/internal", host)
+	}
+
+	// Dial the first safe address
+	var d net.Dialer
+	return d.DialContext(ctx, network, safeAddrs[0])
+}
+
+// safeHTTPClient is an HTTP client that blocks connections to private/internal IPs
+// at the transport level, preventing SSRF via redirects and DNS rebinding.
+var safeHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		DialContext: ssrfSafeDialContext,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return fmt.Errorf("too many redirects")
+		}
+		// Scheme check on redirect target
+		scheme := strings.ToLower(req.URL.Scheme)
+		if scheme != "http" && scheme != "https" {
+			return fmt.Errorf("redirect to unsupported scheme: %s", scheme)
+		}
+		// Block known internal hostnames on redirect
+		host := strings.ToLower(req.URL.Hostname())
+		if host == "localhost" || strings.HasSuffix(host, ".local") || host == "metadata.google.internal" {
+			return fmt.Errorf("redirect to internal host: %s", host)
+		}
+		// IP-level check happens in DialContext
+		return nil
+	},
+}
+
+func downloadURL(ctx context.Context, rawURL string) ([]byte, string, error) {
+	// Quick scheme + hostname check before making any request
+	u, err := neturl.Parse(rawURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid URL: %w", err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return nil, "", fmt.Errorf("unsupported scheme: %s", scheme)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return nil, "", fmt.Errorf("empty host")
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".local") || host == "metadata.google.internal" {
+		return nil, "", fmt.Errorf("internal host not allowed: %s", host)
 	}
 
 	dlCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	// Use safe client — DialContext validates IPs, CheckRedirect validates redirects
+	resp, err := safeHTTPClient.Do(req)
 	if err != nil {
 		return nil, "", err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("download returned HTTP %d", resp.StatusCode)
+	}
+
 	ct := strings.SplitN(resp.Header.Get("Content-Type"), ";", 2)[0]
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 20*1024*1024))
 	return data, strings.TrimSpace(ct), err
