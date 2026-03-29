@@ -12,6 +12,9 @@ import {
   UserPlus,
   KeyRound,
   Loader2,
+  Pencil,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -495,22 +498,45 @@ function OIDCConfigCard() {
   const { data: providers = [] } = useOIDCConfig();
   const setOIDCMutation = useSetOIDCConfig();
   const deleteOIDCMutation = useDeleteOIDCConfig();
+  const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [slug, setSlug] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [issuerUrl, setIssuerUrl] = useState("");
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [scopes, setScopes] = useState("");
+  const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
-  const adding = setOIDCMutation.isPending;
+  const saving = setOIDCMutation.isPending;
+  const isEditing = editingSlug !== null;
 
-  async function handleAdd() {
+  function resetForm() {
+    setEditingSlug(null);
+    setSlug("");
+    setDisplayName("");
+    setIssuerUrl("");
+    setClientId("");
+    setClientSecret("");
+    setScopes("");
+  }
+
+  function handleEdit(p: any) {
+    setEditingSlug(p.slug);
+    setSlug(p.slug);
+    setDisplayName(p.display_name);
+    setIssuerUrl(p.issuer_url);
+    setClientId(p.client_id);
+    setClientSecret("");
+    setScopes(p.scopes || "");
+  }
+
+  async function handleSave() {
     const normalizedSlug = slug.trim();
     if (!normalizedSlug || !issuerUrl.trim() || !clientId.trim()) return;
-    if (providers.some((p: any) => p.slug === normalizedSlug)) {
-      toast({ variant: "destructive", title: "Slug 已存在", description: "请先删除再重新创建。" });
+    if (!isEditing && providers.some((p: any) => p.slug === normalizedSlug)) {
+      toast({ variant: "destructive", title: "Slug 已存在", description: "请使用编辑功能修改。" });
       return;
     }
     try {
@@ -524,15 +550,10 @@ function OIDCConfigCard() {
           scopes: scopes.trim(),
         },
       });
-      setSlug("");
-      setDisplayName("");
-      setIssuerUrl("");
-      setClientId("");
-      setClientSecret("");
-      setScopes("");
-      toast({ title: "OIDC 提供商已添加" });
+      resetForm();
+      toast({ title: isEditing ? "OIDC 提供商已更新" : "OIDC 提供商已添加" });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "添加失败", description: e.message });
+      toast({ variant: "destructive", title: "保存失败", description: e.message });
     }
   }
 
@@ -546,10 +567,18 @@ function OIDCConfigCard() {
     if (!ok) return;
     try {
       await deleteOIDCMutation.mutateAsync(s);
+      if (editingSlug === s) resetForm();
       toast({ title: "已删除" });
     } catch (e: any) {
       toast({ variant: "destructive", title: "删除失败", description: e.message });
     }
+  }
+
+  function handleCopyCallback(providerSlug: string) {
+    const callbackUrl = `${window.location.origin}/api/auth/oidc/${providerSlug}/callback`;
+    navigator.clipboard.writeText(callbackUrl);
+    setCopiedSlug(providerSlug);
+    setTimeout(() => setCopiedSlug(null), 2000);
   }
 
   return (
@@ -568,43 +597,90 @@ function OIDCConfigCard() {
             {providers.map((p: any) => (
               <div
                 key={p.slug}
-                className="flex items-center justify-between p-3 rounded-lg border bg-background"
+                className="space-y-1.5 p-3 rounded-lg border bg-background"
               >
-                <div className="min-w-0 flex items-center gap-3">
-                  <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{p.display_name}</p>
-                    <p className="text-xs text-muted-foreground font-mono truncate">{p.issuer_url}</p>
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0 flex items-center gap-3">
+                    <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{p.display_name}</p>
+                      <p className="text-xs text-muted-foreground font-mono truncate">{p.issuer_url}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleEdit(p)}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>编辑</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={() => handleDelete(p.slug, p.display_name)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>删除</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive shrink-0"
-                      onClick={() => handleDelete(p.slug, p.display_name)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>删除</TooltipContent>
-                </Tooltip>
+                <div className="flex items-center gap-1.5 ml-7">
+                  <p className="text-xs text-muted-foreground font-mono truncate">
+                    回调地址: {window.location.origin}/api/auth/oidc/{p.slug}/callback
+                  </p>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 shrink-0"
+                        onClick={() => handleCopyCallback(p.slug)}
+                      >
+                        {copiedSlug === p.slug ? (
+                          <Check className="w-3 h-3 text-green-500" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>复制回调地址</TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* Add form */}
+        {/* Add / Edit form */}
         <div className="space-y-3 pt-2 border-t">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            添加 OIDC 提供商
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              {isEditing ? "编辑 OIDC 提供商" : "添加 OIDC 提供商"}
+            </p>
+            {isEditing && (
+              <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={resetForm}>
+                取消编辑
+              </Button>
+            )}
+          </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <Input
               placeholder="标识 (slug, 如 pocket-id)"
               value={slug}
               onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+              disabled={isEditing}
             />
             <Input
               placeholder="显示名称"
@@ -616,6 +692,7 @@ function OIDCConfigCard() {
             placeholder="Issuer URL (如 https://auth.example.com)"
             value={issuerUrl}
             onChange={(e) => setIssuerUrl(e.target.value)}
+            disabled={isEditing}
           />
           <div className="grid gap-2 sm:grid-cols-2">
             <Input
@@ -625,7 +702,7 @@ function OIDCConfigCard() {
             />
             <Input
               type="password"
-              placeholder="Client Secret"
+              placeholder={isEditing ? "Client Secret (留空保持不变)" : "Client Secret"}
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
             />
@@ -637,11 +714,11 @@ function OIDCConfigCard() {
           />
           <Button
             size="sm"
-            onClick={handleAdd}
-            disabled={adding || !slug.trim() || !issuerUrl.trim() || !clientId.trim()}
+            onClick={handleSave}
+            disabled={saving || !slug.trim() || !issuerUrl.trim() || !clientId.trim()}
           >
-            {adding ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
-            添加
+            {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
+            {isEditing ? "保存" : "添加"}
           </Button>
         </div>
       </CardContent>
