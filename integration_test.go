@@ -2092,7 +2092,7 @@ func TestAIContextIsolation(t *testing.T) {
 
 func TestMediaStorageAndProxy(t *testing.T) {
 	// Requires MinIO running on localhost:19000
-	objStore, err := storage.New(storage.Config{
+	objStore, err := storage.NewS3(storage.S3Config{
 		Endpoint:  "localhost:19000",
 		AccessKey: "openilink",
 		SecretKey: "openilink",

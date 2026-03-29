@@ -26,14 +26,14 @@ type Manager struct {
 	store     store.Store
 	hub       *relay.Hub
 	aiSink    *sink.AI            // AI sink (bot-level)
-	storage   *storage.Storage    // optional, for media files
+	storage   storage.Store       // optional, for media files
 	baseURL   string              // Hub origin for proxy URLs
 	dlSem     chan struct{}        // semaphore for concurrent media downloads
 	appDisp   *appdelivery.Dispatcher // app event delivery
 	appWSHub  *appdelivery.WSHub      // app WebSocket connections
 }
 
-func NewManager(s store.Store, hub *relay.Hub, aiSink *sink.AI, st *storage.Storage, baseURL string) *Manager {
+func NewManager(s store.Store, hub *relay.Hub, aiSink *sink.AI, st storage.Store, baseURL string) *Manager {
 	return &Manager{
 		instances: make(map[string]*Instance),
 		store:     s,
@@ -648,8 +648,8 @@ func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p par
 }
 
 // processMedia handles media items:
-// - With MinIO: download → store → set URL to MinIO
-// - Without MinIO: set URL to Hub proxy endpoint
+//   - With storage (S3/FS): download → store → set URL to storage
+//   - Without storage: set URL to Hub CDN proxy endpoint
 func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map[int]string {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -712,9 +712,9 @@ func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map
 				}
 			}
 		} else {
-			// Fallback: proxy URL via Hub
-			item.Media.URL = fmt.Sprintf("%s/api/v1/channels/media?eqp=%s&aes=%s&ct=%s",
-				m.baseURL, item.Media.EncryptQueryParam, item.Media.AESKey,
+			// Fallback: proxy URL via Hub (no storage configured)
+			item.Media.URL = fmt.Sprintf("%s/api/v1/channels/media?bot=%s&eqp=%s&aes=%s&ct=%s",
+				m.baseURL, inst.DBID, item.Media.EncryptQueryParam, item.Media.AESKey,
 				mediaContentType(item.Type))
 		}
 	}

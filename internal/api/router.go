@@ -23,7 +23,7 @@ type Server struct {
 	Hub          *relay.Hub
 	Config       *config.Config
 	OAuthStates  *oauthStateStore
-	ObjectStore  *storage.Storage // optional
+	ObjectStore  storage.Store // optional
 	Registry     *registry.Client
 	AppWSHub     *app.WSHub
 }

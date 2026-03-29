@@ -137,15 +137,15 @@ func main() {
 		Registry:     regClient,
 	}
 
-	// Storage (optional)
-	var objStore *storage.Storage
+	// Storage (optional): S3 > local FS > proxy fallback
+	var objStore storage.Store
 	if cfg.StorageEndpoint != "" {
-		var err error
 		publicURL := cfg.StoragePublicURL
 		if publicURL == "" {
 			publicURL = cfg.RPOrigin + "/api/v1/media"
 		}
-		objStore, err = storage.New(storage.Config{
+		var err error
+		objStore, err = storage.NewS3(storage.S3Config{
 			Endpoint:  cfg.StorageEndpoint,
 			AccessKey: cfg.StorageAccessKey,
 			SecretKey: cfg.StorageSecretKey,
@@ -154,10 +154,22 @@ func main() {
 			PublicURL: publicURL,
 		})
 		if err != nil {
-			slog.Error("storage init failed", "err", err)
+			slog.Error("storage init failed (s3)", "err", err)
 			os.Exit(1)
 		}
-		slog.Info("storage connected", "endpoint", cfg.StorageEndpoint, "bucket", cfg.StorageBucket)
+		slog.Info("storage connected (s3)", "endpoint", cfg.StorageEndpoint, "bucket", cfg.StorageBucket)
+	} else if cfg.StoragePath != "" {
+		var err error
+		objStore, err = storage.NewFS(cfg.StoragePath, cfg.RPOrigin+"/api/v1/media")
+		if err != nil {
+			slog.Error("storage init failed (fs)", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("storage connected (fs)", "dir", cfg.StoragePath)
+	} else {
+		slog.Info("storage not configured, media will use CDN proxy")
+	}
+	if objStore != nil {
 		srv.ObjectStore = objStore
 	}
 
