@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -133,7 +135,17 @@ func (c *Client) fetchSource(src *Source) ([]App, error) {
 		return src.cache.Apps, nil
 	}
 
-	url := src.URL + "/api/registry/v1/apps.json"
+	parsed, parseErr := url.Parse(strings.TrimRight(src.URL, "/"))
+	if parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		if src.cache != nil {
+			return src.cache.Apps, nil
+		}
+		return nil, fmt.Errorf("invalid registry base url: %q", src.URL)
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	parsed.Path = strings.TrimSuffix(strings.TrimRight(parsed.Path, "/"), "/api/registry/v1/apps.json")
+	url := strings.TrimRight(parsed.String(), "/") + "/api/registry/v1/apps.json"
 	resp, err := c.client.Get(url)
 	if err != nil {
 		if src.cache != nil {

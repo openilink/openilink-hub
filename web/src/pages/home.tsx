@@ -5,7 +5,7 @@ import { Card } from "../components/ui/card";
 import { HexagonBackground } from "../components/ui/hexagon-background";
 import { cn } from "../lib/utils";
 import { Bot, Webhook, Cable, Shield, Zap } from "lucide-react";
-import { api } from "../lib/api";
+import { useUser } from "@/hooks/use-auth";
 
 const features = [
   { icon: Bot, title: "多账号管理", desc: "同时管理多个微信账号，独立运行、独立配置" },
@@ -29,14 +29,8 @@ const features = [
 
 export function HomePage() {
   const [isScrolled, setIsScrolled] = useState(false);
-  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    api
-      .me()
-      .then(() => setLoggedIn(true))
-      .catch(() => setLoggedIn(false));
-  }, []);
+  const { data: user, isLoading } = useUser();
+  const loggedIn = isLoading ? null : !!user;
 
   useEffect(() => {
     const updateScrollState = () => {

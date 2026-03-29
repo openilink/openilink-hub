@@ -106,7 +106,7 @@ func (db *DB) UpdateBotCredentials(id, providerID string, credentials json.RawMe
 	if err != nil {
 		return err
 	}
-	db.Exec("UPDATE messages SET context_token = '' WHERE bot_id = $1 AND context_token != '' AND created_at > $2 - INTERVAL '1 day'", id, now)
+	db.Exec("UPDATE messages SET context_token = '' WHERE bot_id = $1 AND context_token != '' AND created_at > ($2::timestamptz - INTERVAL '1 day')", id, now)
 	return nil
 }
 
@@ -152,8 +152,8 @@ func (db *DB) GetBotsNeedingReminder() ([]store.Bot, error) {
 		WHERE status = 'connected'
 		AND reminder_hours > 0
 		AND last_msg_at IS NOT NULL
-		AND last_msg_at < $1 - INTERVAL '1 hour' * reminder_hours
-		AND (last_reminded_at IS NULL OR last_reminded_at < $1 - INTERVAL '1 hour')`, now)
+		AND last_msg_at < ($1::timestamptz - INTERVAL '1 hour' * reminder_hours)
+		AND (last_reminded_at IS NULL OR last_reminded_at < ($1::timestamptz - INTERVAL '1 hour'))`, now)
 	if err != nil {
 		return nil, err
 	}
@@ -267,10 +267,8 @@ func (db *DB) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration) m
 		args = append(args, id)
 	}
 
-	rows, err := db.Query(
-		"SELECT DISTINCT bot_id FROM messages WHERE bot_id IN ("+strings.Join(placeholders, ",")+") AND context_token != '' AND created_at > $1 - $2 * INTERVAL '1 second'",
-		args...,
-	)
+	query := "SELECT DISTINCT bot_id FROM messages WHERE bot_id IN (" + strings.Join(placeholders, ",") + ") AND context_token != '' AND created_at > $1::timestamptz - ($2 * INTERVAL '1 second')"
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return result
 	}

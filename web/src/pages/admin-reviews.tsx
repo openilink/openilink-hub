@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { Check, X, ExternalLink, Inbox, Globe, Terminal, Radio, Shield, History } from "lucide-react";
+import { useState, useRef } from "react";
+import { Check, X, Inbox, Globe, Terminal, Radio, Shield, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,10 +13,16 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { api } from "@/lib/api";
+
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "@/components/app-icon";
 import { ListingBadge } from "@/components/listing-badge";
+import {
+  useAdminApps,
+  useSetAppListing,
+  useReviewListing,
+  useAppReviewHistory,
+} from "@/hooks/use-admin";
 
 function timeAgo(ts: number) {
   if (!ts) return "—";
@@ -46,145 +52,168 @@ const ACTION_VARIANTS: Record<string, "default" | "secondary" | "destructive" | 
   admin_set: "outline",
 };
 
+type TabFilter = "pending" | "listed" | "rejected" | "all";
+
+const TABS: { key: TabFilter; label: string }[] = [
+  { key: "pending", label: "待审核" },
+  { key: "listed", label: "已通过" },
+  { key: "rejected", label: "已拒绝" },
+  { key: "all", label: "全部" },
+];
+
 export function AdminReviewsPage() {
-  const [apps, setApps] = useState<any[]>([]);
-  const [selected, setSelected] = useState<any>(null);
-  const [reviews, setReviews] = useState<any[]>([]);
+  const { data: apps = [], isLoading: loading } = useAdminApps();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = selectedId ? apps.find((a: any) => a.id === selectedId) ?? null : null;
   const [rejectTarget, setRejectTarget] = useState<any>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<TabFilter>("pending");
+  const tabListRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  const loadReviews = useCallback((appId: string) => {
-    api.listAppReviews(appId).then(setReviews).catch(() => setReviews([]));
-  }, []);
+  const { data: reviews = [] } = useAppReviewHistory(selected?.id);
+  const reviewMutation = useReviewListing();
+  const setListingMutation = useSetAppListing();
 
-  function loadApps() {
-    setLoading(true);
-    api.adminListApps()
-      .then((data) => {
-        setApps(data);
-        setSelected((prev: any) =>
-          prev ? (data.find((a: any) => a.id === prev.id) ?? null) : null
-        );
-      })
-      .catch(() => {
-        toast({ variant: "destructive", title: "加载失败", description: "无法获取应用列表，请刷新重试" });
-      })
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(() => {
-    loadApps();
-  }, []);
-
-  useEffect(() => {
-    if (selected) {
-      loadReviews(selected.id);
-    } else {
-      setReviews([]);
-    }
-  }, [selected?.id]);
+  const submitting = reviewMutation.isPending || setListingMutation.isPending;
 
   async function handleApprove(a: any) {
-    setSubmitting(true);
     try {
-      await api.reviewListing(a.id, true);
+      await reviewMutation.mutateAsync({ appId: a.id, approve: true });
       toast({ title: `「${a.name}」已通过上架` });
-      loadApps();
-      loadReviews(a.id);
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
-    } finally {
-      setSubmitting(false);
     }
   }
 
   async function handleRejectConfirm() {
     if (!rejectTarget || !rejectReason.trim()) return;
     const reason = rejectReason.trim();
-    setSubmitting(true);
     try {
-      await api.reviewListing(rejectTarget.id, false, reason);
+      await reviewMutation.mutateAsync({ appId: rejectTarget.id, approve: false, reason });
       toast({ title: `「${rejectTarget.name}」已拒绝` });
       setRejectTarget(null);
       setRejectReason("");
-      setSelected(null);
-      loadApps();
+      setSelectedId(null);
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
-    } finally {
-      setSubmitting(false);
     }
   }
 
   async function handleToggle(a: any) {
     const newListing = a.listing === "listed" ? "unlisted" : "listed";
-    setSubmitting(true);
     try {
-      await api.setAppListing(a.id, newListing);
+      await setListingMutation.mutateAsync({ id: a.id, listing: newListing });
       toast({ title: newListing === "listed" ? `「${a.name}」已上架` : `「${a.name}」已下架` });
-      loadApps();
-      loadReviews(a.id);
     } catch (e: any) {
       toast({ variant: "destructive", title: "操作失败", description: e.message });
-    } finally {
-      setSubmitting(false);
     }
   }
 
-  // Pending apps first, then listed, then unlisted
-  const sorted = [...apps].sort((a, b) => {
-    const order: Record<string, number> = { pending: 0, listed: 1, unlisted: 2 };
-    return (order[a.listing] ?? 3) - (order[b.listing] ?? 3)
-      || (b.updated_at ?? 0) - (a.updated_at ?? 0);
-  });
+  // Only apps that have entered the review process
+  const reviewed = apps.filter((a: any) => a.listing !== "unlisted");
 
-  const pendingCount = apps.filter((a) => a.listing === "pending").length;
+  // Counts per tab
+  const counts: Record<TabFilter, number> = {
+    pending: reviewed.filter((a: any) => a.listing === "pending").length,
+    listed: reviewed.filter((a: any) => a.listing === "listed").length,
+    rejected: reviewed.filter((a: any) => a.listing === "rejected").length,
+    all: reviewed.length,
+  };
+
+  // Filter by active tab
+  const filtered = tab === "all" ? reviewed : reviewed.filter((a: any) => a.listing === tab);
+  const sorted = [...filtered].sort((a: any, b: any) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
+
+  // Computed arrays for review highlights (avoids IIFE in JSX)
+  const selScopes = Array.isArray(selected?.scopes) ? selected.scopes : [];
+  const selTools = Array.isArray(selected?.tools) ? selected.tools : [];
+  const selEvents = Array.isArray(selected?.events) ? selected.events : [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">审核中心</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            审核应用上架请求
-            {pendingCount > 0 && (
-              <Badge variant="destructive" className="ml-2 text-[10px] px-1.5 py-0">
-                {pendingCount} 待审核
-              </Badge>
-            )}
-          </p>
-        </div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">审核中心</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">管理应用上架审核</p>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-6 min-h-[calc(100vh-14rem)]">
-        {/* Left: App List */}
-        <div className="md:w-80 shrink-0 space-y-1 overflow-y-auto">
+      {/* Tabs */}
+      <div
+        role="tablist"
+        ref={tabListRef}
+        className="inline-flex h-9 items-center rounded-lg bg-muted p-1 text-muted-foreground"
+        onKeyDown={(e) => {
+          const keys = TABS.map((t) => t.key);
+          const idx = keys.indexOf(tab);
+          let next = -1;
+          if (e.key === "ArrowRight") next = (idx + 1) % keys.length;
+          else if (e.key === "ArrowLeft") next = (idx - 1 + keys.length) % keys.length;
+          if (next >= 0) {
+            e.preventDefault();
+            setTab(keys[next]);
+            setSelectedId(null);
+            tabListRef.current?.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+          }
+        }}
+      >
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            role="tab"
+            id={`tab-${key}`}
+            aria-selected={tab === key}
+            aria-controls="review-tabpanel"
+            tabIndex={tab === key ? 0 : -1}
+            onClick={() => { setTab(key); setSelectedId(null); }}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-all ${
+              tab === key
+                ? "bg-background text-foreground shadow-sm"
+                : "hover:text-foreground/80"
+            }`}
+          >
+            {label}
+            {counts[key] > 0 && (
+              <span className={`text-[10px] min-w-[1.25rem] text-center rounded-full px-1 py-px font-semibold ${
+                tab === key
+                  ? key === "pending" ? "bg-orange-500 text-white" : "bg-muted-foreground/20 text-foreground"
+                  : key === "pending" ? "bg-orange-500/80 text-white" : "bg-muted-foreground/10"
+              }`}>
+                {counts[key]}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Main content */}
+      <div id="review-tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="flex flex-col md:flex-row gap-4">
+        {/* Left: App Queue */}
+        <div className="md:w-64 shrink-0 space-y-0.5 overflow-y-auto max-h-[50vh] md:max-h-[calc(100vh-14rem)]">
           {loading ? (
             <div className="space-y-1">
-              {[1, 2, 3, 4].map((i) => (
+              {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-center gap-3 p-3 rounded-lg">
                   <div className="h-9 w-9 rounded-lg bg-muted animate-pulse shrink-0" />
                   <div className="flex-1 space-y-1.5">
-                    <div className="h-3.5 w-28 rounded bg-muted animate-pulse" />
-                    <div className="h-2.5 w-20 rounded bg-muted animate-pulse" />
+                    <div className="h-3.5 w-24 rounded bg-muted animate-pulse" />
+                    <div className="h-2.5 w-16 rounded bg-muted animate-pulse" />
                   </div>
                 </div>
               ))}
             </div>
           ) : sorted.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-              <Inbox className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm">暂无应用</p>
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <Inbox className="h-8 w-8 mb-2 opacity-30" />
+              <p className="text-sm">{tab === "pending" ? "无待审核应用" : "暂无记录"}</p>
             </div>
           ) : (
-            sorted.map((a) => (
+            sorted.map((a: any) => (
               <button
                 key={a.id}
-                onClick={() => setSelected(a)}
-                className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
+                onClick={() => setSelectedId(a.id)}
+                aria-current={selected?.id === a.id ? "true" : undefined}
+                className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   selected?.id === a.id
                     ? "bg-primary/10 border border-primary/20"
                     : "hover:bg-muted/50 border border-transparent"
@@ -194,10 +223,10 @@ export function AdminReviewsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium truncate">{a.name}</p>
-                    <ListingBadge listing={a.listing} />
+                    {tab === "all" && <ListingBadge listing={a.listing} />}
                   </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {a.owner_name} · {timeAgo(a.updated_at)}
+                    {a.version ? `v${a.version} · ` : ""}{timeAgo(a.updated_at)}
                   </p>
                 </div>
               </button>
@@ -208,241 +237,210 @@ export function AdminReviewsPage() {
         {/* Right: Detail Panel */}
         <div className="flex-1 min-w-0">
           {selected ? (
-            <div className="rounded-xl border border-border/50 bg-card p-6 space-y-6 md:sticky md:top-6 md:max-h-[calc(100vh-10rem)] md:overflow-y-auto">
-              {/* Header */}
-              <div className="flex items-start gap-4">
-                <AppIcon icon={selected.icon} iconUrl={selected.icon_url} size="h-12 w-12" />
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-bold leading-tight">{selected.name}</h2>
-                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{selected.slug}</p>
+            <div className="rounded-xl border border-border/50 bg-card md:sticky md:top-6 md:max-h-[calc(100vh-14rem)] flex flex-col">
+              {/* Scrollable content */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {/* Header */}
+                <div className="flex items-start gap-3">
+                  <AppIcon icon={selected.icon} iconUrl={selected.icon_url} size="h-10 w-10" />
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-base font-bold leading-tight">{selected.name}</h2>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-muted-foreground font-mono">{selected.slug}</p>
+                      {selected.version && (
+                        <Badge variant="outline" className="text-[10px] font-mono">v{selected.version}</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <ListingBadge listing={selected.listing} />
                 </div>
-                <ListingBadge listing={selected.listing} />
-              </div>
 
-              {/* Info */}
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground">开发者</p>
-                  <p className="font-medium">{selected.owner_name}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">版本</p>
-                  <p className="font-mono">{selected.version || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">更新时间</p>
-                  <p>{timeAgo(selected.updated_at)}</p>
-                </div>
-                {selected.homepage && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">主页</p>
-                    <a
-                      href={selected.homepage}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1 text-sm truncate"
-                    >
-                      {selected.homepage.replace(/^https?:\/\//, "")}
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                    </a>
+                {/* Reject reason alert */}
+                {selected.listing_reject_reason && (
+                  <div className="rounded-lg bg-destructive/5 border border-destructive/20 p-3">
+                    <p className="text-xs font-semibold text-destructive mb-1">拒绝原因</p>
+                    <p className="text-sm">{selected.listing_reject_reason}</p>
                   </div>
                 )}
-              </div>
 
-              {selected.listing_reject_reason && (
-                <div className="rounded-lg bg-destructive/5 border border-destructive/20 p-3">
-                  <p className="text-xs font-semibold text-destructive mb-1">拒绝原因</p>
-                  <p className="text-sm">{selected.listing_reject_reason}</p>
-                </div>
-              )}
+                {/* Review Highlights — most important for reviewers */}
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">审核要点</p>
 
-              {/* Core fields for review */}
-              <Separator />
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">核心配置</p>
+                  <ReviewField icon={<Shield className="h-3.5 w-3.5" />} label="权限">
+                    {selScopes.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {selScopes.map((s: string, i: number) => (
+                          <Badge key={i} variant="outline" className="text-[10px] font-mono">{s}</Badge>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                  </ReviewField>
 
-                {/* Webhook URL */}
-                <div className="flex items-start gap-2 text-sm">
-                  <Globe className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">Webhook URL</p>
+                  <ReviewField icon={<Terminal className="h-3.5 w-3.5" />} label="工具">
+                    {selTools.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {selTools.map((t: any, i: number) => (
+                          <Badge key={i} variant="secondary" className="text-[10px] font-mono gap-1">
+                            {t.command ? `/${t.command}` : t.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                  </ReviewField>
+
+                  <ReviewField icon={<Radio className="h-3.5 w-3.5" />} label="事件">
+                    {selEvents.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {selEvents.map((e: string, i: number) => (
+                          <Badge key={i} variant="outline" className="text-[10px] font-mono">{e}</Badge>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs text-muted-foreground/50">无</span>}
+                  </ReviewField>
+
+                  <ReviewField icon={<Globe className="h-3.5 w-3.5" />} label="Webhook">
                     {selected.webhook_url ? (
                       <p className="font-mono text-xs truncate">{selected.webhook_url}</p>
                     ) : (
-                      <p className="text-xs text-muted-foreground/50">未配置</p>
+                      <span className="text-xs text-muted-foreground/50">未配置</span>
+                    )}
+                  </ReviewField>
+                </div>
+
+                {/* Review History */}
+                {reviews.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                        <History className="h-3.5 w-3.5" /> 审核记录
+                      </p>
+                      <div className="space-y-2">
+                        {reviews.map((review: any) => (
+                          <div key={review.id} className="flex items-start gap-2 text-xs">
+                            <span className="text-muted-foreground whitespace-nowrap mt-0.5 tabular-nums">
+                              {new Date(review.created_at * 1000).toLocaleString("zh-CN", {
+                                month: "2-digit", day: "2-digit",
+                                hour: "2-digit", minute: "2-digit",
+                              })}
+                            </span>
+                            <Badge variant={ACTION_VARIANTS[review.action] || "outline"} className="text-[10px] shrink-0">
+                              {ACTION_LABELS[review.action] || review.action}
+                            </Badge>
+                            {review.version && (
+                              <span className="text-muted-foreground font-mono">v{review.version}</span>
+                            )}
+                            {review.reason && (
+                              <span className="text-muted-foreground truncate" title={review.reason}>{review.reason}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* App Details — key review content */}
+                <Separator />
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">应用详情</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">开发者</p>
+                      <p className="font-medium">{selected.owner_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">更新时间</p>
+                      <p>{timeAgo(selected.updated_at)}</p>
+                    </div>
+                    {selected.homepage && (
+                      <div className="sm:col-span-2">
+                        <p className="text-xs text-muted-foreground">主页</p>
+                        <a
+                          href={selected.homepage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline text-sm truncate block"
+                        >
+                          {selected.homepage.replace(/^https?:\/\//, "")}
+                        </a>
+                      </div>
                     )}
                   </div>
-                </div>
 
-                {/* Tools */}
-                <div className="flex items-start gap-2 text-sm">
-                  <Terminal className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-muted-foreground mb-1">Tools</p>
-                    {(() => {
-                      const tools = Array.isArray(selected.tools) ? selected.tools : [];
-                      return tools.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {tools.map((t: any, i: number) => (
-                            <Badge key={i} variant="secondary" className="text-[10px] font-mono gap-1">
-                              {t.command ? `/${t.command}` : t.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground/50">无</p>
-                      );
-                    })()}
-                  </div>
-                </div>
+                  {selected.description && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">描述</p>
+                      <p className="text-sm leading-relaxed">{selected.description}</p>
+                    </div>
+                  )}
 
-                {/* Events */}
-                <div className="flex items-start gap-2 text-sm">
-                  <Radio className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-muted-foreground mb-1">Events</p>
-                    {(() => {
-                      const events = Array.isArray(selected.events) ? selected.events : [];
-                      return events.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {events.map((e: string, i: number) => (
-                            <Badge key={i} variant="outline" className="text-[10px] font-mono">
-                              {e}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground/50">无</p>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* Scopes */}
-                <div className="flex items-start gap-2 text-sm">
-                  <Shield className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-muted-foreground mb-1">Scopes</p>
-                    {(() => {
-                      const scopes = Array.isArray(selected.scopes) ? selected.scopes : [];
-                      return scopes.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {scopes.map((s: string, i: number) => (
-                            <Badge key={i} variant="outline" className="text-[10px] font-mono">
-                              {s}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground/50">无</p>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* Config Schema */}
-                {selected.config_schema && (
-                  <div className="flex items-start gap-2 text-sm">
-                    <Terminal className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />
-                    <div className="min-w-0 flex-1">
+                  {selected.config_schema && (
+                    <div>
                       <p className="text-xs text-muted-foreground mb-1">Config Schema</p>
                       <pre className="text-[10px] font-mono bg-muted/40 rounded p-2 max-h-32 overflow-auto whitespace-pre-wrap">
                         {typeof selected.config_schema === "string" ? selected.config_schema : JSON.stringify(selected.config_schema, null, 2)}
                       </pre>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {selected.readme && (
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">README</p>
+                      <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-muted/40 rounded-lg p-3 max-h-60 overflow-y-auto">
+                        {selected.readme}
+                      </pre>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {selected.description && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">描述</p>
-                    <p className="text-sm leading-relaxed">{selected.description}</p>
+              {/* Sticky action buttons */}
+              <div className="border-t px-5 py-3 shrink-0 bg-card rounded-b-xl">
+                {selected.listing === "pending" ? (
+                  <div className="flex gap-3">
+                    <Button
+                      className="flex-1 gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => handleApprove(selected)}
+                      disabled={submitting}
+                    >
+                      <Check className="h-4 w-4" /> 通过上架
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5"
+                      onClick={() => { setRejectTarget(selected); setRejectReason(""); }}
+                      disabled={submitting}
+                    >
+                      <X className="h-4 w-4" /> 拒绝
+                    </Button>
                   </div>
-                </>
-              )}
-
-              {selected.readme && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">README</p>
-                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-muted/40 rounded-lg p-3 max-h-60 overflow-y-auto">
-                      {selected.readme}
-                    </pre>
-                  </div>
-                </>
-              )}
-
-              {/* Review History */}
-              {reviews.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                      <History className="h-3.5 w-3.5" /> 审核记录
-                    </p>
-                    <div className="space-y-2">
-                      {reviews.map((review: any) => (
-                        <div key={review.id} className="flex items-start gap-2 text-xs">
-                          <span className="text-muted-foreground whitespace-nowrap mt-0.5 tabular-nums">
-                            {new Date(review.created_at * 1000).toLocaleString("zh-CN", {
-                              month: "2-digit", day: "2-digit",
-                              hour: "2-digit", minute: "2-digit",
-                            })}
-                          </span>
-                          <Badge variant={ACTION_VARIANTS[review.action] || "outline"} className="text-[10px] shrink-0">
-                            {ACTION_LABELS[review.action] || review.action}
-                          </Badge>
-                          {review.version && (
-                            <span className="text-muted-foreground font-mono">v{review.version}</span>
-                          )}
-                          {review.reason && (
-                            <span className="text-muted-foreground truncate">{review.reason}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Actions */}
-              <Separator />
-              {selected.listing === "pending" ? (
-                <div className="flex gap-3">
+                ) : selected.listing === "listed" ? (
                   <Button
-                    className="flex-1 gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleToggle(selected)}
+                    disabled={submitting}
+                  >
+                    下架
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="w-full"
                     onClick={() => handleApprove(selected)}
                     disabled={submitting}
                   >
-                    <Check className="h-4 w-4" /> 通过上架
+                    通过上架
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/5"
-                    onClick={() => { setRejectTarget(selected); setRejectReason(""); }}
-                    disabled={submitting}
-                  >
-                    <X className="h-4 w-4" /> 拒绝
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => handleToggle(selected)}
-                  disabled={submitting}
-                >
-                  {selected.listing === "listed" ? "下架" : "上架"}
-                </Button>
-              )}
+                )}
+              </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <Inbox className="h-12 w-12 mb-3 opacity-20" />
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+              <Inbox className="h-10 w-10 mb-3 opacity-20" />
               <p className="text-sm">选择一个应用查看详情</p>
             </div>
           )}
@@ -486,6 +484,18 @@ export function AdminReviewsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function ReviewField({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      <span className="mt-0.5 text-muted-foreground shrink-0">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted-foreground mb-1">{label}</p>
+        {children}
+      </div>
     </div>
   );
 }

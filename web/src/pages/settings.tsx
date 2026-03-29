@@ -25,6 +25,8 @@ import {
 import { useTheme, type Theme } from "../lib/theme";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "../components/ui/badge";
+import { useUser } from "@/hooks/use-auth";
+import { useOAuthAccounts, useOAuthProviders, usePasskeys, useDeletePasskey, useRenamePasskey, useUnlinkOAuth } from "@/hooks/use-settings";
 
 const THEME_OPTIONS = [
   { value: "light", label: "浅色", icon: Sun },
@@ -40,36 +42,17 @@ const providerLabels: Record<string, { label: string; icon: any }> = {
 export function SettingsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState<any>(null);
-  const [oauthAccounts, setOauthAccounts] = useState<any[]>([]);
-  const [oauthProviders, setOauthProviders] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: user, isLoading: userLoading } = useUser();
+  const { data: oauthAccounts = [], isError: oauthAccountsError } = useOAuthAccounts();
+  const { data: oauthProviders = [], isError: oauthProvidersError } = useOAuthProviders();
+  const unlinkOAuth = useUnlinkOAuth();
   const { theme, setTheme } = useTheme();
   const { confirm, ConfirmDialog } = useConfirm();
 
   const activeTab = location.pathname.split("/").pop() || "profile";
 
-  async function load() {
-    setLoading(true);
-    try {
-      const [u, accounts, providers] = await Promise.all([
-        api.me(),
-        api.oauthAccounts(),
-        api.oauthProviders(),
-      ]);
-      setUser(u);
-      setOauthAccounts(accounts || []);
-      setOauthProviders(providers.providers || []);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const [oauthMsg, setOauthMsg] = useState("");
 
-  useEffect(() => {
-    load();
-  }, []);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const bound = params.get("oauth_bound");
@@ -78,11 +61,10 @@ export function SettingsPage() {
     else if (error === "already_linked") setOauthMsg("该第三方账号已被其他用户绑定");
     if (bound || error) {
       window.history.replaceState({}, "", "/dashboard/settings/profile");
-      load();
     }
   }, []);
 
-  if (loading && !user)
+  if (userLoading && !user)
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -131,7 +113,7 @@ export function SettingsPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">用户名</label>
-                  <Input value={user.username} disabled className="bg-muted/30 font-mono" />
+                  <Input value={user?.username} disabled className="bg-muted/30 font-mono" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">角色</label>
@@ -140,26 +122,32 @@ export function SettingsPage() {
                       variant="secondary"
                       className="uppercase text-[10px] tracking-wider font-bold"
                     >
-                      {user.role}
+                      {user?.role}
                     </Badge>
                   </div>
                 </div>
               </div>
             </CardContent>
           </Card>
-          {oauthProviders.length > 0 ? (
+          {oauthProvidersError || oauthAccountsError ? (
+            <Card className="border-destructive/20">
+              <CardContent className="p-4 text-sm text-destructive">第三方账号信息加载失败</CardContent>
+            </Card>
+          ) : oauthProviders.length > 0 ? (
             <Card className="border-border/50">
               <CardHeader>
                 <CardTitle>第三方绑定</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {oauthProviders.map((provider) => {
-                  const account = oauthAccounts.find((a) => a.provider === provider);
+                  const providerKey = provider.key || provider.name;
+                  const account = oauthAccounts.find((a) => a.provider === providerKey);
                   const linked = !!account;
-                  const Icon = providerLabels[provider]?.icon || ShieldCheck;
+                  const Icon = providerLabels[provider.name]?.icon || ShieldCheck;
+                  const label = providerLabels[provider.name]?.label || provider.display_name || provider.name;
                   return (
                     <div
-                      key={provider}
+                      key={provider.name}
                       className="flex items-center justify-between p-4 rounded-xl border bg-muted/10"
                     >
                       {" "}
@@ -169,7 +157,7 @@ export function SettingsPage() {
                         </div>
                         <div>
                           <p className="text-sm font-bold uppercase">
-                            {providerLabels[provider]?.label || provider}
+                            {label}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {linked ? `已关联：${account.username}` : "未连接"}
@@ -184,17 +172,14 @@ export function SettingsPage() {
                           onClick={async () => {
                             const ok = await confirm({
                               title: "解绑确认",
-                              description: `确定要解绑 ${providerLabels[provider]?.label || provider}？`,
+                              description: `确定要解绑 ${label}？`,
                               confirmText: "解绑",
                               variant: "destructive",
                             });
                             if (!ok) return;
-                            try {
-                              await api.unlinkOAuth(provider);
-                              load();
-                            } catch (e: any) {
-                              setOauthMsg(e.message);
-                            }
+                            unlinkOAuth.mutate(providerKey, {
+                              onError: (e: any) => setOauthMsg(e.message),
+                            });
                           }}
                         >
                           <Unlink className="h-3.5 w-3.5 mr-2" /> 解绑
@@ -204,7 +189,7 @@ export function SettingsPage() {
                           variant="outline"
                           size="sm"
                           onClick={() =>
-                            (window.location.href = `/api/me/linked-accounts/${provider}/bind`)
+                            (window.location.href = provider.type === "oidc" ? `/api/me/oidc/${provider.name}/bind` : `/api/me/linked-accounts/${provider.name}/bind`)
                           }
                         >
                           <Link2 className="h-3.5 w-3.5 mr-2" /> 绑定
@@ -244,7 +229,7 @@ export function SettingsPage() {
 
         <TabsContent value="security" className="m-0 space-y-6">
           <PasskeySection />
-          <ChangePasswordSection />
+          <ChangePasswordSection hasPassword={user?.has_password} />
         </TabsContent>
       </Tabs>
     </div>
@@ -252,7 +237,7 @@ export function SettingsPage() {
 }
 
 // ... keep ChangePasswordSection and PasskeySection same ...
-function ChangePasswordSection() {
+function ChangePasswordSection({ hasPassword }: { hasPassword?: boolean }) {
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");
   const [confirmPwd, setConfirmPwd] = useState("");
@@ -272,7 +257,7 @@ function ChangePasswordSection() {
       setOldPwd("");
       setNewPwd("");
       setConfirmPwd("");
-      setSuccess("您的登录密码已成功更新。");
+      setSuccess(hasPassword ? "您的登录密码已成功更新。" : "登录密码已设置成功。");
     } catch (err: any) {
       setError(err.message);
     }
@@ -282,25 +267,31 @@ function ChangePasswordSection() {
   return (
     <Card className="border-border/50">
       <CardHeader>
-        <CardTitle>修改登录密码</CardTitle>
-        <CardDescription>建议定期更换密码以增强安全性。</CardDescription>
+        <CardTitle>{hasPassword ? "修改登录密码" : "设置登录密码"}</CardTitle>
+        <CardDescription>
+          {hasPassword
+            ? "建议定期更换密码以增强安全性。"
+            : "您还未设置密码。设置后可使用密码登录。"}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
-          <div className="space-y-2">
-            <label htmlFor="current-password" className="text-xs font-medium">
-              当前密码
-            </label>
-            <Input
-              id="current-password"
-              name="current-password"
-              type="password"
-              autoComplete="current-password"
-              value={oldPwd}
-              onChange={(e) => setOldPwd(e.target.value)}
-              placeholder="••••••••"
-            />
-          </div>
+          {hasPassword && (
+            <div className="space-y-2">
+              <label htmlFor="current-password" className="text-xs font-medium">
+                当前密码
+              </label>
+              <Input
+                id="current-password"
+                name="current-password"
+                type="password"
+                autoComplete="current-password"
+                value={oldPwd}
+                onChange={(e) => setOldPwd(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <label htmlFor="new-password" className="text-xs font-medium">
               新密码
@@ -344,10 +335,10 @@ function ChangePasswordSection() {
             <Button
               type="submit"
               className="w-full sm:w-fit"
-              disabled={saving || !oldPwd || !newPwd}
+              disabled={saving || (hasPassword && !oldPwd) || !newPwd}
             >
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              更新密码
+              {hasPassword ? "更新密码" : "设置密码"}
             </Button>
           </div>
         </form>
@@ -358,11 +349,11 @@ function ChangePasswordSection() {
 
 const isXiaomiDevice = () => /xiaomi|redmi|miui|hyperos/i.test(navigator.userAgent);
 
-function PasskeyNameEditor({ passkey, onSave, onError }: {
+function PasskeyNameEditor({ passkey, onError }: {
   passkey: { id: string; name: string };
-  onSave: () => void;
   onError: (msg: string) => void;
 }) {
+  const renamePasskey = useRenamePasskey();
   const [editing, setEditing] = useState(!passkey.name);
   const [value, setValue] = useState(passkey.name || "Passkey");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -378,13 +369,10 @@ function PasskeyNameEditor({ passkey, onSave, onError }: {
       setEditing(false);
       return;
     }
-    try {
-      await api.renamePasskey(passkey.id, trimmed);
-      setEditing(false);
-      onSave();
-    } catch (e: any) {
-      onError(e.message || "重命名失败");
-    }
+    renamePasskey.mutate({ id: passkey.id, name: trimmed }, {
+      onSuccess: () => setEditing(false),
+      onError: (e: any) => onError(e.message || "重命名失败"),
+    });
   }
 
   if (editing) {
@@ -417,23 +405,13 @@ function PasskeyNameEditor({ passkey, onSave, onError }: {
 }
 
 function PasskeySection() {
-  const [passkeys, setPasskeys] = useState<any[]>([]);
+  const { data: passkeys = [], refetch: refetchPasskeys } = usePasskeys();
+  const deletePasskeyMut = useDeletePasskey();
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showXiaomiGuide, setShowXiaomiGuide] = useState(false);
   const { confirm, ConfirmDialog } = useConfirm();
-
-  async function load() {
-    try {
-      setPasskeys((await api.listPasskeys()) || []);
-    } catch {
-      setPasskeys([]);
-    }
-  }
-  useEffect(() => {
-    load();
-  }, []);
 
   async function handleAdd() {
     if (isXiaomiDevice() && !showXiaomiGuide) {
@@ -467,7 +445,7 @@ function PasskeySection() {
           },
         }),
       );
-      await load();
+      await refetchPasskeys();
       setSuccess("通行密钥注册成功！点击名称可修改。建议退出后尝试使用通行密钥登录以确认可用。");
     } catch (err: any) {
       if (err.name !== "NotAllowedError") setError(err.message || "Passkey 注册失败");
@@ -552,7 +530,6 @@ function PasskeySection() {
                   <div>
                     <PasskeyNameEditor
                       passkey={pk}
-                      onSave={() => { setSuccess(""); load(); }}
                       onError={(msg) => setError(msg)}
                     />
                     <p className="text-[10px] text-muted-foreground flex items-center gap-1.5 uppercase font-medium">
@@ -574,12 +551,9 @@ function PasskeySection() {
                     });
                     if (!ok) return;
                     setSuccess("");
-                    try {
-                      await api.deletePasskey(pk.id);
-                      load();
-                    } catch (e: any) {
-                      setError(e.message || "删除失败");
-                    }
+                    deletePasskeyMut.mutate(pk.id, {
+                      onError: (e: any) => setError(e.message || "删除失败"),
+                    });
                   }}
                 >
                   <Trash2 className="h-4 w-4" />

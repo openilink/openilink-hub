@@ -1,10 +1,13 @@
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Blocks, Download, Loader2, Search, RefreshCw } from "lucide-react";
 import { api, botDisplayName } from "../lib/api";
+import { useApps } from "@/hooks/use-apps";
+import { useBots } from "@/hooks/use-bots";
+import { useMarketplaceApps, useSyncMarketplaceApp } from "@/hooks/use-marketplace";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -29,30 +32,17 @@ import { parseTools } from "../components/tools-display";
 export function AppsPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [listedApps, setListedApps] = useState<any[]>([]);
-  const [registryApps, setRegistryApps] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: listedApps = [], isLoading: listedLoading } = useApps({ listing: "listed" });
+  const { data: registryApps = [], isLoading: registryLoading } = useMarketplaceApps();
+  const { data: bots = [] } = useBots();
+  const syncAppMutation = useSyncMarketplaceApp();
+  const loading = listedLoading || registryLoading;
   const [search, setSearch] = useState("");
   const [pendingApp, setPendingApp] = useState<any>(null);
-  const [bots, setBots] = useState<any[]>([]);
   const [selectedBotId, setSelectedBotId] = useState("");
-  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      api.listApps({ listing: "listed" }).catch(() => []),
-      api.getMarketplaceApps().catch(() => []),
-      api.listBots().catch(() => []),
-    ])
-      .then(([listed, registry, botList]) => {
-        setListedApps(listed || []);
-        setRegistryApps(registry || []);
-        setBots(botList || []);
-        if (botList?.length) setSelectedBotId(botList[0].id);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  // Auto-select first bot when bots load
+  if (bots.length > 0 && !selectedBotId) setSelectedBotId(bots[0].id);
 
   // Group registry apps by registry_name
   const registryGroups = useMemo(() => {
@@ -68,7 +58,9 @@ export function AppsPage() {
   const registryNames = Object.keys(registryGroups);
   const showTabs = registryNames.length > 0;
 
-  async function handleInstallConfirm() {
+  const syncing = syncAppMutation.isPending;
+
+  function handleInstallConfirm() {
     if (!pendingApp || !selectedBotId) return;
     const appId = pendingApp.id || pendingApp.local_id;
     if (appId) {
@@ -76,16 +68,13 @@ export function AppsPage() {
       setPendingApp(null);
       return;
     }
-    setSyncing(true);
-    try {
-      const synced = await api.syncMarketplaceApp(pendingApp.slug);
-      navigate(`/dashboard/accounts/${selectedBotId}/install/${synced.id}`);
-      setPendingApp(null);
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "同步失败", description: e.message });
-    } finally {
-      setSyncing(false);
-    }
+    syncAppMutation.mutate(pendingApp.slug, {
+      onSuccess: (synced: any) => {
+        navigate(`/dashboard/accounts/${selectedBotId}/install/${synced.id}`);
+        setPendingApp(null);
+      },
+      onError: (e) => toast({ variant: "destructive", title: "同步失败", description: e.message }),
+    });
   }
 
   function filterApps(apps: any[]) {

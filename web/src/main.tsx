@@ -1,7 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Progress, ProgressProvider, useAnchorProgress } from "@bprogress/react";
+import { queryClient } from "./lib/query-client";
 import "./index.css";
 import { HomePage } from "./pages/home";
 import { LoginPage } from "./pages/login";
@@ -34,6 +36,7 @@ function RouterProgress() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <TooltipProvider>
         <ProgressProvider color="oklch(0.693 0.195 151.5)">
@@ -84,5 +87,6 @@ createRoot(document.getElementById("root")!).render(
         </ProgressProvider>
       </TooltipProvider>
     </ThemeProvider>
+    </QueryClientProvider>
   </StrictMode>,
 );

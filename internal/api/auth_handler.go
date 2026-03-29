@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/auth"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // --- Session ---
@@ -30,8 +31,26 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "user not found", http.StatusNotFound)
 		return
 	}
+
+	// Check security state for the frontend
+	hasPassword := user.PasswordHash != ""
+	creds, _ := s.Store.GetCredentialsByUserID(userID)
+	hasPasskey := len(creds) > 0
+	oauthAccounts, _ := s.Store.ListOAuthAccountsByUser(userID)
+	hasOAuth := len(oauthAccounts) > 0
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(struct {
+		*store.User
+		HasPassword bool `json:"has_password"`
+		HasPasskey  bool `json:"has_passkey"`
+		HasOAuth    bool `json:"has_oauth"`
+	}{
+		User:        user,
+		HasPassword: hasPassword,
+		HasPasskey:  hasPasskey,
+		HasOAuth:    hasOAuth,
+	})
 }
 
 func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {

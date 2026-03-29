@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,13 +133,37 @@ func (s *oauthStateStore) Validate(state string) (*oauthStateEntry, bool) {
 
 // GET /api/auth/oauth/providers — list enabled providers
 func (s *Server) handleOAuthProviders(w http.ResponseWriter, r *http.Request) {
-	providers := s.oauthProviders()
-	names := make([]string, 0, len(providers))
-	for name := range providers {
-		names = append(names, name)
+	type providerInfo struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
+		Type        string `json:"type"`         // "oauth" or "oidc"
+		Key         string `json:"key,omitempty"` // internal key for account matching (omitted when same as name)
 	}
+
+	var list []providerInfo
+	// Built-in OAuth providers
+	displayNames := map[string]string{"github": "GitHub", "linuxdo": "LinuxDo"}
+	for name := range s.oauthProviders() {
+		list = append(list, providerInfo{
+			Name:        name,
+			DisplayName: displayNames[name],
+			Type:        "oauth",
+		})
+	}
+	// Custom OIDC providers
+	for slug, cfg := range s.oidcProviders() {
+		list = append(list, providerInfo{
+			Name:        slug,
+			DisplayName: cfg.DisplayName,
+			Type:        "oidc",
+			Key:         oidcProviderKey(slug),
+		})
+	}
+
+	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"providers": names})
+	json.NewEncoder(w).Encode(map[string]any{"providers": list})
 }
 
 // GET /api/auth/oauth/{provider} — redirect to OAuth provider (login flow)
@@ -206,14 +231,18 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.completeOAuthFlow(w, r, entry, name, providerID, username, email, avatarURL)
+}
+
+// completeOAuthFlow handles the bind-or-login logic shared by OAuth and OIDC callbacks.
+func (s *Server) completeOAuthFlow(w http.ResponseWriter, r *http.Request, entry *oauthStateEntry, provider, providerID, username, email, avatarURL string) {
 	// Bind mode: link OAuth account to existing logged-in user
 	if entry.BindUID != "" {
-		existing, err := s.Store.GetOAuthAccount(name, providerID)
+		existing, err := s.Store.GetOAuthAccount(provider, providerID)
 		if err == nil && existing.UserID != entry.BindUID {
-			// Check if the linked user still exists — clean up stale records
 			if _, userErr := s.Store.GetUserByID(existing.UserID); userErr != nil {
-				slog.Info("oauth cleanup stale binding", "provider", name, "old_user", existing.UserID)
-				s.Store.DeleteOAuthAccount(name, providerID)
+				slog.Info("oauth cleanup stale binding", "provider", provider, "old_user", existing.UserID)
+				s.Store.DeleteOAuthAccount(provider, providerID)
 			} else {
 				http.Redirect(w, r, "/dashboard/settings?oauth_error=already_linked", http.StatusFound)
 				return
@@ -222,30 +251,30 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 		if err == sql.ErrNoRows || (err == nil && existing.UserID != entry.BindUID) {
 			if err := s.Store.CreateOAuthAccount(&store.OAuthAccount{
-				Provider:   name,
+				Provider:   provider,
 				ProviderID: providerID,
 				UserID:     entry.BindUID,
 				Username:   username,
 				AvatarURL:  avatarURL,
 			}); err != nil {
-				slog.Error("oauth bind failed", "provider", name, "err", err)
+				slog.Error("oauth bind failed", "provider", provider, "err", err)
 				http.Redirect(w, r, "/dashboard/settings?oauth_error=bind_failed", http.StatusFound)
 				return
 			}
 		}
 
-		http.Redirect(w, r, "/dashboard/settings?oauth_bound="+name, http.StatusFound)
+		http.Redirect(w, r, "/dashboard/settings?oauth_bound="+provider, http.StatusFound)
 		return
 	}
 
 	// Login mode: find or create user
-	user, err := s.findOrCreateOAuthUser(name, providerID, username, email, avatarURL)
+	user, err := s.findOrCreateOAuthUser(provider, providerID, username, email, avatarURL)
 	if err != nil {
 		if err.Error() == "registration is disabled" {
 			http.Redirect(w, r, "/login?error=registration_disabled", http.StatusFound)
 			return
 		}
-		slog.Error("oauth user creation failed", "provider", name, "err", err)
+		slog.Error("oauth user creation failed", "provider", provider, "err", err)
 		http.Redirect(w, r, "/login?error=login_failed", http.StatusFound)
 		return
 	}
@@ -358,9 +387,11 @@ func (s *Server) findOrCreateOAuthUser(provider, providerID, username, email, av
 		return nil, err
 	}
 
-	// Try to find existing user by email
+	// Try to find existing user by email (only for trusted built-in providers).
+	// OIDC providers are not trusted for email auto-linking because the email
+	// claim may be unverified, enabling account takeover.
 	var user *store.User
-	if email != "" {
+	if email != "" && !strings.HasPrefix(provider, "oidc:") {
 		user, err = s.Store.GetUserByEmail(email)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, err

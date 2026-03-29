@@ -7,6 +7,7 @@ export interface Bot {
   can_send: boolean;
   send_disabled_reason?: string;
   ai_enabled: boolean;
+  ai_model: string;
   msg_count: number;
   reminder_hours: number;
   last_msg_at?: number;
@@ -51,9 +52,14 @@ export const api = {
   login: (username: string, password: string) =>
     request("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request("/api/auth/logout", { method: "POST" }),
-  oauthProviders: () => request<{ providers: string[] }>("/api/auth/oauth/providers"),
+  oauthProviders: () =>
+    request<{ providers: any[] }>("/api/auth/oauth/providers").then((data) => ({
+      providers: (data.providers || []).map((p: any) =>
+        typeof p === "string" ? { name: p, display_name: p, type: "oauth" } : p
+      ) as Array<{ name: string; display_name: string; type: string; key?: string }>,
+    })),
   me: () =>
-    request<{ id: string; username: string; display_name: string; role: string }>("/api/me"),
+    request<{ id: string; username: string; display_name: string; role: string; email?: string; has_password: boolean; has_passkey: boolean; has_oauth: boolean }>("/api/me"),
   info: () => request<{ ai: boolean; registration_enabled: boolean; version: string }>("/api/info"),
 
   // Passkeys
@@ -141,6 +147,13 @@ export const api = {
     request(`/api/admin/config/oauth/${provider}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteOAuthConfig: (provider: string) =>
     request(`/api/admin/config/oauth/${provider}`, { method: "DELETE" }),
+
+  // Admin: OIDC config
+  getOIDCConfig: () => request<any[]>("/api/admin/config/oidc"),
+  setOIDCConfig: (slug: string, data: { display_name: string; issuer_url: string; client_id: string; client_secret: string; scopes?: string }) =>
+    request(`/api/admin/config/oidc/${slug}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteOIDCConfig: (slug: string) =>
+    request(`/api/admin/config/oidc/${slug}`, { method: "DELETE" }),
 
   // Public: available models list (all authenticated users)
   getAvailableModels: () => request<string[]>("/api/config/ai/available_models"),

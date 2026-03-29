@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -19,6 +19,10 @@ import {
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { api, botDisplayName } from "../lib/api";
+import { useBot, useBotApps, useUpdateBot, useSetBotAI, useSetBotAIModel } from "@/hooks/use-bots";
+import { useApps } from "@/hooks/use-apps";
+import { useAvailableModels } from "@/hooks/use-apps";
+import { useBuiltinApps, useMarketplaceApps, useSyncMarketplaceApp } from "@/hooks/use-marketplace";
 import { Card, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
@@ -55,97 +59,53 @@ export function BotDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [bot, setBot] = useState<any>(null);
-  const [installations, setInstallations] = useState<any[]>([]);
-  const [builtinApps, setBuiltinApps] = useState<any[]>([]);
-  const [listedApps, setListedApps] = useState<any[]>([]);
-  const [marketplaceApps, setMarketplaceApps] = useState<any[]>([]);
-  const [marketplaceLoading, setMarketplaceLoading] = useState(true);
+
+  // Server state via react-query
+  const { data: bot, isLoading: loading } = useBot(id!);
+  const { data: installations = [] } = useBotApps(id!);
+  const { data: builtinApps = [] } = useBuiltinApps();
+  const { data: listedAppsRaw = [] } = useApps({ listing: "listed" });
+  const { data: marketplaceApps = [] } = useMarketplaceApps();
+  const { data: availableModels = [] } = useAvailableModels();
+
+  // Derived: listed apps excluding builtins
+  const builtinSlugs = new Set(builtinApps.map((a: any) => a.slug));
+  const listedApps = listedAppsRaw.filter((a: any) => !builtinSlugs.has(a.slug));
+  const marketplaceLoading = false; // All queries load in parallel, handled by isLoading above
+
+  // Mutations
+  const updateBotMutation = useUpdateBot();
+  const setAIMutation = useSetBotAI();
+  const setAIModelMutation = useSetBotAIModel();
+  const syncAppMutation = useSyncMarketplaceApp();
+
+  // Local UI state
   const [syncing, setSyncing] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const marketplaceRef = useRef<HTMLDivElement>(null);
 
-  const loadBot = useCallback(async () => {
-    try {
-      const bots = await api.listBots();
-      const target = (bots || []).find((b: any) => b.id === id);
-      if (!target) throw new Error("Instance not found");
-      setBot(target);
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "加载失败", description: e.message });
-    } finally {
-      setLoading(false);
-    }
-  }, [id, toast]);
-
-  const loadInstallations = useCallback(async () => {
-    try {
-      setInstallations((await api.listBotApps(id!)) || []);
-    } catch {}
-  }, [id]);
-
-  const loadMarketplace = useCallback(async () => {
-    setMarketplaceLoading(true);
-    try {
-      const [builtin, listed, marketplace] = await Promise.all([
-        api.getBuiltinApps().catch(() => []),
-        api.listApps({ listing: "listed" }).catch(() => []),
-        api.getMarketplaceApps().catch(() => []),
-      ]);
-      setBuiltinApps(builtin || []);
-      // Listed apps excluding builtins (they're shown separately)
-      const builtinSlugs = new Set((builtin || []).map((a: any) => a.slug));
-      setListedApps((listed || []).filter((a: any) => !builtinSlugs.has(a.slug)));
-      setMarketplaceApps(marketplace || []);
-    } finally {
-      setMarketplaceLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadBot();
-    loadInstallations();
-    loadMarketplace();
-    api.getAvailableModels().then((models) => {
-      if (Array.isArray(models)) setAvailableModels(models);
-    }).catch(() => {});
-    const t = setInterval(async () => {
-      try {
-        const bots = await api.listBots();
-        const target = (bots || []).find((b: any) => b.id === id);
-        if (target) setBot(target);
-      } catch {}
-    }, 10000);
-    return () => clearInterval(t);
-  }, [loadBot, loadInstallations, loadMarketplace]);
-
   const handleAutoRenewalChange = async (hours: number) => {
-    try {
-      await api.updateBot(bot.id, { reminder_hours: hours });
-      toast({ title: "已保存" });
-      loadBot();
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "保存失败", description: e.message });
-    }
+    updateBotMutation.mutate(
+      { id: bot.id, data: { reminder_hours: hours } },
+      {
+        onSuccess: () => toast({ title: "已保存" }),
+        onError: (e) => toast({ variant: "destructive", title: "保存失败", description: e.message }),
+      },
+    );
   };
 
   const handleInstallApp = async (app: any) => {
-    setSyncing(true);
-    try {
-      if (app.local_id) {
-        navigate(`/dashboard/accounts/${id}/install/${app.local_id}`);
-      } else {
-        const synced = await api.syncMarketplaceApp(app.slug);
-        navigate(`/dashboard/accounts/${id}/install/${synced.id}`);
-      }
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "同步失败", description: e.message });
-    } finally {
-      setSyncing(false);
+    if (app.local_id) {
+      navigate(`/dashboard/accounts/${id}/install/${app.local_id}`);
+      return;
     }
+    setSyncing(true);
+    syncAppMutation.mutate(app.slug, {
+      onSuccess: (synced: any) => navigate(`/dashboard/accounts/${id}/install/${synced.id}`),
+      onError: (e) => toast({ variant: "destructive", title: "同步失败", description: e.message }),
+      onSettled: () => setSyncing(false),
+    });
   };
 
   if (loading)
@@ -180,16 +140,18 @@ export function BotDetailPage() {
               {editingDisplayName ? (
                 <form
                   className="flex items-center gap-1.5"
-                  onSubmit={async (e) => {
+                  onSubmit={(e) => {
                     e.preventDefault();
-                    try {
-                      await api.updateBot(bot.id, { display_name: displayNameDraft });
-                      setBot({ ...bot, display_name: displayNameDraft });
-                      toast({ title: "已保存" });
-                      setEditingDisplayName(false);
-                    } catch (err: any) {
-                      toast({ variant: "destructive", title: "保存失败", description: err.message });
-                    }
+                    updateBotMutation.mutate(
+                      { id: bot.id, data: { display_name: displayNameDraft } },
+                      {
+                        onSuccess: () => {
+                          toast({ title: "已保存" });
+                          setEditingDisplayName(false);
+                        },
+                        onError: (err) => toast({ variant: "destructive", title: "保存失败", description: err.message }),
+                      },
+                    );
                   }}
                 >
                   <Input
@@ -283,18 +245,14 @@ export function BotDetailPage() {
             <Switch
               id={`ai-toggle-${id}`}
               checked={bot.ai_enabled || false}
-              onCheckedChange={async (enabled) => {
-                try {
-                  await api.setBotAI(id!, enabled);
-                  setBot({ ...bot, ai_enabled: enabled });
-                  toast({ title: enabled ? "AI 回复已开启" : "AI 回复已关闭" });
-                } catch (err: any) {
-                  toast({
-                    variant: "destructive",
-                    title: "操作失败",
-                    description: err.message,
-                  });
-                }
+              onCheckedChange={(enabled) => {
+                setAIMutation.mutate(
+                  { botId: id!, enabled },
+                  {
+                    onSuccess: () => toast({ title: enabled ? "AI 回复已开启" : "AI 回复已关闭" }),
+                    onError: (err) => toast({ variant: "destructive", title: "操作失败", description: err.message }),
+                  },
+                );
               }}
             />
           </div>
@@ -305,19 +263,15 @@ export function BotDetailPage() {
               <Label className="text-xs font-bold uppercase text-muted-foreground">模型</Label>
               <Select
                 value={bot.ai_model || DEFAULT_MODEL}
-                onValueChange={async (val) => {
+                onValueChange={(val) => {
                   const model = val === DEFAULT_MODEL ? "" : val;
-                  try {
-                    await api.setBotAIModel(id!, model);
-                    setBot({ ...bot, ai_model: model });
-                    toast({ title: model ? `已切换到模型：${model}` : "已恢复全局默认模型" });
-                  } catch (err: any) {
-                    toast({
-                      variant: "destructive",
-                      title: "操作失败",
-                      description: err.message,
-                    });
-                  }
+                  setAIModelMutation.mutate(
+                    { botId: id!, model },
+                    {
+                      onSuccess: () => toast({ title: model ? `已切换到模型：${model}` : "已恢复全局默认模型" }),
+                      onError: (err) => toast({ variant: "destructive", title: "操作失败", description: err.message }),
+                    },
+                  );
                 }}
               >
                 <SelectTrigger className="h-7 text-xs w-48">

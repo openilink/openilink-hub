@@ -9,6 +9,8 @@ import {
 import { api, botDisplayName } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
+import { useBot, useSetBotAI, useBotApps } from "@/hooks/use-bots";
+import { useApps } from "@/hooks/use-apps";
 
 export function OnboardingPage() {
   const navigate = useNavigate();
@@ -17,50 +19,36 @@ export function OnboardingPage() {
   const { toast } = useToast();
 
   const [step, setStep] = useState(1);
-  const [bot, setBotInfo] = useState<any>(null);
   const [enableAI, setEnableAI] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [loadingConfig, setLoadingConfig] = useState(true);
-
-  // Step 2
-  const [apps, setApps] = useState<any[]>([]);
-  const [loadingApps, setLoadingApps] = useState(false);
   const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
   const [installingId, setInstallingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!botId) { navigate("/dashboard/accounts", { replace: true }); return; }
-    api.listBots().then(bots => {
-      const found = (bots || []).find((b: any) => b.id === botId);
-      if (found) {
-        setBotInfo(found);
-        setEnableAI(found.ai_enabled ?? false);
-      }
-      setLoadingConfig(false);
-    }).catch(() => setLoadingConfig(false));
-  }, [botId]);
+  const { data: bot, isLoading: loadingConfig, isError: botError } = useBot(botId || "");
+  const setBotAI = useSetBotAI();
+
+  // Step 2: marketplace apps + installed apps for this bot
+  const { data: apps = [], isLoading: loadingApps, isError: appsError } = useApps({ listing: "listed" });
+  const { data: installedApps } = useBotApps(botId || "");
 
   useEffect(() => {
-    if (step !== 2 || !botId) return;
-    setLoadingApps(true);
-    Promise.all([
-      api.listApps({ listing: "listed" }),
-      api.listBotApps(botId),
-    ]).then(([marketplace, installed]) => {
-      setApps(marketplace || []);
-      setInstalledIds(new Set((installed || []).map((i: any) => i.app_id)));
-    }).finally(() => setLoadingApps(false));
-  }, [step, botId]);
+    if (!botId) { navigate("/dashboard/accounts", { replace: true }); }
+  }, [botId, navigate]);
+
+  useEffect(() => {
+    if (bot) setEnableAI(bot.ai_enabled ?? false);
+  }, [bot]);
+
+  useEffect(() => {
+    if (installedApps) {
+      setInstalledIds(new Set((installedApps || []).map((i: any) => i.app_id)));
+    }
+  }, [installedApps]);
 
   async function handleNextFromStep1() {
-    setSaving(true);
-    try {
-      await api.setBotAI(botId!, enableAI);
-      setStep(2);
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "保存失败", description: e.message || "请稍后重试" });
-    }
-    setSaving(false);
+    setBotAI.mutate({ botId: botId!, enabled: enableAI }, {
+      onSuccess: () => setStep(2),
+      onError: (e: any) => toast({ variant: "destructive", title: "保存失败", description: e.message || "请稍后重试" }),
+    });
   }
 
   async function handleInstall(app: any) {
@@ -80,6 +68,10 @@ export function OnboardingPage() {
   }
 
   if (!botId) return null;
+
+  if (botError || appsError) return (
+    <div className="flex items-center justify-center py-20 text-sm text-destructive">加载失败，请刷新重试</div>
+  );
 
   return (
     <div className="max-w-2xl mx-auto py-12 px-4">
@@ -130,8 +122,8 @@ export function OnboardingPage() {
 
           <div className="flex justify-end gap-3">
             <Button variant="ghost" onClick={handleFinish}>跳过</Button>
-            <Button onClick={handleNextFromStep1} disabled={saving} className="px-8">
-              {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+            <Button onClick={handleNextFromStep1} disabled={setBotAI.isPending} className="px-8">
+              {setBotAI.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               下一步 <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           </div>

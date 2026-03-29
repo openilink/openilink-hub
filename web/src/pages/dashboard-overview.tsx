@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -15,8 +14,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useBotStats } from "@/hooks/use-bots";
 
 const STEPS = [
   {
@@ -56,15 +55,7 @@ const QUICK_LINKS = [
 ] as const;
 
 export function DashboardOverviewPage() {
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api
-      .stats()
-      .then(setStats)
-      .finally(() => setLoading(false));
-  }, []);
+  const { data: stats, isLoading: loading } = useBotStats();
 
   if (loading)
     return (

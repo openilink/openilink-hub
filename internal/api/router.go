@@ -23,7 +23,7 @@ type Server struct {
 	Hub          *relay.Hub
 	Config       *config.Config
 	OAuthStates  *oauthStateStore
-	ObjectStore  *storage.Storage // optional
+	ObjectStore  storage.Store // optional
 	Registry     *registry.Client
 	AppWSHub     *app.WSHub
 	Version      string
@@ -62,6 +62,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/auth/oauth/providers", s.handleOAuthProviders)
 	mux.HandleFunc("GET /api/auth/oauth/{provider}", s.handleOAuthRedirect)
 	mux.HandleFunc("GET /api/auth/oauth/{provider}/callback", s.handleOAuthCallback)
+
+	// --- OIDC (independent routes for custom identity providers) ---
+	mux.HandleFunc("GET /api/auth/oidc/{slug}", s.handleOIDCLogin)
+	mux.HandleFunc("GET /api/auth/oidc/{slug}/callback", s.handleOIDCCallback)
 
 	// --- iLink scan login: scan QR to register + login + bind bot ---
 	mux.HandleFunc("POST /api/auth/scan/start", s.handleScanLoginStart)
@@ -116,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /api/me/linked-accounts", s.handleOAuthAccounts)
 	protected.HandleFunc("GET /api/me/linked-accounts/{provider}/bind", s.handleOAuthBind)
 	protected.HandleFunc("DELETE /api/me/linked-accounts/{provider}", s.handleOAuthUnbind)
+	protected.HandleFunc("GET /api/me/oidc/{slug}/bind", s.handleOIDCBind)
 
 	// Bots
 	protected.HandleFunc("GET /api/bots", s.handleListBots)
@@ -218,6 +223,9 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /api/admin/config/oauth", s.requireAdmin(s.handleGetOAuthConfig))
 	protected.HandleFunc("PUT /api/admin/config/oauth/{provider}", s.requireAdmin(s.handleSetOAuthConfig))
 	protected.HandleFunc("DELETE /api/admin/config/oauth/{provider}", s.requireAdmin(s.handleDeleteOAuthConfig))
+	protected.HandleFunc("GET /api/admin/config/oidc", s.requireAdmin(s.handleGetOIDCConfig))
+	protected.HandleFunc("PUT /api/admin/config/oidc/{slug}", s.requireAdmin(s.handleSetOIDCConfig))
+	protected.HandleFunc("DELETE /api/admin/config/oidc/{slug}", s.requireAdmin(s.handleDeleteOIDCConfig))
 	protected.HandleFunc("GET /api/config/ai/available_models", s.handleGetAvailableModels)
 	protected.HandleFunc("GET /api/admin/config/ai", s.requireAdmin(s.handleGetAIConfig))
 	protected.HandleFunc("PUT /api/admin/config/ai", s.requireAdmin(s.handleSetAIConfig))

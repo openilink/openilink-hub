@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/openilink/openilink-hub/internal/store"
 )
@@ -37,9 +39,21 @@ func (s *Server) handleCreateRegistry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize URL: parse structurally, strip the well-known registry path
+	// suffix, and discard query/fragment so the stored base URL is always clean.
+	parsed, err := url.Parse(strings.TrimSpace(req.URL))
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		jsonError(w, "invalid url: must be an absolute http(s) URL", http.StatusBadRequest)
+		return
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	parsed.Path = strings.TrimSuffix(strings.TrimRight(parsed.Path, "/"), "/api/registry/v1/apps.json")
+	u := strings.TrimRight(parsed.String(), "/")
+
 	reg := &store.Registry{
 		Name:    req.Name,
-		URL:     req.URL,
+		URL:     u,
 		Enabled: true,
 	}
 	if err := s.Store.CreateRegistry(reg); err != nil {

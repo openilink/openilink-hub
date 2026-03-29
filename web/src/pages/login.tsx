@@ -16,6 +16,8 @@ import {
 import { Input } from "../components/ui/input";
 import { api } from "../lib/api";
 import { Separator } from "../components/ui/separator";
+import { useOAuthProviders } from "@/hooks/use-settings";
+import { useInfo } from "@/hooks/use-auth";
 import {
   Collapsible,
   CollapsibleContent,
@@ -52,21 +54,17 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   // OAuth
-  const [oauthProviders, setOauthProviders] = useState<string[]>([]);
+  const { data: oauthProviders = [] } = useOAuthProviders();
 
   // Registration enabled flag (from /api/info)
-  const [registrationEnabled, setRegistrationEnabled] = useState(true);
+  const { data: infoData } = useInfo();
+  const registrationEnabled = infoData?.registration_enabled !== false;
 
   useEffect(() => {
-    api.oauthProviders().then((data) => setOauthProviders(data.providers || [])).catch(() => {});
-    api.info().then((data) => {
-      if (data.registration_enabled === false) {
-        setRegistrationEnabled(false);
-        // If user was in register mode, switch back to login
-        setMode("login");
-      }
-    }).catch(() => {});
-  }, []);
+    if (infoData?.registration_enabled === false) {
+      setMode("login");
+    }
+  }, [infoData]);
 
   // Auto-start scan login on mount
   useEffect(() => {
@@ -282,13 +280,13 @@ export function LoginPage() {
             {oauthProviders.length > 0 && (
               <div className="space-y-2 mb-4">
                 {oauthProviders.map((provider) => {
-                  const config = providerLabels[provider] || { label: provider, icon: Shield };
+                  const config = providerLabels[provider.name] || { label: provider.display_name || provider.name, icon: Shield };
                   return (
                     <Button
-                      key={provider}
+                      key={provider.name}
                       variant="outline"
                       className="w-full h-9 gap-2 font-medium text-sm"
-                      onClick={() => (window.location.href = `/api/auth/oauth/${provider}`)}
+                      onClick={() => (window.location.href = provider.type === "oidc" ? `/api/auth/oidc/${provider.name}` : `/api/auth/oauth/${provider.name}`)}
                     >
                       <config.icon className="h-4 w-4" />
                       使用 {config.label} 登录

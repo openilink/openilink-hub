@@ -13,13 +13,14 @@ type Config struct {
 	RPName     string
 	Secret     string // server secret for token encryption
 
-	// Storage (MinIO / S3)
+	// Storage (MinIO / S3, or local filesystem)
 	StorageEndpoint  string
 	StorageAccessKey string
 	StorageSecretKey string
 	StorageBucket    string
 	StorageSSL       bool
 	StoragePublicURL string
+	StoragePath      string // local filesystem path (used when S3 is not configured)
 
 	// OAuth providers
 	GitHubClientID     string
@@ -43,6 +44,7 @@ func Parse() *Config {
 	cfg.StorageBucket = envOr("STORAGE_BUCKET", "openilink")
 	cfg.StorageSSL = envOr("STORAGE_SSL", "") == "true"
 	cfg.StoragePublicURL = envOr("STORAGE_PUBLIC_URL", "")
+	cfg.StoragePath = envOr("STORAGE_PATH", "")
 	// OAuth
 	cfg.GitHubClientID = envOr("GITHUB_CLIENT_ID", "")
 	cfg.GitHubClientSecret = envOr("GITHUB_CLIENT_SECRET", "")

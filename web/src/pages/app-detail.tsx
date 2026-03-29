@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Plus,
@@ -24,6 +25,8 @@ import { Input } from "../components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { api, botDisplayName } from "../lib/api";
+import { useApp } from "@/hooks/use-apps";
+import { queryKeys } from "@/lib/query-keys";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { AppIcon } from "../components/app-icon";
@@ -59,21 +62,14 @@ const NAV_SECTIONS = [
 export function AppDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [app, setApp] = useState<any>(null);
+  const queryClient = useQueryClient();
+  const { data: app, isError } = useApp(id!);
   const [section, setSection] = useState<SectionKey>("basic-info");
 
-  async function loadApp() {
-    try {
-      setApp(await api.getApp(id!));
-    } catch {
-      navigate("/dashboard/apps");
-    }
-  }
+  // Convenience: invalidate app detail cache after mutations
+  const refreshApp = () => queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(id!) });
 
-  useEffect(() => {
-    loadApp();
-  }, [id]);
-
+  if (isError) { navigate("/dashboard/apps"); return null; }
   if (!app) return null;
 
   return (
@@ -150,16 +146,16 @@ export function AppDetailPage() {
 
         <div className="flex-1 min-w-0">
           {section === "basic-info" && (
-            <BasicInfoSection key={app.updated_at} app={app} onUpdate={loadApp} />
+            <BasicInfoSection key={app.updated_at} app={app} onUpdate={refreshApp} />
           )}
           {section === "install-app" && <InstallAppSection appId={id!} />}
-          {section === "distribution" && <DistributionSection app={app} onUpdate={loadApp} />}
+          {section === "distribution" && <DistributionSection app={app} onUpdate={refreshApp} />}
           {section === "event-subscriptions" && (
-            <EventSubscriptionsSection app={app} onUpdate={loadApp} />
+            <EventSubscriptionsSection app={app} onUpdate={refreshApp} />
           )}
-          {section === "commands" && <ToolsEditor app={app} onUpdate={loadApp} />}
+          {section === "commands" && <ToolsEditor app={app} onUpdate={refreshApp} />}
           {section === "oauth-permissions" && (
-            <OAuthPermissionsSection app={app} onUpdate={loadApp} />
+            <OAuthPermissionsSection app={app} onUpdate={refreshApp} />
           )}
         </div>
       </div>

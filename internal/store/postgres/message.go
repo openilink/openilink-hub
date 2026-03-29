@@ -132,7 +132,7 @@ func (db *DB) GetLatestContextToken(botID string) string {
 func (db *DB) HasFreshContextToken(botID string, maxAge time.Duration) bool {
 	var exists bool
 	db.QueryRow(
-		"SELECT EXISTS(SELECT 1 FROM messages WHERE bot_id = $1 AND context_token != '' AND created_at > $2 - $3 * INTERVAL '1 second')",
+		"SELECT EXISTS(SELECT 1 FROM messages WHERE bot_id = $1 AND context_token != '' AND created_at > $2::timestamptz - ($3 * INTERVAL '1 second'))",
 		botID, db.now(), int(maxAge.Seconds()),
 	).Scan(&exists)
 	return exists
@@ -185,7 +185,7 @@ func (db *DB) UpdateMediaPayloads(botID, eqp string, newPayload json.RawMessage)
 }
 
 func (db *DB) MarkProcessed(id int64) error {
-	_, err := db.Exec("UPDATE messages SET processed_at = $1 WHERE id = $2", db.now(), id)
+	_, err := db.Exec("UPDATE messages SET processed_at = $1::timestamptz WHERE id = $2", db.now(), id)
 	return err
 }
 
@@ -194,13 +194,13 @@ func (db *DB) GetUnprocessedMessages(botID string, limit int) ([]store.Message, 
 		limit = 100
 	}
 	return scanMessages(db,
-		"SELECT "+msgSelectCols+" FROM messages WHERE bot_id = $1 AND direction = 'inbound' AND processed_at IS NULL AND created_at > $2 - INTERVAL '1 day' ORDER BY id ASC LIMIT $3",
+		"SELECT "+msgSelectCols+" FROM messages WHERE bot_id = $1 AND direction = 'inbound' AND processed_at IS NULL AND created_at > ($2::timestamptz - INTERVAL '1 day') ORDER BY id ASC LIMIT $3",
 		botID, db.now(), limit,
 	)
 }
 
 func (db *DB) PruneMessages(maxAgeDays int) (int64, error) {
-	result, err := db.Exec("DELETE FROM messages WHERE created_at < $1 - INTERVAL '1 day' * $2", db.now(), maxAgeDays)
+	result, err := db.Exec("DELETE FROM messages WHERE created_at < $1::timestamptz - (INTERVAL '1 day' * $2)", db.now(), maxAgeDays)
 	if err != nil {
 		return 0, err
 	}

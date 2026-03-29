@@ -78,6 +78,6 @@ func (db *DB) ListWebhookLogs(botID, channelID string, limit int) ([]store.Webho
 }
 
 func (db *DB) CleanOldWebhookLogs(days int) error {
-	_, err := db.Exec("DELETE FROM webhook_logs WHERE created_at < $1 - INTERVAL '1 day' * $2", db.now(), days)
+	_, err := db.Exec("DELETE FROM webhook_logs WHERE created_at < $1::timestamptz - (INTERVAL '1 day' * $2)", db.now(), days)
 	return err
 }

@@ -34,7 +34,7 @@ type BotModelSyncer interface {
 type AI struct {
 	Store      store.Store
 	AppDisp    *appdelivery.Dispatcher
-	Storage    *storage.Storage
+	Storage    storage.Store
 	BotManager BotModelSyncer
 }
 

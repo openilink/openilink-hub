@@ -19,6 +19,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { api, botDisplayName } from "../lib/api";
+import { useBots, useDeleteBot, useReconnectBot } from "@/hooks/use-bots";
 import {
   Dialog,
   DialogContent,
@@ -47,26 +48,12 @@ const statusConfig: Record<
 };
 
 export function BotsPage() {
-  const [bots, setBots] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: bots = [], isLoading, isFetching, refetch } = useBots();
+  const loading = isLoading || isFetching;
   const [binding, setBinding] = useState(false);
   const [qrUrl, setQrUrl] = useState("");
   const [bindStatus, setBindStatus] = useState("");
   const navigate = useNavigate();
-
-  async function load() {
-    setLoading(true);
-    try {
-      const b = await api.listBots();
-      setBots(b || []);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   async function startBind() {
     setBinding(true);
@@ -116,7 +103,7 @@ export function BotsPage() {
           <p className="text-sm text-muted-foreground mt-0.5">管理你的微信账号。</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" onClick={load} disabled={loading}>
+          <Button variant="outline" onClick={() => refetch()} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} /> 刷新
           </Button>
           <Dialog
@@ -174,7 +161,6 @@ export function BotsPage() {
             <BotInstanceCard
               key={bot.id}
               bot={bot}
-              onRefresh={load}
               onRebind={() => setBinding(true)}
             />
           ))}
@@ -214,37 +200,36 @@ function QrCanvas({ url }: { url: string }) {
 
 function BotInstanceCard({
   bot,
-  onRefresh,
   onRebind,
 }: {
   bot: any;
-  onRefresh: () => void;
   onRebind: () => void;
 }) {
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+  const deleteMutation = useDeleteBot();
+  const reconnectMutation = useReconnectBot();
   const status = statusConfig[bot.status] || statusConfig.disconnected;
   const isOnline = bot.status === "connected";
 
   async function handleAction(action: string) {
-    try {
-      if (action === "delete") {
-        const ok = await confirm({
-          title: "删除确认",
-          description: "确定要删除此账号？相关转发规则将停止工作。",
-          confirmText: "删除",
-          variant: "destructive",
-        });
-        if (!ok) return;
-        await api.deleteBot(bot.id);
-        toast({ title: "已删除账号" });
-      } else if (action === "reconnect") {
-        await api.reconnectBot(bot.id);
-        toast({ title: "指令已发出", description: "正在尝试重新建立连接..." });
-      }
-      onRefresh();
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "操作失败", description: e.message });
+    if (action === "delete") {
+      const ok = await confirm({
+        title: "删除确认",
+        description: "确定要删除此账号？相关转发规则将停止工作。",
+        confirmText: "删除",
+        variant: "destructive",
+      });
+      if (!ok) return;
+      deleteMutation.mutate(bot.id, {
+        onSuccess: () => toast({ title: "已删除账号" }),
+        onError: (e) => toast({ variant: "destructive", title: "操作失败", description: e.message }),
+      });
+    } else if (action === "reconnect") {
+      reconnectMutation.mutate(bot.id, {
+        onSuccess: () => toast({ title: "指令已发出", description: "正在尝试重新建立连接..." }),
+        onError: (e) => toast({ variant: "destructive", title: "操作失败", description: e.message }),
+      });
     }
   }
 

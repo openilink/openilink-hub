@@ -1,5 +1,8 @@
 import { Outlet, useNavigate, Link, useLocation } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
+import { useUser } from "@/hooks/use-auth";
+import { useBots } from "@/hooks/use-bots";
+import { useAuthStore } from "@/stores/auth-store";
 import logoBlack from "@/assets/logo-black.svg";
 import logoWhite from "@/assets/logo-white.svg";
 import iconBlack from "@/assets/icon-black.svg";
@@ -20,6 +23,8 @@ import {
   Circle,
   House,
   Code2,
+  ShieldAlert,
+  X,
 } from "lucide-react";
 import { api, botDisplayName } from "../lib/api";
 import { useTheme } from "../lib/theme";
@@ -242,38 +247,39 @@ function LayoutHeader() {
   );
 }
 
+function SecurityBanner() {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div className="flex items-center gap-3 px-6 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-sm">
+      <ShieldAlert className="h-4 w-4 text-amber-500 shrink-0" />
+      <span className="text-amber-700 dark:text-amber-400">
+        您的账号尚未设置密码或绑定通行密钥，登出后可能无法再次登录。
+        <Link to="/dashboard/settings/security" className="underline font-medium ml-1 hover:no-underline">
+          前往设置
+        </Link>
+      </span>
+      <button onClick={() => setDismissed(true)} className="ml-auto text-amber-500/60 hover:text-amber-500">
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [user, setUser] = useState<any>(null);
-  const [bots, setBots] = useState<any[]>([]);
+  const { data: user, isError } = useUser();
+  const { data: bots = [] } = useBots();
   const [version, setVersion] = useState("");
 
   useEffect(() => {
-    api
-      .me()
-      .then(setUser)
-      .catch(() => navigate("/login", { replace: true }));
+    if (isError) navigate("/login", { replace: true });
+  }, [isError, navigate]);
+
+  useEffect(() => {
     api.info().then((data) => setVersion(data.version || "")).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (user)
-      api
-        .listBots()
-        .then((b) => setBots(b || []))
-        .catch(() => {});
-  }, [user]);
-
-  // Refresh bot list when navigating back to accounts area
-  useEffect(() => {
-    if (user && location.pathname.startsWith("/dashboard/accounts")) {
-      api
-        .listBots()
-        .then((b) => setBots(b || []))
-        .catch(() => {});
-    }
-  }, [location.pathname]);
 
   if (!user) return null;
 
@@ -489,7 +495,7 @@ export function Layout() {
                 >
                   <DropdownMenuItem
                     onClick={async () => {
-                      await api.logout();
+                      await useAuthStore.getState().logout();
                       navigate("/login");
                     }}
                     className="cursor-pointer font-medium text-destructive focus:bg-destructive/10 focus:text-destructive"
@@ -515,6 +521,10 @@ export function Layout() {
 
       <SidebarInset className="flex flex-col bg-background/50 rounded-tl-2xl overflow-hidden">
         <LayoutHeader />
+
+        {user && !user.has_password && !user.has_passkey && !user.has_oauth && (
+          <SecurityBanner />
+        )}
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
           <div className="h-full mx-auto w-full max-w-[1400px] p-6 lg:p-8 animate-in fade-in slide-in-from-bottom-2 duration-500">

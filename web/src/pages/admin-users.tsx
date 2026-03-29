@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Users, MoreVertical, Check, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,32 +15,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useAdminUsers, useUpdateUserStatus, useDeleteUser } from "@/hooks/use-admin";
 
 export function AdminUsersPage() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: users = [], isLoading: loading } = useAdminUsers();
+  const updateStatusMutation = useUpdateUserStatus();
+  const deleteUserMutation = useDeleteUser();
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
-  async function load() {
-    setLoading(true);
-    try {
-      setUsers((await api.listUsers()) || []);
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => {
-    load();
-  }, []);
-
   async function handleUpdateStatus(id: string, status: string) {
-    await api.updateUserStatus(id, status);
-    toast({ title: "状态已更新" });
-    load();
+    try {
+      await updateStatusMutation.mutateAsync({ id, status });
+      toast({ title: "状态已更新" });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "操作失败", description: e.message });
+    }
   }
 
   return (
@@ -74,7 +65,7 @@ export function AdminUsersPage() {
                     </TableCell>
                   </TableRow>
                 ))
-              : users.map((u) => (
+              : users.map((u: any) => (
                   <TableRow key={u.id} className="group">
                     <TableCell className="font-bold">{u.username}</TableCell>
                     <TableCell>
@@ -126,8 +117,12 @@ export function AdminUsersPage() {
                                 variant: "destructive",
                               });
                               if (ok) {
-                                await api.deleteUser(u.id);
-                                load();
+                                try {
+                                  await deleteUserMutation.mutateAsync(u.id);
+                                  toast({ title: "已删除用户" });
+                                } catch (e: any) {
+                                  toast({ variant: "destructive", title: "删除失败", description: e.message });
+                                }
                               }
                             }}
                           >
