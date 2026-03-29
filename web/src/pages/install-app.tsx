@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Eye, Zap, Loader2, ExternalLink, ShieldCheck, Terminal, Sliders } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -8,6 +8,8 @@ import { Card, CardContent } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { Label } from "../components/ui/label";
 import { api, botDisplayName } from "../lib/api";
+import { useApp } from "@/hooks/use-apps";
+import { useBots } from "@/hooks/use-bots";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
 import { SCOPE_DESCRIPTIONS, EVENT_TYPES } from "../lib/constants";
@@ -20,9 +22,11 @@ export function InstallAppPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [app, setApp] = useState<any>(null);
-  const [botName, setBotName] = useState("");
-  const [loading, setLoading] = useState(true);
+  const { data: app, isLoading: appLoading } = useApp(appId!);
+  const { data: allBots = [] } = useBots();
+  const bot = allBots.find((b: any) => b.id === botId);
+  const botName = bot ? botDisplayName(bot) : "";
+  const loading = appLoading;
   const [handle, setHandle] = useState(searchParams.get("handle") || "");
   const [configForm, setConfigForm] = useState<Record<string, string>>(() => {
     const prefill: Record<string, string> = {};
@@ -37,26 +41,6 @@ export function InstallAppPage() {
   const [waitingForOAuth, setWaitingForOAuth] = useState(false);
   const [oauthPopup, setOAuthPopup] = useState<Window | null>(null);
   const [tab, setTab] = useState<TabKey>("permissions");
-
-  const loadData = useCallback(async () => {
-    try {
-      const [appData, bots] = await Promise.all([
-        api.getApp(appId!),
-        api.listBots(),
-      ]);
-      setApp(appData);
-      const bot = (bots || []).find((b: any) => b.id === botId);
-      if (bot) setBotName(botDisplayName(bot));
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "加载失败", description: e.message });
-    } finally {
-      setLoading(false);
-    }
-  }, [botId, appId, toast]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   // Listen for OAuth completion from popup
   useEffect(() => {

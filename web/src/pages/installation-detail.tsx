@@ -49,6 +49,10 @@ import { Skeleton } from "../components/ui/skeleton";
 import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
 import { api, botDisplayName } from "../lib/api";
+import { useBotApps, useBots } from "@/hooks/use-bots";
+import { useApp } from "@/hooks/use-apps";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-keys";
 import { SCOPE_DESCRIPTIONS, EVENT_TYPES } from "../lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
@@ -94,39 +98,32 @@ export function InstallationDetailPage() {
   const { id: botId, iid } = useParams<{ id: string; iid: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [inst, setInst] = useState<any>(null);
-  const [app, setApp] = useState<any>(null);
-  const [botName, setBotName] = useState("");
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  // Server state
+  const { data: installations = [], isLoading: installationsLoading } = useBotApps(botId!);
+  const inst = installations.find((i: any) => i.id === iid) ?? null;
+  const { data: app } = useApp(inst?.app_id ?? "");
+  const { data: allBots = [] } = useBots();
+  const bot = allBots.find((b: any) => b.id === botId);
+  const botName = bot ? botDisplayName(bot) : "";
+  const loading = installationsLoading;
+
+  const refreshInstallations = () => queryClient.invalidateQueries({ queryKey: queryKeys.bots.apps(botId!) });
+
+  // Local UI state
   const [section, setSection] = useState<SectionKey>("token");
   const [handle, setHandle] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [enablingPending, setEnablingPending] = useState(false);
 
-  const loadData = useCallback(async () => {
-    try {
-      const installations = (await api.listBotApps(botId!)) || [];
-      const found = installations.find((i: any) => i.id === iid);
-      if (!found) throw new Error("未找到安装实例");
-      setInst(found);
-      setHandle(found.handle || "");
-      setEnabled(found.enabled ?? true);
-
-      const [appData, bots] = await Promise.all([api.getApp(found.app_id), api.listBots()]);
-      setApp(appData);
-      const bot = (bots || []).find((b: any) => b.id === botId);
-      if (bot) setBotName(botDisplayName(bot));
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "加载失败", description: e.message });
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botId, iid]);
-
+  // Sync local state when inst loads
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (inst) {
+      setHandle(inst.handle || "");
+      setEnabled(inst.enabled ?? true);
+    }
+  }, [inst?.id, inst?.handle, inst?.enabled]);
 
   if (loading) {
     return (
@@ -160,7 +157,7 @@ export function InstallationDetailPage() {
     try {
       await api.updateInstallation(inst.app_id, inst.id, { handle: trimmed });
       setHandle(trimmed);
-      setInst((prev: any) => ({ ...prev, handle: trimmed }));
+      refreshInstallations();
       toast({ title: "Handle 已保存" });
     } catch (e: any) {
       toast({ variant: "destructive", title: "保存失败", description: e.message });
@@ -173,7 +170,7 @@ export function InstallationDetailPage() {
     setEnabled(val);
     try {
       await api.updateInstallation(inst.app_id, inst.id, { enabled: val });
-      setInst((prev: any) => ({ ...prev, enabled: val }));
+      refreshInstallations();
     } catch (e: any) {
       setEnabled(!val);
       toast({ variant: "destructive", title: "保存失败", description: e.message });
@@ -311,7 +308,7 @@ export function InstallationDetailPage() {
               );
             })()}
           {section === "permissions" && <PermissionsSection app={app} inst={inst} />}
-          {section === "app-config" && <AppConfigForm app={app} inst={inst} onUpdate={loadData} />}
+          {section === "app-config" && <AppConfigForm app={app} inst={inst} onUpdate={refreshInstallations} />}
           {section === "config" && (
             <ConfigSection
               inst={inst}

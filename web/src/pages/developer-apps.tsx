@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Blocks, Loader2, Plus } from "lucide-react";
-import { api } from "@/lib/api";
+import { useApps, useCreateApp } from "@/hooks/use-apps";
 import {
   Dialog,
   DialogContent,
@@ -20,21 +20,10 @@ import { ListingBadge } from "@/components/listing-badge";
 export function DeveloperAppsPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [apps, setApps] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: apps = [], isLoading: loading } = useApps();
+  const createAppMutation = useCreateApp();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    api.listApps()
-      .then((list) => setApps(list || []))
-      .catch(() => {
-        toast({ variant: "destructive", title: "加载失败", description: "无法获取应用列表" });
-      })
-      .finally(() => setLoading(false));
-  }, []);
 
   function openDialog() {
     setNewName("");
@@ -46,24 +35,19 @@ export function DeveloperAppsPage() {
     if (!open) setNewName("");
   }
 
-  async function handleCreate() {
+  const creating = createAppMutation.isPending;
+
+  function handleCreate() {
     const name = newName.trim();
     if (!name) return;
-    setCreating(true);
-    try {
-      const app = await api.createApp({ name });
-      setDialogOpen(false);
-      setNewName("");
-      navigate(`/dashboard/apps/${app.id}`);
-    } catch (e: any) {
-      toast({
-        variant: "destructive",
-        title: "创建失败",
-        description: e.message,
-      });
-    } finally {
-      setCreating(false);
-    }
+    createAppMutation.mutate({ name }, {
+      onSuccess: (app: any) => {
+        setDialogOpen(false);
+        setNewName("");
+        navigate(`/dashboard/apps/${app.id}`);
+      },
+      onError: (e) => toast({ variant: "destructive", title: "创建失败", description: e.message }),
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
