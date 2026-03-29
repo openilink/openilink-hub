@@ -52,7 +52,7 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   // OAuth
-  const [oauthProviders, setOauthProviders] = useState<Array<{ name: string; display_name: string; type: string }>>([]);
+  const [oauthProviders, setOauthProviders] = useState<Array<{ name: string; display_name: string; type: string; key?: string }>>([]);
 
   // Registration enabled flag (from /api/info)
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
@@ -288,7 +288,7 @@ export function LoginPage() {
                       key={provider.name}
                       variant="outline"
                       className="w-full h-9 gap-2 font-medium text-sm"
-                      onClick={() => (window.location.href = `/api/auth/oauth/${provider.name}`)}
+                      onClick={() => (window.location.href = provider.type === "oidc" ? `/api/auth/oidc/${provider.name}` : `/api/auth/oauth/${provider.name}`)}
                     >
                       <config.icon className="h-4 w-4" />
                       使用 {config.label} 登录

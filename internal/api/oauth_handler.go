@@ -136,7 +136,8 @@ func (s *Server) handleOAuthProviders(w http.ResponseWriter, r *http.Request) {
 	type providerInfo struct {
 		Name        string `json:"name"`
 		DisplayName string `json:"display_name"`
-		Type        string `json:"type"` // "oauth" or "oidc"
+		Type        string `json:"type"`         // "oauth" or "oidc"
+		Key         string `json:"key,omitempty"` // internal key for account matching (omitted when same as name)
 	}
 
 	var list []providerInfo
@@ -152,9 +153,10 @@ func (s *Server) handleOAuthProviders(w http.ResponseWriter, r *http.Request) {
 	// Custom OIDC providers
 	for slug, cfg := range s.oidcProviders() {
 		list = append(list, providerInfo{
-			Name:        "oidc_" + slug,
+			Name:        slug,
 			DisplayName: cfg.DisplayName,
 			Type:        "oidc",
+			Key:         oidcProviderKey(slug),
 		})
 	}
 
@@ -170,10 +172,6 @@ func (s *Server) handleOAuthRedirect(w http.ResponseWriter, r *http.Request) {
 	providers := s.oauthProviders()
 	p, ok := providers[name]
 	if !ok {
-		if strings.HasPrefix(name, "oidc_") {
-			s.handleOIDCRedirect(w, r, strings.TrimPrefix(name, "oidc_"), "")
-			return
-		}
 		jsonError(w, "unknown provider", http.StatusBadRequest)
 		return
 	}
@@ -199,10 +197,6 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	providers := s.oauthProviders()
 	p, ok := providers[name]
 	if !ok {
-		if strings.HasPrefix(name, "oidc_") {
-			s.handleOIDCCallback(w, r, name, strings.TrimPrefix(name, "oidc_"))
-			return
-		}
 		jsonError(w, "unknown provider", http.StatusBadRequest)
 		return
 	}
@@ -303,10 +297,6 @@ func (s *Server) handleOAuthBind(w http.ResponseWriter, r *http.Request) {
 	providers := s.oauthProviders()
 	p, ok := providers[name]
 	if !ok {
-		if strings.HasPrefix(name, "oidc_") {
-			s.handleOIDCRedirect(w, r, strings.TrimPrefix(name, "oidc_"), userID)
-			return
-		}
 		jsonError(w, "unknown provider", http.StatusBadRequest)
 		return
 	}
@@ -401,7 +391,7 @@ func (s *Server) findOrCreateOAuthUser(provider, providerID, username, email, av
 	// OIDC providers are not trusted for email auto-linking because the email
 	// claim may be unverified, enabling account takeover.
 	var user *store.User
-	if email != "" && !strings.HasPrefix(provider, "oidc_") {
+	if email != "" && !strings.HasPrefix(provider, "oidc:") {
 		user, err = s.Store.GetUserByEmail(email)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, err

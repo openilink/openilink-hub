@@ -62,6 +62,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/auth/oauth/{provider}", s.handleOAuthRedirect)
 	mux.HandleFunc("GET /api/auth/oauth/{provider}/callback", s.handleOAuthCallback)
 
+	// --- OIDC (independent routes for custom identity providers) ---
+	mux.HandleFunc("GET /api/auth/oidc/{slug}", s.handleOIDCLogin)
+	mux.HandleFunc("GET /api/auth/oidc/{slug}/callback", s.handleOIDCCallback)
+
 	// --- iLink scan login: scan QR to register + login + bind bot ---
 	mux.HandleFunc("POST /api/auth/scan/start", s.handleScanLoginStart)
 	mux.HandleFunc("GET /api/auth/scan/status/{sessionID}", s.handleScanLoginStatus)
@@ -115,6 +119,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /api/me/linked-accounts", s.handleOAuthAccounts)
 	protected.HandleFunc("GET /api/me/linked-accounts/{provider}/bind", s.handleOAuthBind)
 	protected.HandleFunc("DELETE /api/me/linked-accounts/{provider}", s.handleOAuthUnbind)
+	protected.HandleFunc("GET /api/me/oidc/{slug}/bind", s.handleOIDCBind)
 
 	// Bots
 	protected.HandleFunc("GET /api/bots", s.handleListBots)

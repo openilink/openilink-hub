@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/openilink/openilink-hub/internal/auth"
 	"golang.org/x/oauth2"
 )
 
@@ -180,9 +181,32 @@ func (s *Server) oidcExchangeAndIdentify(ctx context.Context, cfg *OIDCProviderC
 	return "", "", "", "", fmt.Errorf("no id_token or userinfo_endpoint available")
 }
 
-// --- OIDC redirect / callback helpers (called from oauth_handler.go) ---
+// --- OIDC redirect / callback handlers (independent routes) ---
 
-func (s *Server) handleOIDCRedirect(w http.ResponseWriter, r *http.Request, slug, bindUID string) {
+// oidcRedirectURI builds the callback URL for the given slug.
+func (s *Server) oidcRedirectURI(slug string) string {
+	return s.Config.RPOrigin + "/api/auth/oidc/" + slug + "/callback"
+}
+
+// oidcProviderKey returns the internal provider key for storing in oauth_accounts.
+func oidcProviderKey(slug string) string {
+	return "oidc:" + slug
+}
+
+// GET /api/auth/oidc/{slug} — redirect to OIDC provider (login flow)
+func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	s.oidcRedirectToProvider(w, r, slug, "")
+}
+
+// GET /api/me/oidc/{slug}/bind — redirect to OIDC provider (bind flow, protected)
+func (s *Server) handleOIDCBind(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	userID := auth.UserIDFromContext(r.Context())
+	s.oidcRedirectToProvider(w, r, slug, userID)
+}
+
+func (s *Server) oidcRedirectToProvider(w http.ResponseWriter, r *http.Request, slug, bindUID string) {
 	providers := s.oidcProviders()
 	cfg, ok := providers[slug]
 	if !ok {
@@ -191,11 +215,10 @@ func (s *Server) handleOIDCRedirect(w http.ResponseWriter, r *http.Request, slug
 	}
 
 	state := s.OAuthStates.Generate(bindUID)
-	providerName := "oidc_" + slug
 
 	params := url.Values{
 		"client_id":     {cfg.ClientID},
-		"redirect_uri":  {s.Config.RPOrigin + "/api/auth/oauth/" + providerName + "/callback"},
+		"redirect_uri":  {s.oidcRedirectURI(slug)},
 		"state":         {state},
 		"response_type": {"code"},
 	}
@@ -219,7 +242,9 @@ func (s *Server) handleOIDCRedirect(w http.ResponseWriter, r *http.Request, slug
 	http.Redirect(w, r, cfg.AuthURL+"?"+params.Encode(), http.StatusFound)
 }
 
-func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request, providerName, slug string) {
+// GET /api/auth/oidc/{slug}/callback — handle OIDC callback
+func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
 	providers := s.oidcProviders()
 	cfg, ok := providers[slug]
 	if !ok {
@@ -237,7 +262,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request, prov
 	// Handle provider-returned OAuth errors (e.g. access_denied)
 	if oauthErr := r.URL.Query().Get("error"); oauthErr != "" {
 		desc := r.URL.Query().Get("error_description")
-		slog.Warn("oidc provider returned error", "provider", providerName, "error", oauthErr, "description", desc)
+		slog.Warn("oidc provider returned error", "slug", slug, "error", oauthErr, "description", desc)
 		http.Redirect(w, r, "/login?error=oauth_"+oauthErr, http.StatusFound)
 		return
 	}
@@ -248,17 +273,18 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request, prov
 		return
 	}
 
-	redirectURI := s.Config.RPOrigin + "/api/auth/oauth/" + providerName + "/callback"
+	providerKey := oidcProviderKey(slug)
+	redirectURI := s.oidcRedirectURI(slug)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	providerID, username, email, avatarURL, err := s.oidcExchangeAndIdentify(ctx, cfg, redirectURI, code)
 	if err != nil {
-		slog.Error("oidc exchange failed", "provider", providerName, "err", err)
+		slog.Error("oidc exchange failed", "slug", slug, "err", err)
 		jsonError(w, "OIDC login failed", http.StatusBadGateway)
 		return
 	}
 
-	s.completeOAuthFlow(w, r, entry, providerName, providerID, username, email, avatarURL)
+	s.completeOAuthFlow(w, r, entry, providerKey, providerID, username, email, avatarURL)
 }
 
 // --- Admin CRUD handlers ---

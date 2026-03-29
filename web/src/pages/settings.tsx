@@ -42,7 +42,7 @@ export function SettingsPage() {
   const location = useLocation();
   const [user, setUser] = useState<any>(null);
   const [oauthAccounts, setOauthAccounts] = useState<any[]>([]);
-  const [oauthProviders, setOauthProviders] = useState<Array<{ name: string; display_name: string; type: string }>>([]);
+  const [oauthProviders, setOauthProviders] = useState<Array<{ name: string; display_name: string; type: string; key?: string }>>([]);
   const [loading, setLoading] = useState(true);
   const { theme, setTheme } = useTheme();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -154,7 +154,8 @@ export function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {oauthProviders.map((provider) => {
-                  const account = oauthAccounts.find((a) => a.provider === provider.name);
+                  const providerKey = provider.key || provider.name;
+                  const account = oauthAccounts.find((a) => a.provider === providerKey);
                   const linked = !!account;
                   const Icon = providerLabels[provider.name]?.icon || ShieldCheck;
                   const label = providerLabels[provider.name]?.label || provider.display_name || provider.name;
@@ -191,7 +192,7 @@ export function SettingsPage() {
                             });
                             if (!ok) return;
                             try {
-                              await api.unlinkOAuth(provider.name);
+                              await api.unlinkOAuth(providerKey);
                               load();
                             } catch (e: any) {
                               setOauthMsg(e.message);
@@ -205,7 +206,7 @@ export function SettingsPage() {
                           variant="outline"
                           size="sm"
                           onClick={() =>
-                            (window.location.href = `/api/me/linked-accounts/${provider.name}/bind`)
+                            (window.location.href = provider.type === "oidc" ? `/api/me/oidc/${provider.name}/bind` : `/api/me/linked-accounts/${provider.name}/bind`)
                           }
                         >
                           <Link2 className="h-3.5 w-3.5 mr-2" /> 绑定

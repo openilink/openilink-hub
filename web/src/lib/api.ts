@@ -55,7 +55,7 @@ export const api = {
     request<{ providers: any[] }>("/api/auth/oauth/providers").then((data) => ({
       providers: (data.providers || []).map((p: any) =>
         typeof p === "string" ? { name: p, display_name: p, type: "oauth" } : p
-      ) as Array<{ name: string; display_name: string; type: string }>,
+      ) as Array<{ name: string; display_name: string; type: string; key?: string }>,
     })),
   me: () =>
     request<{ id: string; username: string; display_name: string; role: string }>("/api/me"),
