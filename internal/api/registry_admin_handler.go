@@ -40,9 +40,14 @@ func (s *Server) handleCreateRegistry(w http.ResponseWriter, r *http.Request) {
 
 	// Normalize URL: strip the well-known registry path suffix if the user
 	// pasted the full manifest URL instead of the base URL.
-	u := strings.TrimRight(req.URL, "/")
+	u := strings.TrimSpace(req.URL)
+	u = strings.TrimRight(u, "/")
 	u = strings.TrimSuffix(u, "/api/registry/v1/apps.json")
 	u = strings.TrimRight(u, "/")
+	if u == "" || (!strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://")) {
+		jsonError(w, "invalid url: must start with http:// or https://", http.StatusBadRequest)
+		return
+	}
 
 	reg := &store.Registry{
 		Name:    req.Name,

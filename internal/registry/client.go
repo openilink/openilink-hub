@@ -136,6 +136,12 @@ func (c *Client) fetchSource(src *Source) ([]App, error) {
 
 	base := strings.TrimRight(src.URL, "/")
 	base = strings.TrimSuffix(base, "/api/registry/v1/apps.json")
+	if base == "" || (!strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://")) {
+		if src.cache != nil {
+			return src.cache.Apps, nil
+		}
+		return nil, fmt.Errorf("invalid registry base url: %q", src.URL)
+	}
 	url := base + "/api/registry/v1/apps.json"
 	resp, err := c.client.Get(url)
 	if err != nil {
