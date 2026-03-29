@@ -87,10 +87,10 @@ func (s *Server) mcpAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		slog.Info("mcp: request", "method", r.Method, "inst", inst.ID, "bot", inst.BotID, "duration_ms", time.Since(start).Milliseconds())
-
 		ctx := context.WithValue(r.Context(), installationKey, inst)
 		next.ServeHTTP(w, r.WithContext(ctx))
+
+		slog.Info("mcp: request", "method", r.Method, "inst", inst.ID, "bot", inst.BotID, "duration_ms", time.Since(start).Milliseconds())
 	})
 }
 
