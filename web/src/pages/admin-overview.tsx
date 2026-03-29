@@ -433,14 +433,10 @@ function RegistryConfigCard() {
                   <p className="text-xs text-muted-foreground font-mono truncate">{reg.url}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    variant={reg.enabled ? "default" : "outline"}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => handleToggleRegistry(reg)}
-                  >
-                    {reg.enabled ? "已开启" : "已关闭"}
-                  </Button>
+                  <Switch
+                    checked={reg.enabled}
+                    onCheckedChange={() => handleToggleRegistry(reg)}
+                  />
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
