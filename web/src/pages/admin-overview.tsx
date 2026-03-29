@@ -721,7 +721,7 @@ function OIDCConfigCard() {
             onClick={handleSave}
             disabled={saving || !slug.trim() || !issuerUrl.trim() || !clientId.trim()}
           >
-            {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
+            {saving ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : isEditing ? <Check className="w-3.5 h-3.5 mr-1" /> : <Plus className="w-3.5 h-3.5 mr-1" />}
             {isEditing ? "保存" : "添加"}
           </Button>
         </div>
