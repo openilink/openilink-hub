@@ -47,6 +47,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -496,9 +498,12 @@ export function Layout() {
                     退出登录
                   </DropdownMenuItem>
                   {version && (
-                    <div className="px-2 py-1.5 text-[10px] text-muted-foreground text-center border-t mt-1 pt-1.5">
-                      v{version.replace(/^v/, "")}
-                    </div>
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-[10px] text-muted-foreground text-center font-normal">
+                        {/^\d/.test(version) ? `v${version}` : version}
+                      </DropdownMenuLabel>
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
