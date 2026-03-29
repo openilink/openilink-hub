@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -136,7 +137,8 @@ func (c *Client) fetchSource(src *Source) ([]App, error) {
 
 	base := strings.TrimRight(src.URL, "/")
 	base = strings.TrimSuffix(base, "/api/registry/v1/apps.json")
-	if base == "" || (!strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://")) {
+	parsed, parseErr := url.Parse(base)
+	if base == "" || parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		if src.cache != nil {
 			return src.cache.Apps, nil
 		}

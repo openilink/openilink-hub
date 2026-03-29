@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/openilink/openilink-hub/internal/store"
@@ -44,8 +45,9 @@ func (s *Server) handleCreateRegistry(w http.ResponseWriter, r *http.Request) {
 	u = strings.TrimRight(u, "/")
 	u = strings.TrimSuffix(u, "/api/registry/v1/apps.json")
 	u = strings.TrimRight(u, "/")
-	if u == "" || (!strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://")) {
-		jsonError(w, "invalid url: must start with http:// or https://", http.StatusBadRequest)
+	parsed, err := url.Parse(u)
+	if u == "" || err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		jsonError(w, "invalid url: must be an absolute http(s) URL", http.StatusBadRequest)
 		return
 	}
 
