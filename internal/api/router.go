@@ -188,6 +188,13 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("GET /api/apps/{id}/oauth/setup", s.handleAppOAuthSetupRedirect)
 	protected.HandleFunc("GET /api/apps/{id}/oauth/authorize", s.handleAppOAuthAuthorize)
 
+	// --- Broadcast Tokens ---
+	protected.HandleFunc("GET /api/broadcast-tokens", s.handleListBroadcastTokens)
+	protected.HandleFunc("POST /api/broadcast-tokens", s.handleCreateBroadcastToken)
+	protected.HandleFunc("PUT /api/broadcast-tokens/{id}", s.handleUpdateBroadcastToken)
+	protected.HandleFunc("DELETE /api/broadcast-tokens/{id}", s.handleDeleteBroadcastToken)
+	protected.HandleFunc("POST /api/broadcast-tokens/{id}/regenerate", s.handleRegenerateBroadcastToken)
+
 	// --- Marketplace ---
 	protected.HandleFunc("GET /api/marketplace", s.handleMarketplace)
 	protected.HandleFunc("GET /api/marketplace/builtin", s.handleBuiltinApps)
