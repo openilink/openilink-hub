@@ -6,6 +6,7 @@ import (
 
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
+	"github.com/openilink/openilink-hub/internal/provider"
 )
 
 // GET /api/v1/channels/media?bot=xxx&eqp=xxx&aes=xxx
@@ -61,7 +62,10 @@ func (s *Server) handleChannelMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveChannelMedia(w http.ResponseWriter, r *http.Request, inst *bot.Instance, eqp, aes string) {
-	data, err := inst.Provider.DownloadMedia(r.Context(), eqp, aes)
+	data, err := inst.Provider.DownloadMedia(r.Context(), &provider.Media{
+		EncryptQueryParam: eqp,
+		AESKey:            aes,
+	})
 	if err != nil {
 		http.Error(w, "download failed", http.StatusBadGateway)
 		return

@@ -129,13 +129,19 @@ func (p *Provider) GetConfig(ctx context.Context, recipient, contextToken string
 }
 
 // DownloadMedia retrieves and decrypts a media file.
-func (p *Provider) DownloadMedia(ctx context.Context, eqp, aesKey string) ([]byte, error) {
-	return p.engine.DownloadFile(eqp, aesKey)
+func (p *Provider) DownloadMedia(ctx context.Context, media *provider.Media) ([]byte, error) {
+	if media == nil {
+		return nil, fmt.Errorf("media is nil")
+	}
+	return p.engine.DownloadFile(media.EncryptQueryParam, media.AESKey)
 }
 
 // DownloadVoice retrieves and decrypts a voice file.
-func (p *Provider) DownloadVoice(ctx context.Context, eqp, aesKey string, sampleRate int) ([]byte, error) {
-	return p.engine.DownloadVoice(eqp, aesKey, sampleRate)
+func (p *Provider) DownloadVoice(ctx context.Context, media *provider.Media, sampleRate int) ([]byte, error) {
+	if media == nil {
+		return nil, fmt.Errorf("media is nil")
+	}
+	return p.engine.DownloadVoice(media.EncryptQueryParam, media.AESKey, sampleRate)
 }
 
 // StartBind implements provider.Binder.

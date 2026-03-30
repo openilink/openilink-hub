@@ -191,7 +191,7 @@ func (s *AI) reply(d Delivery) {
 				text = item.Text
 			}
 			if item.Type == "image" && item.Media != nil && item.Media.EncryptQueryParam != "" {
-				data, err := d.Provider.DownloadMedia(ctx, item.Media.EncryptQueryParam, item.Media.AESKey)
+				data, err := d.Provider.DownloadMedia(ctx, item.Media)
 				if err != nil {
 					slog.Warn("ai: download image failed", "bot", d.BotDBID, "err", err)
 					continue

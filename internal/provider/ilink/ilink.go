@@ -212,21 +212,26 @@ func (p *Provider) GetConfig(ctx context.Context, recipient, contextToken string
 	}, nil
 }
 
-func (p *Provider) DownloadMedia(ctx context.Context, encryptQueryParam, aesKey string) ([]byte, error) {
-	return p.client.DownloadMedia(ctx, &ilink.CDNMedia{
-		EncryptQueryParam: encryptQueryParam,
-		AESKey:            aesKey,
+func (p *Provider) DownloadMedia(ctx context.Context, media *provider.Media) ([]byte, error) {
+	return p.client.DownloadMedia(ctx, toCDNMedia(media))
+}
+
+func (p *Provider) DownloadVoice(ctx context.Context, media *provider.Media, sampleRate int) ([]byte, error) {
+	return p.client.DownloadVoice(ctx, &ilink.VoiceItem{
+		Media:      toCDNMedia(media),
+		SampleRate: sampleRate,
 	})
 }
 
-func (p *Provider) DownloadVoice(ctx context.Context, encryptQueryParam, aesKey string, sampleRate int) ([]byte, error) {
-	return p.client.DownloadVoice(ctx, &ilink.VoiceItem{
-		Media: &ilink.CDNMedia{
-			EncryptQueryParam: encryptQueryParam,
-			AESKey:            aesKey,
-		},
-		SampleRate: sampleRate,
-	})
+func toCDNMedia(m *provider.Media) *ilink.CDNMedia {
+	if m == nil {
+		return nil
+	}
+	return &ilink.CDNMedia{
+		EncryptQueryParam: m.EncryptQueryParam,
+		AESKey:            m.AESKey,
+		FullURL:           m.URL,
+	}
 }
 
 func decodeSILK(data []byte, sampleRate int) ([]byte, error) {

@@ -57,11 +57,11 @@ func (p *mockProvider) GetConfig(context.Context, string, string) (*provider.Bot
 	return &provider.BotConfig{}, nil
 }
 
-func (p *mockProvider) DownloadMedia(context.Context, string, string) ([]byte, error) {
+func (p *mockProvider) DownloadMedia(context.Context, *provider.Media) ([]byte, error) {
 	return nil, nil
 }
 
-func (p *mockProvider) DownloadVoice(context.Context, string, string, int) ([]byte, error) {
+func (p *mockProvider) DownloadVoice(context.Context, *provider.Media, int) ([]byte, error) {
 	return nil, nil
 }
 
