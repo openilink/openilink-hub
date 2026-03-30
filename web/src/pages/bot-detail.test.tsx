@@ -119,7 +119,6 @@ describe("BotDetailPage", () => {
 
     await act(async () => {
       deleteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
     });
   }
 
@@ -127,10 +126,12 @@ describe("BotDetailPage", () => {
     await renderPage();
     await clickDeleteButton();
 
-    expect(confirmMock).toHaveBeenCalledTimes(1);
-    expect(deleteBotMock).toHaveBeenCalledWith("bot-1");
-    expect(navigateMock).toHaveBeenCalledWith("/dashboard/accounts");
-    expect(toastMock).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledTimes(1);
+      expect(deleteBotMock).toHaveBeenCalledWith("bot-1");
+      expect(navigateMock).toHaveBeenCalledWith("/dashboard/accounts");
+      expect(toastMock).toHaveBeenCalled();
+    });
   });
 
   it("does not delete when confirmation is cancelled", async () => {
@@ -139,7 +140,9 @@ describe("BotDetailPage", () => {
     await renderPage();
     await clickDeleteButton();
 
-    expect(confirmMock).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledTimes(1);
+    });
     expect(deleteBotMock).not.toHaveBeenCalled();
     expect(navigateMock).not.toHaveBeenCalled();
   });
@@ -150,15 +153,17 @@ describe("BotDetailPage", () => {
     await renderPage();
     await clickDeleteButton();
 
-    expect(confirmMock).toHaveBeenCalledTimes(1);
-    expect(deleteBotMock).toHaveBeenCalledWith("bot-1");
+    await vi.waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledTimes(1);
+      expect(deleteBotMock).toHaveBeenCalledWith("bot-1");
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: "destructive",
+          title: "删除失败",
+          description: "delete failed",
+        }),
+      );
+    });
     expect(navigateMock).not.toHaveBeenCalled();
-    expect(toastMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        variant: "destructive",
-        title: "删除失败",
-        description: "delete failed",
-      }),
-    );
   });
 });
