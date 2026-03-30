@@ -46,7 +46,11 @@ func (s *Server) handleCreateBroadcastToken(w http.ResponseWriter, r *http.Reque
 	// Deduplicate and validate bot_ids belong to user
 	req.BotIDs = dedupStrings(req.BotIDs)
 	if err := s.validateBotOwnership(userID, req.BotIDs); err != nil {
-		jsonError(w, err.Error(), http.StatusBadRequest)
+		if _, ok := err.(*botOwnershipError); ok {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+		} else {
+			jsonError(w, "failed to validate bots", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -95,7 +99,11 @@ func (s *Server) handleUpdateBroadcastToken(w http.ResponseWriter, r *http.Reque
 	// Deduplicate and validate bot_ids belong to user
 	req.BotIDs = dedupStrings(req.BotIDs)
 	if err := s.validateBotOwnership(userID, req.BotIDs); err != nil {
-		jsonError(w, err.Error(), http.StatusBadRequest)
+		if _, ok := err.(*botOwnershipError); ok {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+		} else {
+			jsonError(w, "failed to validate bots", http.StatusInternalServerError)
+		}
 		return
 	}
 
