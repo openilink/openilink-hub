@@ -11,21 +11,6 @@ import (
 	"github.com/openilink/openilink-hub/internal/push"
 )
 
-// pushUpgrader validates the Origin header to prevent cross-site WebSocket hijacking.
-var pushUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true // non-browser clients
-		}
-		u, err := url.Parse(origin)
-		if err != nil {
-			return false
-		}
-		return strings.EqualFold(u.Host, r.Host)
-	},
-}
-
 func (s *Server) handlePushWebSocket(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 	if userID == "" {
@@ -33,7 +18,27 @@ func (s *Server) handlePushWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws, err := pushUpgrader.Upgrade(w, r, nil)
+	// Validate Origin header against the configured RPOrigin to prevent CSWSH.
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // non-browser clients
+			}
+			u, err := url.Parse(origin)
+			if err != nil {
+				return false
+			}
+			expected, err := url.Parse(s.Config.RPOrigin)
+			if err != nil {
+				return false
+			}
+			return strings.EqualFold(u.Scheme, expected.Scheme) &&
+				strings.EqualFold(u.Host, expected.Host)
+		},
+	}
+
+	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("push ws upgrade failed", "err", err)
 		return
