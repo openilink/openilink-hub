@@ -29,13 +29,15 @@ class PushClient {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${location.host}/api/ws`;
     const ws = new WebSocket(url);
+    let opened = false;
 
     ws.onopen = () => {
+      opened = true;
       this.reconnectDelay = 1000;
       // Re-subscribe to all active subscriptions.
       const botIDs = [...this.subs.keys()];
       if (botIDs.length > 0) {
-        ws.send(JSON.stringify({ type: "subscribe", data: { bot_ids: botIDs } }));
+        this.trySend({ type: "subscribe", data: { bot_ids: botIDs } });
       }
     };
 
@@ -48,7 +50,8 @@ class PushClient {
 
     ws.onclose = () => {
       this.ws = null;
-      if (!this.closed) this.scheduleReconnect();
+      // Don't reconnect if the connection never opened (e.g. 401 on upgrade).
+      if (!this.closed && opened) this.scheduleReconnect();
     };
 
     ws.onerror = () => {
@@ -70,21 +73,25 @@ class PushClient {
   subscribe(botID: string) {
     const prev = this.subs.get(botID) ?? 0;
     this.subs.set(botID, prev + 1);
-    if (prev === 0 && this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: "subscribe", data: { bot_ids: [botID] } }));
-    }
+    if (prev === 0) this.trySend({ type: "subscribe", data: { bot_ids: [botID] } });
   }
 
   unsubscribe(botID: string) {
     const cur = (this.subs.get(botID) ?? 0) - 1;
     if (cur <= 0) {
       this.subs.delete(botID);
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: "unsubscribe", data: { bot_ids: [botID] } }));
-      }
+      this.trySend({ type: "unsubscribe", data: { bot_ids: [botID] } });
     } else {
       this.subs.set(botID, cur);
     }
+  }
+
+  private trySend(msg: unknown) {
+    try {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify(msg));
+      }
+    } catch { /* socket closed between check and send */ }
   }
 
   addListener(fn: Listener) { this.listeners.add(fn); }
@@ -120,6 +127,8 @@ export function PushProvider({ children }: { children: ReactNode }) {
           break;
         case EventMessageNew:
           qc.invalidateQueries({ queryKey: ["bots", botID, "messages"] });
+          // Webhook logs are also generated during message processing.
+          qc.invalidateQueries({ queryKey: ["bots", botID, "webhook-logs"] });
           break;
         case EventWebhookLog:
           qc.invalidateQueries({ queryKey: ["bots", botID, "webhook-logs"] });
