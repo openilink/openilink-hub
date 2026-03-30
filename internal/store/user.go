@@ -1,5 +1,10 @@
 package store
 
+import (
+	"fmt"
+	"regexp"
+)
+
 const (
 	RoleSuperAdmin = "superadmin"
 	RoleAdmin      = "admin"
@@ -12,6 +17,32 @@ const (
 // IsAdmin returns true if the user has admin or superadmin role.
 func IsAdmin(role string) bool {
 	return role == RoleSuperAdmin || role == RoleAdmin
+}
+
+var usernameRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*[a-z0-9]$`)
+
+var reservedUsernames = map[string]bool{
+	"admin": true, "administrator": true, "superadmin": true,
+	"root": true, "system": true, "api": true, "support": true,
+}
+
+// ValidateUsername checks that a username meets format requirements.
+func ValidateUsername(username string) error {
+	n := len(username)
+	if n < 2 || n > 32 {
+		return fmt.Errorf("用户名长度需要 2-32 个字符")
+	}
+	if n == 1 {
+		if !regexp.MustCompile(`^[a-z0-9]$`).MatchString(username) {
+			return fmt.Errorf("用户名只能包含小写字母、数字、下划线和连字符")
+		}
+	} else if !usernameRegexp.MatchString(username) {
+		return fmt.Errorf("用户名只能包含小写字母、数字、下划线和连字符，且不能以 _ 或 - 开头结尾")
+	}
+	if reservedUsernames[username] {
+		return fmt.Errorf("该用户名为系统保留名称")
+	}
+	return nil
 }
 
 type User struct {
@@ -38,5 +69,6 @@ type UserStore interface {
 	UpdateUserPassword(id, passwordHash string) error
 	UpdateUserRole(id, role string) error
 	UpdateUserStatus(id, status string) error
+	UpdateUserUsername(id, username string) error
 	DeleteUser(id string) error
 }

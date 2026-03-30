@@ -104,6 +104,7 @@ func (s *Server) Handler() http.Handler {
 	// Profile
 	protected.HandleFunc("GET /api/me", s.handleMe)
 	protected.HandleFunc("PUT /api/me/profile", s.handleUpdateProfile)
+	protected.HandleFunc("PUT /api/me/username", s.handleUpdateUsername)
 	protected.HandleFunc("PUT /api/me/password", s.handleChangePassword)
 
 	// My plugins

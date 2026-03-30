@@ -25,8 +25,8 @@ func (s *Server) handlePasswordRegister(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, "username and password required", http.StatusBadRequest)
 		return
 	}
-	if len(req.Username) < 2 || len(req.Username) > 32 {
-		jsonError(w, "username must be 2-32 characters", http.StatusBadRequest)
+	if err := store.ValidateUsername(req.Username); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if len(req.Password) < 8 {

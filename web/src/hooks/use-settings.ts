@@ -61,6 +61,14 @@ export function useChangePassword() {
   });
 }
 
+export function useUpdateUsername() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (username: string) => api.updateUsername(username),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.user() }),
+  });
+}
+
 export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({

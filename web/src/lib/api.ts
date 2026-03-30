@@ -81,6 +81,8 @@ export const api = {
   // Profile
   updateProfile: (data: { display_name?: string; email?: string }) =>
     request("/api/me/profile", { method: "PUT", body: JSON.stringify(data) }),
+  updateUsername: (username: string) =>
+    request("/api/me/username", { method: "PUT", body: JSON.stringify({ username }) }),
   changePassword: (data: { old_password: string; new_password: string }) =>
     request("/api/me/password", { method: "PUT", body: JSON.stringify(data) }),
 

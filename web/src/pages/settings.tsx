@@ -26,7 +26,7 @@ import { useTheme, type Theme } from "../lib/theme";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "../components/ui/badge";
 import { useUser } from "@/hooks/use-auth";
-import { useOAuthAccounts, useOAuthProviders, usePasskeys, useDeletePasskey, useRenamePasskey, useUnlinkOAuth } from "@/hooks/use-settings";
+import { useOAuthAccounts, useOAuthProviders, usePasskeys, useDeletePasskey, useRenamePasskey, useUnlinkOAuth, useUpdateUsername } from "@/hooks/use-settings";
 
 const THEME_OPTIONS = [
   { value: "light", label: "浅色", icon: Sun },
@@ -111,10 +111,7 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">用户名</label>
-                  <Input value={user?.username} disabled className="bg-muted/30 font-mono" />
-                </div>
+                <UsernameEditor username={user?.username} />
                 <div className="space-y-2">
                   <label className="text-sm font-medium">角色</label>
                   <div className="pt-2">
@@ -236,7 +233,69 @@ export function SettingsPage() {
   );
 }
 
-// ... keep ChangePasswordSection and PasskeySection same ...
+const usernameRegex = /^[a-z0-9][a-z0-9_-]*[a-z0-9]$/;
+
+function UsernameEditor({ username }: { username?: string }) {
+  const [value, setValue] = useState(username || "");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const updateUsername = useUpdateUsername();
+
+  useEffect(() => {
+    if (username) setValue(username);
+  }, [username]);
+
+  const changed = value !== username;
+
+  function validate(v: string): string | null {
+    if (v.length < 2 || v.length > 32) return "用户名长度需要 2-32 个字符";
+    if (v.length === 1 ? !/^[a-z0-9]$/.test(v) : !usernameRegex.test(v))
+      return "只能包含小写字母、数字、下划线和连字符，且不能以 _ 或 - 开头结尾";
+    return null;
+  }
+
+  async function handleSave() {
+    setError("");
+    setSuccess("");
+    const err = validate(value);
+    if (err) return setError(err);
+    updateUsername.mutate(value, {
+      onSuccess: () => setSuccess("用户名已更新。如使用密码登录，请使用新用户名。"),
+      onError: (e: any) => setError(e.message || "修改失败"),
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium">用户名</label>
+      <div className="flex gap-2">
+        <Input
+          value={value}
+          onChange={(e) => { setValue(e.target.value.toLowerCase()); setError(""); setSuccess(""); }}
+          className="font-mono"
+          maxLength={32}
+          placeholder="your-username"
+        />
+        {changed && (
+          <Button size="sm" className="shrink-0" onClick={handleSave} disabled={updateUsername.isPending}>
+            {updateUsername.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "保存"}
+          </Button>
+        )}
+      </div>
+      {error ? (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <AlertCircle className="h-3 w-3" /> {error}
+        </p>
+      ) : null}
+      {success ? (
+        <p className="text-xs text-green-600 flex items-center gap-1">
+          <Check className="h-3 w-3" /> {success}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function ChangePasswordSection({ hasPassword }: { hasPassword?: boolean }) {
   const [oldPwd, setOldPwd] = useState("");
   const [newPwd, setNewPwd] = useState("");

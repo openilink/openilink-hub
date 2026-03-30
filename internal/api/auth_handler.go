@@ -70,6 +70,34 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w)
 }
 
+func (s *Server) handleUpdateUsername(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
+	var req struct {
+		Username string `json:"username"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if err := store.ValidateUsername(req.Username); err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	existing, err := s.Store.GetUserByUsername(req.Username)
+	if err == nil && existing.ID != userID {
+		jsonError(w, "该用户名已被使用", http.StatusConflict)
+		return
+	}
+
+	if err := s.Store.UpdateUserUsername(userID, req.Username); err != nil {
+		jsonError(w, "update failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w)
+}
+
 // --- Helpers ---
 
 func setSessionCookie(w http.ResponseWriter, token string) {

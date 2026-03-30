@@ -443,6 +443,7 @@ func (s *Store) UpdateUserProfile(string, string, string) error { return nil }
 func (s *Store) UpdateUserPassword(string, string) error        { return nil }
 func (s *Store) UpdateUserRole(string, string) error            { return nil }
 func (s *Store) UpdateUserStatus(string, string) error          { return nil }
+func (s *Store) UpdateUserUsername(string, string) error         { return nil }
 func (s *Store) DeleteUser(string) error                        { return nil }
 
 // --- SessionStore (stub) ---

@@ -119,6 +119,14 @@ func (db *DB) UpdateUserStatus(id, status string) error {
 	return err
 }
 
+func (db *DB) UpdateUserUsername(id, username string) error {
+	_, err := db.Exec(
+		"UPDATE users SET username = ?, updated_at = ? WHERE id = ?",
+		username, db.now(), id,
+	)
+	return err
+}
+
 func (db *DB) DeleteUser(id string) error {
 	db.Exec("DELETE FROM oauth_accounts WHERE user_id = ?", id)
 	db.Exec("DELETE FROM sessions WHERE user_id = ?", id)
