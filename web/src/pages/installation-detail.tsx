@@ -485,12 +485,18 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
         color: "var(--muted-foreground)", cursor: "pointer",
       });
       btn.addEventListener("click", () => {
-        if (!navigator.clipboard?.writeText) { btn.textContent = "失败"; return; }
+        if (!navigator.clipboard?.writeText) {
+          btn.textContent = "失败";
+          toast({ variant: "destructive", title: "复制失败", description: "当前浏览器不支持自动复制，请手动选中复制" });
+          timeouts.push(setTimeout(() => { btn.textContent = "复制"; }, 2000));
+          return;
+        }
         navigator.clipboard.writeText(codeText).then(() => {
           btn.textContent = "已复制";
           timeouts.push(setTimeout(() => { btn.textContent = "复制"; }, 2000));
         }).catch(() => {
           btn.textContent = "失败";
+          toast({ variant: "destructive", title: "复制失败", description: "请手动选中复制" });
           timeouts.push(setTimeout(() => { btn.textContent = "复制"; }, 2000));
         });
       });
