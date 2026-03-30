@@ -51,6 +51,14 @@ func (s *Server) handleCreateRegistry(w http.ResponseWriter, r *http.Request) {
 	parsed.Path = strings.TrimSuffix(strings.TrimRight(parsed.Path, "/"), "/api/registry/v1/apps.json")
 	u := strings.TrimRight(parsed.String(), "/")
 
+	// Re-validate after normalization to catch URLs that become invalid
+	// after stripping query params, fragments, and well-known path suffix.
+	normalized, err := url.Parse(u)
+	if err != nil || normalized.Host == "" || (normalized.Scheme != "http" && normalized.Scheme != "https") {
+		jsonError(w, "invalid url after normalization", http.StatusBadRequest)
+		return
+	}
+
 	reg := &store.Registry{
 		Name:    req.Name,
 		URL:     u,
