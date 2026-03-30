@@ -46,6 +46,7 @@ export const queryKeys = {
     availableModels: () => ["config", "available-models"] as const,
   },
 
+  broadcastTokens: () => ["broadcast-tokens"] as const,
   passkeys: () => ["passkeys"] as const,
   oauthAccounts: () => ["oauth-accounts"] as const,
   oauthProviders: () => ["oauth-providers"] as const,

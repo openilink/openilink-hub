@@ -21,12 +21,35 @@ import {
   Smartphone,
   Fingerprint,
   Clock,
+  Copy,
+  Pencil,
+  RefreshCw,
+  Radio,
 } from "lucide-react";
 import { useTheme, type Theme } from "../lib/theme";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "../components/ui/badge";
 import { useUser } from "@/hooks/use-auth";
 import { useOAuthAccounts, useOAuthProviders, usePasskeys, useDeletePasskey, useRenamePasskey, useUnlinkOAuth } from "@/hooks/use-settings";
+import { useBots } from "@/hooks/use-bots";
+import { botDisplayName } from "@/lib/api";
+import {
+  useBroadcastTokens,
+  useCreateBroadcastToken,
+  useUpdateBroadcastToken,
+  useDeleteBroadcastToken,
+  useRegenerateBroadcastToken,
+} from "@/hooks/use-broadcast-tokens";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { toast } from "@/hooks/use-toast";
 
 const THEME_OPTIONS = [
   { value: "light", label: "浅色", icon: Sun },
@@ -101,6 +124,9 @@ export function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="security" className="px-6">
             安全认证
+          </TabsTrigger>
+          <TabsTrigger value="broadcast" className="px-6">
+            广播
           </TabsTrigger>
         </TabsList>
 
@@ -230,6 +256,10 @@ export function SettingsPage() {
         <TabsContent value="security" className="m-0 space-y-6">
           <PasskeySection />
           <ChangePasswordSection hasPassword={user?.has_password} />
+        </TabsContent>
+
+        <TabsContent value="broadcast" className="m-0 space-y-6">
+          <BroadcastTokenSection />
         </TabsContent>
       </Tabs>
     </div>
@@ -563,6 +593,295 @@ function PasskeySection() {
           </div>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+function maskToken(token: string): string {
+  if (token.length <= 11) return token;
+  return token.slice(0, 7) + "..." + token.slice(-4);
+}
+
+function BroadcastTokenSection() {
+  const { data: tokens = [] } = useBroadcastTokens();
+  const { data: bots = [] } = useBots();
+  const createMut = useCreateBroadcastToken();
+  const updateMut = useUpdateBroadcastToken();
+  const deleteMut = useDeleteBroadcastToken();
+  const regenerateMut = useRegenerateBroadcastToken();
+  const { confirm, ConfirmDialog } = useConfirm();
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingToken, setEditingToken] = useState<{ id: string; name: string; bot_ids: string[] } | null>(null);
+  const [formName, setFormName] = useState("");
+  const [formBotIds, setFormBotIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  // Token reveal dialog (after create)
+  const [revealOpen, setRevealOpen] = useState(false);
+  const [revealedToken, setRevealedToken] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  function openCreate() {
+    setEditingToken(null);
+    setFormName("");
+    setFormBotIds([]);
+    setDialogOpen(true);
+  }
+
+  function openEdit(token: { id: string; name: string; bot_ids: string[] }) {
+    setEditingToken(token);
+    setFormName(token.name);
+    setFormBotIds(token.bot_ids || []);
+    setDialogOpen(true);
+  }
+
+  async function handleSave() {
+    if (!formName.trim()) return;
+    setSaving(true);
+    try {
+      if (editingToken) {
+        await updateMut.mutateAsync({ id: editingToken.id, data: { name: formName.trim(), bot_ids: formBotIds } });
+        toast({ title: "广播令牌已更新" });
+      } else {
+        const result = await createMut.mutateAsync({ name: formName.trim(), bot_ids: formBotIds });
+        setRevealedToken(result.token);
+        setCopied(false);
+        setRevealOpen(true);
+      }
+      setDialogOpen(false);
+    } catch (err: any) {
+      toast({ title: "操作失败", description: err.message, variant: "destructive" });
+    }
+    setSaving(false);
+  }
+
+  async function handleRegenerate(token: any) {
+    const ok = await confirm({
+      title: "重新生成令牌",
+      description: `确定要重新生成「${token.name}」的令牌吗？当前令牌将立即失效。`,
+      confirmText: "重新生成",
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      const result = await regenerateMut.mutateAsync(token.id);
+      setRevealedToken(result.token);
+      setCopied(false);
+      setRevealOpen(true);
+    } catch (err: any) {
+      toast({ title: "重新生成失败", description: err.message, variant: "destructive" });
+    }
+  }
+
+  async function handleDelete(token: any) {
+    const ok = await confirm({
+      title: "删除确认",
+      description: `确定要删除广播令牌「${token.name}」吗？此操作不可撤销。`,
+      confirmText: "删除",
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      await deleteMut.mutateAsync(token.id);
+      toast({ title: "广播令牌已删除" });
+    } catch (err: any) {
+      toast({ title: "删除失败", description: err.message, variant: "destructive" });
+    }
+  }
+
+  function toggleBot(botId: string) {
+    setFormBotIds((prev) =>
+      prev.includes(botId) ? prev.filter((id) => id !== botId) : [...prev, botId]
+    );
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "复制失败", variant: "destructive" });
+    }
+  }
+
+  return (
+    <Card className="border-border/50">
+      {ConfirmDialog}
+      <CardHeader className="flex flex-row items-start justify-between space-y-0">
+        <div className="space-y-1.5">
+          <CardTitle className="flex items-center gap-2">广播令牌</CardTitle>
+          <CardDescription>
+            广播令牌可以同时向多个 Bot 发送消息。
+          </CardDescription>
+        </div>
+        <Button size="sm" onClick={openCreate} className="h-9">
+          <Plus className="mr-2 h-4 w-4" />
+          创建广播令牌
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {tokens.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center border rounded-xl bg-muted/5 border-dashed">
+            <Radio className="h-10 w-10 text-muted-foreground opacity-20 mb-3" />
+            <p className="text-sm text-muted-foreground">您尚未创建任何广播令牌</p>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {tokens.map((tk: { id: string; name: string; token: string; bot_ids: string[]; created_at: number }) => (
+              <div
+                key={tk.id}
+                className="flex items-center justify-between p-4 rounded-xl border bg-background group hover:border-primary/50 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-primary/5 text-primary">
+                    <Radio className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold truncate">{tk.name}</p>
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground uppercase font-medium mt-0.5">
+                      <span className="font-mono">{maskToken(tk.token)}</span>
+                      <button
+                        className="hover:text-foreground transition-colors"
+                        onClick={() => { navigator.clipboard.writeText(tk.token).then(() => toast({ title: "令牌已复制" })).catch(() => toast({ title: "复制失败", variant: "destructive" })); }}
+                        title="复制令牌"
+                      >
+                        <Copy className="h-2.5 w-2.5" />
+                      </button>
+                      <span>{(tk.bot_ids || []).length} 个 Bot</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-2.5 w-2.5" />
+                        {new Date(tk.created_at * 1000).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => openEdit(tk)}
+                    title="编辑"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleRegenerate(tk)}
+                    title="重新生成令牌"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive"
+                    onClick={() => handleDelete(tk)}
+                    title="删除"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      {/* Create / Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingToken ? "编辑广播令牌" : "创建广播令牌"}</DialogTitle>
+            <DialogDescription>
+              {editingToken ? "修改广播令牌名称和关联的 Bot。" : "创建一个新的广播令牌，选择要关联的 Bot。"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>名称</Label>
+              <Input
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="输入令牌名称"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>关联 Bot</Label>
+              {bots.length === 0 ? (
+                <p className="text-xs text-muted-foreground">暂无可用 Bot</p>
+              ) : (
+                <div className="max-h-48 overflow-y-auto border rounded-lg p-2 space-y-1">
+                  {bots.map((bot: any) => (
+                    <label
+                      key={bot.id}
+                      className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted/50 cursor-pointer text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formBotIds.includes(bot.id)}
+                        onChange={() => toggleBot(bot.id)}
+                        className="rounded"
+                      />
+                      <span>{botDisplayName(bot)}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleSave} disabled={saving || !formName.trim()}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editingToken ? "保存" : "创建"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Token Reveal Dialog */}
+      <Dialog open={revealOpen} onOpenChange={setRevealOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>令牌已生成</DialogTitle>
+            <DialogDescription>
+              请立即复制此令牌，关闭后将无法再次查看完整令牌。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="flex items-center gap-2">
+              <Input
+                value={revealedToken}
+                readOnly
+                className="font-mono text-xs bg-muted/30"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                className="flex-shrink-0"
+                onClick={() => copyToClipboard(revealedToken)}
+              >
+                {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            </div>
+            <div className="text-xs p-3 rounded-lg bg-amber-500/5 text-amber-700 dark:text-amber-400 border border-amber-500/15">
+              <AlertCircle className="h-3.5 w-3.5 inline mr-1.5" />
+              此令牌仅显示一次，请妥善保管。
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setRevealOpen(false)}>确定</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

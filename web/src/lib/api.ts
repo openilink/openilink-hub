@@ -231,6 +231,17 @@ export const api = {
   getBuiltinApps: () => request<any[]>("/api/marketplace/builtin"),
   syncMarketplaceApp: (slug: string) => request<any>(`/api/marketplace/sync/${slug}`, { method: "POST" }),
 
+  // Broadcast Tokens
+  listBroadcastTokens: () => request<any[]>("/api/broadcast-tokens"),
+  createBroadcastToken: (data: { name: string; bot_ids: string[] }) =>
+    request<any>("/api/broadcast-tokens", { method: "POST", body: JSON.stringify(data) }),
+  updateBroadcastToken: (id: string, data: { name: string; bot_ids: string[] }) =>
+    request<void>(`/api/broadcast-tokens/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteBroadcastToken: (id: string) =>
+    request<void>(`/api/broadcast-tokens/${id}`, { method: "DELETE" }),
+  regenerateBroadcastToken: (id: string) =>
+    request<{ token: string }>(`/api/broadcast-tokens/${id}/regenerate`, { method: "POST" }),
+
   // Registry admin
   getRegistries: () => request<any[]>("/api/admin/registries"),
   createRegistry: (data: { name: string; url: string }) => request<any>("/api/admin/registries", { method: "POST", body: JSON.stringify(data) }),
