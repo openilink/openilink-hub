@@ -274,6 +274,7 @@ function BotInstanceCard({
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
+                onSelect={(e) => e.preventDefault()}
                 onClick={() => handleAction("delete")}
                 className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
               >
