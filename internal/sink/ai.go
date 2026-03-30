@@ -237,7 +237,7 @@ func (s *AI) reply(d Delivery) {
 			span.End()
 		}
 		s.stopTyping(d, typingTicket)
-		s.sendErrorNotice(d, sender, err)
+		s.sendErrorNotice(d, sender)
 		return
 	}
 
@@ -335,7 +335,7 @@ func (s *AI) reply(d Delivery) {
 				span.End()
 			}
 			s.stopTyping(d, typingTicket)
-			s.sendErrorNotice(d, sender, nextErr)
+			s.sendErrorNotice(d, sender)
 			return
 		}
 
@@ -697,11 +697,13 @@ func (s *AI) stopTyping(d Delivery, ticket string) {
 }
 
 // sendErrorNotice sends a user-visible error message when AI completion fails.
-func (s *AI) sendErrorNotice(d Delivery, recipient string, err error) {
-	msg := fmt.Sprintf("⚠️ AI 回复失败：%s", err)
+// The detailed error is already logged via slog.Error at each call site;
+// only a generic message is shown to the user to avoid leaking internal URLs
+// or API response bodies.
+func (s *AI) sendErrorNotice(d Delivery, recipient string) {
 	if _, sendErr := d.Provider.Send(context.Background(), provider.OutboundMessage{
 		Recipient: recipient,
-		Text:      msg,
+		Text:      "⚠️ AI 回复失败，请稍后重试。",
 	}); sendErr != nil {
 		slog.Error("ai error notice send failed", "bot", d.BotDBID, "err", sendErr)
 	}
