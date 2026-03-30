@@ -21,9 +21,6 @@ vi.mock("react-router-dom", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
-  api: {
-    deleteBot: (...args: any[]) => deleteBotMock(...args),
-  },
   botDisplayName: (bot: { display_name?: string; name: string }) => bot.display_name || bot.name,
 }));
 
@@ -46,11 +43,12 @@ vi.mock("@/hooks/use-bots", () => ({
   useDeleteBot: () => ({
     mutate: (
       id: string,
-      options?: { onSuccess?: () => void; onError?: (error: Error) => void },
+      options?: { onSuccess?: () => void; onError?: (error: Error) => void; onSettled?: () => void },
     ) => {
       Promise.resolve(deleteBotMock(id))
         .then(() => options?.onSuccess?.())
-        .catch((error) => options?.onError?.(error));
+        .catch((error) => options?.onError?.(error))
+        .finally(() => options?.onSettled?.());
     },
   }),
   useUpdateBot: () => ({ mutate: vi.fn() }),

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
-import { api, botDisplayName } from "../lib/api";
+import { botDisplayName } from "../lib/api";
 import {
   useBot,
   useBotApps,
@@ -122,14 +122,13 @@ export function BotDetailPage() {
 
       deleteBotMutation.mutate(bot.id, {
         onSuccess: () => {
-          finishDelete();
           toast({ title: "已删除账号" });
           navigate("/dashboard/accounts");
         },
         onError: (err) => {
-          finishDelete();
           toast({ variant: "destructive", title: "删除失败", description: err.message });
         },
+        onSettled: finishDelete,
       });
     } catch {
       finishDelete();
