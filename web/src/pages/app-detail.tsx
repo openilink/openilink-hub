@@ -416,13 +416,19 @@ function SecretField({
 }) {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
   const masked = value ? value.slice(0, 8) + "..." + value.slice(-4) : "---";
 
   function handleCopy() {
-    navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        toast({ variant: "destructive", title: "复制失败", description: "请手动选中复制" });
+      });
   }
 
   return (

@@ -234,8 +234,14 @@ export function ChannelDetailPage() {
                       size="icon"
                       className="h-6 w-6"
                       onClick={() => {
-                        navigator.clipboard.writeText(channel.api_key);
-                        toast({ title: "已复制 API Key" });
+                        navigator.clipboard
+                          .writeText(channel.api_key)
+                          .then(() => {
+                            toast({ title: "已复制 API Key" });
+                          })
+                          .catch(() => {
+                            toast({ variant: "destructive", title: "复制失败", description: "请手动选中复制" });
+                          });
                       }}
                     >
                       <Copy className="h-3.5 w-3.5" />
