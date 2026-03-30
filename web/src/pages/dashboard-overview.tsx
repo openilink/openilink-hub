@@ -50,7 +50,6 @@ const STEPS = [
 const QUICK_LINKS = [
   { label: "全部账号", icon: Bot, link: "/dashboard/accounts" },
   { label: "应用市场", icon: Workflow, link: "/dashboard/apps" },
-  { label: "消息追踪", icon: MessageSquare, link: "/dashboard/traces" },
   { label: "系统设置", icon: Cpu, link: "/dashboard/settings/profile" },
 ] as const;
 
