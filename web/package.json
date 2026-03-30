@@ -53,12 +53,14 @@
     "@vitejs/plugin-react": "^6.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jsdom": "^29.0.1",
     "lucide-react": "^0.577.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
-    "vite-plus": "latest"
+    "vite-plus": "latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@^0.1.14"
   },
   "packageManager": "pnpm@10.32.1",
   "pnpm": {

@@ -19,7 +19,14 @@ import {
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { api, botDisplayName } from "../lib/api";
-import { useBot, useBotApps, useUpdateBot, useSetBotAI, useSetBotAIModel } from "@/hooks/use-bots";
+import {
+  useBot,
+  useBotApps,
+  useDeleteBot,
+  useSetBotAI,
+  useSetBotAIModel,
+  useUpdateBot,
+} from "@/hooks/use-bots";
 import { useApps } from "@/hooks/use-apps";
 import { useAvailableModels } from "@/hooks/use-apps";
 import { useBuiltinApps, useMarketplaceApps, useSyncMarketplaceApp } from "@/hooks/use-marketplace";
@@ -40,6 +47,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { AppIcon } from "../components/app-icon";
 import { parseTools } from "../components/tools-display";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const DEFAULT_MODEL = "__default__";
 
@@ -59,6 +67,7 @@ export function BotDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Server state via react-query
   const { data: bot, isLoading: loading } = useBot(id!);
@@ -75,6 +84,7 @@ export function BotDetailPage() {
 
   // Mutations
   const updateBotMutation = useUpdateBot();
+  const deleteBotMutation = useDeleteBot();
   const setAIMutation = useSetBotAI();
   const setAIModelMutation = useSetBotAIModel();
   const syncAppMutation = useSyncMarketplaceApp();
@@ -84,6 +94,26 @@ export function BotDetailPage() {
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
   const marketplaceRef = useRef<HTMLDivElement>(null);
+
+  const handleDeleteBot = async () => {
+    if (!bot) return;
+    const ok = await confirm({
+      title: "删除确认",
+      description: "确定要删除此账号？相关转发规则将停止工作。",
+      confirmText: "删除",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
+    deleteBotMutation.mutate(bot.id, {
+      onSuccess: () => {
+        toast({ title: "已删除账号" });
+        navigate("/dashboard/accounts");
+      },
+      onError: (err) =>
+        toast({ variant: "destructive", title: "删除失败", description: err.message }),
+    });
+  };
 
   const handleAutoRenewalChange = async (hours: number) => {
     updateBotMutation.mutate(
@@ -128,6 +158,7 @@ export function BotDetailPage() {
 
   return (
     <div className="flex flex-col gap-8 h-full">
+      {ConfirmDialog}
       {/* Entity Banner */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
         {/* Identity */}
@@ -335,7 +366,12 @@ export function BotDetailPage() {
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="destructive" size="icon-sm">
+              <Button
+                variant="destructive"
+                size="icon-sm"
+                aria-label="删除账号"
+                onClick={() => void handleDeleteBot()}
+              >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
