@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useCallback, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "./query-keys";
 
@@ -100,16 +100,14 @@ class PushClient {
 const PushContext = createContext<PushClient | null>(null);
 
 export function PushProvider({ children }: { children: ReactNode }) {
-  const clientRef = useRef<PushClient | null>(null);
+  const [client, setClient] = useState<PushClient | null>(null);
   const qc = useQueryClient();
 
-  if (!clientRef.current) {
-    clientRef.current = new PushClient();
-  }
-
   useEffect(() => {
-    const client = clientRef.current!;
-    client.connect();
+    // Create a fresh client each mount to handle React StrictMode double-mount.
+    const c = new PushClient();
+    setClient(c);
+    c.connect();
 
     // Global listener that invalidates React Query caches.
     const handler: Listener = (env) => {
@@ -131,16 +129,17 @@ export function PushProvider({ children }: { children: ReactNode }) {
           break;
       }
     };
-    client.addListener(handler);
+    c.addListener(handler);
 
     return () => {
-      client.removeListener(handler);
-      client.close();
+      c.removeListener(handler);
+      c.close();
+      setClient(null);
     };
   }, [qc]);
 
   return (
-    <PushContext.Provider value={clientRef.current}>
+    <PushContext.Provider value={client}>
       {children}
     </PushContext.Provider>
   );
