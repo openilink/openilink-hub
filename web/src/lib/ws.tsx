@@ -23,16 +23,18 @@ class PushClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1000;
   private closed = false;
+  private everConnected = false;
+  private failCount = 0;
 
   connect() {
     if (this.closed) return;
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${location.host}/api/ws`;
     const ws = new WebSocket(url);
-    let opened = false;
 
     ws.onopen = () => {
-      opened = true;
+      this.everConnected = true;
+      this.failCount = 0;
       this.reconnectDelay = 1000;
       // Re-subscribe to all active subscriptions.
       const botIDs = [...this.subs.keys()];
@@ -50,8 +52,15 @@ class PushClient {
 
     ws.onclose = () => {
       this.ws = null;
-      // Don't reconnect if the connection never opened (e.g. 401 on upgrade).
-      if (!this.closed && opened) this.scheduleReconnect();
+      if (this.closed) return;
+      if (this.everConnected) {
+        // Was connected before — always reconnect (server restart, etc.)
+        this.scheduleReconnect();
+      } else if (++this.failCount < 3) {
+        // Never connected — retry a few times for transient failures.
+        this.scheduleReconnect();
+      }
+      // After 3 consecutive pre-open failures, stop (likely 401/auth).
     };
 
     ws.onerror = () => {
