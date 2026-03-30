@@ -109,6 +109,7 @@ export function AdminUsersPage() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                            onSelect={(e) => e.preventDefault()}
                             onClick={async () => {
                               const ok = await confirm({
                                 title: "删除确认",
