@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/auth"
@@ -92,7 +93,11 @@ func (s *Server) handleUpdateUsername(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.Store.UpdateUserUsername(userID, req.Username); err != nil {
-		jsonError(w, "update failed", http.StatusInternalServerError)
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			jsonError(w, "username already taken", http.StatusConflict)
+		} else {
+			jsonError(w, "update failed", http.StatusInternalServerError)
+		}
 		return
 	}
 	jsonOK(w)
