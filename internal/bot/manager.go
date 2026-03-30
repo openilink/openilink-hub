@@ -99,6 +99,7 @@ func (m *Manager) StartBot(ctx context.Context, bot *store.Bot) error {
 
 	p := factory()
 	inst := NewInstance(bot.ID, p)
+	inst.UserID = bot.UserID
 	inst.AIEnabled = bot.AIEnabled
 	inst.AIModel = bot.AIModel
 
@@ -327,7 +328,7 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 	defer func() {
 		rootSpan.End()
 		tracer.Flush()
-		m.notifyPush(inst.DBID, tracer.TraceID())
+		m.notifyPush(inst, tracer.TraceID())
 	}()
 
 	storeSpan := tracer.StartChild(rootSpan, "store", store.SpanKindInternal, map[string]any{
@@ -368,20 +369,16 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 }
 
 // notifyPush sends trace_completed and message_new events to browser clients.
-func (m *Manager) notifyPush(botID, traceID string) {
-	if m.pushHub == nil {
+func (m *Manager) notifyPush(inst *Instance, traceID string) {
+	if m.pushHub == nil || inst.UserID == "" {
 		return
 	}
-	b, err := m.store.GetBot(botID)
-	if err != nil {
-		return
-	}
-	m.pushHub.Notify(b.UserID, botID, push.NewEnvelope(push.EventTraceCompleted, push.BotEvent{
-		BotID:   botID,
+	m.pushHub.Notify(inst.UserID, inst.DBID, push.NewEnvelope(push.EventTraceCompleted, push.BotEvent{
+		BotID:   inst.DBID,
 		TraceID: traceID,
 	}))
-	m.pushHub.Notify(b.UserID, botID, push.NewEnvelope(push.EventMessageNew, push.BotEvent{
-		BotID: botID,
+	m.pushHub.Notify(inst.UserID, inst.DBID, push.NewEnvelope(push.EventMessageNew, push.BotEvent{
+		BotID: inst.DBID,
 	}))
 }
 
@@ -563,7 +560,7 @@ func (m *Manager) recoverUnprocessed(inst *Instance) {
 		rwg.Wait()
 		rootSpan.End()
 		tracer.Flush()
-		m.notifyPush(inst.DBID, tracer.TraceID())
+		m.notifyPush(inst, tracer.TraceID())
 
 		if err := m.store.MarkProcessed(msgs[i].ID); err != nil {
 			slog.Error("mark recovered msg processed failed", "id", msgs[i].ID, "err", err)

@@ -9,6 +9,7 @@ import (
 // Instance wraps a provider with its lifecycle.
 type Instance struct {
 	DBID      string
+	UserID    string
 	Provider  provider.Provider
 	AIEnabled bool
 	AIModel   string

@@ -23,8 +23,10 @@ type Conn struct {
 	hub    *Hub
 	send   chan []byte
 
-	mu   sync.RWMutex
-	subs map[string]struct{} // subscribed bot IDs
+	mu       sync.RWMutex
+	subs     map[string]struct{} // subscribed bot IDs
+	closed   bool
+	closeOnce sync.Once
 }
 
 func NewConn(userID string, ws *websocket.Conn, hub *Hub) *Conn {
@@ -43,6 +45,31 @@ func (c *Conn) IsSubscribed(botID string) bool {
 	defer c.mu.RUnlock()
 	_, ok := c.subs[botID]
 	return ok
+}
+
+// Send enqueues a message. Safe to call after Close.
+func (c *Conn) Send(data []byte) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed {
+		return false
+	}
+	select {
+	case c.send <- data:
+		return true
+	default:
+		return false
+	}
+}
+
+// Close closes the send channel exactly once.
+func (c *Conn) Close() {
+	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		c.mu.Unlock()
+		close(c.send)
+	})
 }
 
 // ReadPump reads subscribe/unsubscribe commands from the client.
@@ -91,10 +118,7 @@ func (c *Conn) ReadPump() {
 				c.mu.Unlock()
 			}
 		case "ping":
-			select {
-			case c.send <- mustMarshal(Envelope{Type: "pong"}):
-			default:
-			}
+			c.Send(mustMarshal(Envelope{Type: "pong"}))
 		}
 	}
 }

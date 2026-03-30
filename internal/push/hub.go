@@ -30,7 +30,7 @@ func (h *Hub) Register(c *Conn) {
 	slog.Debug("push ws registered", "user", c.UserID)
 }
 
-// Unregister removes a connection.
+// Unregister removes a connection and closes its send channel.
 func (h *Hub) Unregister(c *Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -40,6 +40,7 @@ func (h *Hub) Unregister(c *Conn) {
 			delete(h.conns, c.UserID)
 		}
 	}
+	c.Close()
 	slog.Debug("push ws unregistered", "user", c.UserID)
 }
 
@@ -61,10 +62,8 @@ func (h *Hub) Notify(userID, botID string, env Envelope) {
 
 	for _, c := range conns {
 		if c.IsSubscribed(botID) {
-			select {
-			case c.send <- data:
-			default:
-				slog.Warn("push send buffer full, dropping", "user", userID)
+			if !c.Send(data) {
+				slog.Warn("push send failed, dropping", "user", userID)
 			}
 		}
 	}
@@ -86,9 +85,6 @@ func (h *Hub) NotifyUser(userID string, env Envelope) {
 	h.mu.RUnlock()
 
 	for _, c := range conns {
-		select {
-		case c.send <- data:
-		default:
-		}
+		c.Send(data)
 	}
 }
