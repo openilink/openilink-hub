@@ -234,6 +234,10 @@ export function ChannelDetailPage() {
                       size="icon"
                       className="h-6 w-6"
                       onClick={() => {
+                        if (!navigator.clipboard?.writeText) {
+                          toast({ variant: "destructive", title: "复制失败", description: "当前浏览器不支持自动复制，请手动选中复制" });
+                          return;
+                        }
                         navigator.clipboard
                           .writeText(channel.api_key)
                           .then(() => {

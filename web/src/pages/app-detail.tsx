@@ -420,6 +420,10 @@ function SecretField({
   const masked = value ? value.slice(0, 8) + "..." + value.slice(-4) : "---";
 
   function handleCopy() {
+    if (!navigator.clipboard?.writeText) {
+      toast({ variant: "destructive", title: "复制失败", description: "当前浏览器不支持自动复制，请手动选中复制" });
+      return;
+    }
     navigator.clipboard
       .writeText(value)
       .then(() => {
