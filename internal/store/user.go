@@ -32,11 +32,7 @@ func ValidateUsername(username string) error {
 	if n < 2 || n > 32 {
 		return fmt.Errorf("用户名长度需要 2-32 个字符")
 	}
-	if n == 1 {
-		if !regexp.MustCompile(`^[a-z0-9]$`).MatchString(username) {
-			return fmt.Errorf("用户名只能包含小写字母、数字、下划线和连字符")
-		}
-	} else if !usernameRegexp.MatchString(username) {
+	if !usernameRegexp.MatchString(username) {
 		return fmt.Errorf("用户名只能包含小写字母、数字、下划线和连字符，且不能以 _ 或 - 开头结尾")
 	}
 	if reservedUsernames[username] {

@@ -87,7 +87,7 @@ func (s *Server) handleUpdateUsername(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := s.Store.GetUserByUsername(req.Username)
 	if err == nil && existing.ID != userID {
-		jsonError(w, "该用户名已被使用", http.StatusConflict)
+		jsonError(w, "username already taken", http.StatusConflict)
 		return
 	}
 

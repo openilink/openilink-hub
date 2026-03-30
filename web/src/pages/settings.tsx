@@ -234,6 +234,10 @@ export function SettingsPage() {
 }
 
 const usernameRegex = /^[a-z0-9][a-z0-9_-]*[a-z0-9]$/;
+const reservedUsernames = new Set([
+  "admin", "administrator", "superadmin",
+  "root", "system", "api", "support",
+]);
 
 function UsernameEditor({ username }: { username?: string }) {
   const [value, setValue] = useState(username || "");
@@ -249,8 +253,9 @@ function UsernameEditor({ username }: { username?: string }) {
 
   function validate(v: string): string | null {
     if (v.length < 2 || v.length > 32) return "用户名长度需要 2-32 个字符";
-    if (v.length === 1 ? !/^[a-z0-9]$/.test(v) : !usernameRegex.test(v))
+    if (!usernameRegex.test(v))
       return "只能包含小写字母、数字、下划线和连字符，且不能以 _ 或 - 开头结尾";
+    if (reservedUsernames.has(v)) return "该用户名为系统保留名称";
     return null;
   }
 
