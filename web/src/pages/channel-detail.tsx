@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
@@ -36,6 +36,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, botDisplayName } from "../lib/api";
 import { useBot, useBotChannels, useWebhookLogs } from "@/hooks/use-bots";
+import { useBotPush } from "@/lib/ws";
 import {
   Table,
   TableBody,
@@ -724,18 +725,15 @@ function FilterTab({
 function WebhookLogsTab({ channel, botId }: { channel: any; botId: string }) {
   const { data: logs = [], isLoading: loading, isError: logsError, refetch } = useWebhookLogs(botId, channel.id);
 
-  useEffect(() => {
-    const t = setInterval(() => refetch(), 5000);
-    return () => clearInterval(t);
-  }, [botId, channel.id, refetch]);
-
-  function load() { refetch(); }
+  // Push-driven updates: useBotPush subscribes to events; PushProvider
+  // auto-invalidates webhook-logs cache on message_new events.
+  useBotPush(botId);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">最近 50 条请求记录（5 秒自动刷新）</p>
-        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={load}>
+        <p className="text-xs text-muted-foreground">最近 50 条请求记录</p>
+        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => refetch()}>
           刷新
         </Button>
       </div>

@@ -19,6 +19,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/builtin"
 	"github.com/openilink/openilink-hub/internal/config"
 	"github.com/openilink/openilink-hub/internal/daemon"
+	"github.com/openilink/openilink-hub/internal/push"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
 	"github.com/openilink/openilink-hub/internal/store"
@@ -183,7 +184,9 @@ func main() {
 	srv.BotManager = mgr
 	srv.Hub = hub
 	srv.AppWSHub = api.NewAppWSHub()
+	srv.PushHub = push.NewHub()
 	mgr.SetAppWSHub(srv.AppWSHub)
+	mgr.SetPushHub(srv.PushHub)
 
 	// Start all saved bots
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

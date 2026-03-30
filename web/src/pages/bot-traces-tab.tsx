@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { api } from "../lib/api";
+import { useBotPush } from "../lib/ws";
+import { useBotTraces } from "../hooks/use-bots";
 import { RefreshCw, Activity, ChevronRight } from "lucide-react";
 import {
   Table,
@@ -13,32 +13,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TraceSpan, durationMs, StatusIcon } from "@/lib/trace-utils";
+import { durationMs, StatusIcon } from "@/lib/trace-utils";
 
 export function BotTracesTab({ botId }: { botId: string }) {
   const navigate = useNavigate();
-  const [rootSpans, setRootSpans] = useState<TraceSpan[]>([]);
-  const [loading, setLoading] = useState(true);
-  const fetchIdRef = useRef(0);
+  const { data: rootSpans = [], isLoading: loading, refetch } = useBotTraces(botId, 100);
 
-  const load = useCallback(async () => {
-    const id = ++fetchIdRef.current;
-    setLoading(true);
-    try {
-      const data = await api.listTraces(botId, 100);
-      if (fetchIdRef.current !== id) return;
-      setRootSpans(data || []);
-    } catch (e) {
-      console.error("Failed to load traces:", e);
-      if (fetchIdRef.current !== id) return;
-    } finally {
-      if (fetchIdRef.current === id) setLoading(false);
-    }
-  }, [botId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Subscribe to push events — cache is auto-invalidated by PushProvider.
+  useBotPush(botId);
 
   return (
     <div className="space-y-4">
@@ -47,7 +29,7 @@ export function BotTracesTab({ botId }: { botId: string }) {
           <Activity className="w-4 h-4 text-primary" />
           <h3 className="text-sm font-semibold">消息日志</h3>
         </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading} className="h-8">
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={loading} className="h-8">
           <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} /> 刷新
         </Button>
       </div>

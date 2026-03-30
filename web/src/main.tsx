@@ -22,6 +22,7 @@ import { TracesPage } from "./pages/traces";
 import { TraceDetailPage } from "./pages/trace-detail";
 import { ConsolePage } from "./pages/console/console-page";
 import { ThemeProvider } from "./lib/theme";
+import { PushProvider } from "./lib/ws";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Toaster } from "./components/ui/toaster";
 import { OnboardingPage } from "./pages/onboarding";
@@ -37,6 +38,7 @@ function RouterProgress() {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+    <PushProvider>
     <ThemeProvider>
       <TooltipProvider>
         <ProgressProvider color="oklch(0.693 0.195 151.5)">
@@ -87,6 +89,7 @@ createRoot(document.getElementById("root")!).render(
         </ProgressProvider>
       </TooltipProvider>
     </ThemeProvider>
+    </PushProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

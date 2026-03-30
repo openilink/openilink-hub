@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
+import { useBotPush, usePushListener } from "@/lib/ws";
 import { MessageItem, type MessageItemData } from "./message-items";
 
 type Message = {
@@ -81,10 +82,16 @@ export function ConsolePage() {
     }
   }, [botId]);
 
+  // Subscribe to push events for real-time updates.
+  useBotPush(botId);
+  usePushListener(useCallback((env) => {
+    if (env.type === "message_new" && env.data?.bot_id === botId) {
+      fetchData();
+    }
+  }, [botId, fetchData]));
+
   useEffect(() => {
     fetchData();
-    const t = setInterval(fetchData, 5000);
-    return () => clearInterval(t);
   }, [fetchData]);
 
   // Auto-scroll: instant on first load, smooth for new messages

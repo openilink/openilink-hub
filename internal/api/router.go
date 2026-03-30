@@ -8,6 +8,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/config"
 	"github.com/openilink/openilink-hub/internal/app"
+	"github.com/openilink/openilink-hub/internal/push"
 	"github.com/openilink/openilink-hub/internal/registry"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/storage"
@@ -26,6 +27,7 @@ type Server struct {
 	ObjectStore  storage.Store // optional
 	Registry     *registry.Client
 	AppWSHub     *app.WSHub
+	PushHub      *push.Hub
 	Version      string
 }
 
@@ -100,6 +102,9 @@ func (s *Server) Handler() http.Handler {
 
 	// --- Protected routes ---
 	protected := http.NewServeMux()
+
+	// Push WebSocket (browser real-time events)
+	protected.HandleFunc("GET /api/ws", s.handlePushWebSocket)
 
 	// Profile
 	protected.HandleFunc("GET /api/me", s.handleMe)
