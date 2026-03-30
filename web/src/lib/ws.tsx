@@ -116,10 +116,10 @@ export function PushProvider({ children }: { children: ReactNode }) {
 
       switch (env.type) {
         case EventTraceCompleted:
-          qc.invalidateQueries({ queryKey: queryKeys.bots.traces(botID) });
+          qc.invalidateQueries({ queryKey: ["bots", botID, "traces"] });
           break;
         case EventMessageNew:
-          qc.invalidateQueries({ queryKey: queryKeys.bots.messages(botID) });
+          qc.invalidateQueries({ queryKey: ["bots", botID, "messages"] });
           break;
         case EventWebhookLog:
           qc.invalidateQueries({ queryKey: ["bots", botID, "webhook-logs"] });
