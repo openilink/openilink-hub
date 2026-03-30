@@ -16,10 +16,19 @@ import (
 type contextKey string
 
 const installationKey contextKey = "installation"
+const broadcastTokenKey contextKey = "broadcast_token"
 
 // installationFromContext returns the AppInstallation stored in the request context.
 func installationFromContext(ctx context.Context) *store.AppInstallation {
 	if v, ok := ctx.Value(installationKey).(*store.AppInstallation); ok {
+		return v
+	}
+	return nil
+}
+
+// broadcastTokenFromContext returns the BroadcastToken stored in the request context.
+func broadcastTokenFromContext(ctx context.Context) *store.BroadcastToken {
+	if v, ok := ctx.Value(broadcastTokenKey).(*store.BroadcastToken); ok {
 		return v
 	}
 	return nil
@@ -57,6 +66,56 @@ func (s *Server) appTokenAuth(next http.Handler) http.Handler {
 		// Look up installation
 		inst, err := s.Store.GetInstallationByToken(token)
 		if err != nil {
+			// Fallback: check for broadcast token (prefixed with "bc_")
+			if strings.HasPrefix(token, "bc_") {
+				bcToken, bcErr := s.Store.GetBroadcastTokenByToken(token)
+				if bcErr != nil {
+					slog.Warn("bot api auth: broadcast token lookup failed", "err", bcErr)
+					botAPIError(w, "invalid token", http.StatusUnauthorized)
+					return
+				}
+
+				// Read request body for logging (buffer it so handler can re-read)
+				var reqBody string
+				if r.Body != nil {
+					bodyBytes, _ := io.ReadAll(r.Body)
+					r.Body.Close()
+					reqBody = string(bodyBytes)
+					if len(reqBody) > 4096 {
+						reqBody = reqBody[:4096]
+					}
+					r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+				}
+
+				// Store broadcast token in context
+				ctx := context.WithValue(r.Context(), broadcastTokenKey, bcToken)
+				r = r.WithContext(ctx)
+
+				// Wrap response writer to capture status code and body
+				lw := &loggingResponseWriter{ResponseWriter: w, statusCode: 200}
+
+				// Serve the request
+				next.ServeHTTP(lw, r)
+
+				// Log the API call with broadcast token convention
+				traceID := r.Header.Get("X-Trace-Id")
+				duration := time.Since(start)
+				apiLog := &store.AppAPILog{
+					InstallationID: "bc:" + bcToken.ID,
+					TraceID:        traceID,
+					Method:         r.Method,
+					Path:           r.URL.Path,
+					RequestBody:    reqBody,
+					StatusCode:     lw.statusCode,
+					ResponseBody:   lw.body.String(),
+					DurationMs:     int(duration.Milliseconds()),
+				}
+				if err := s.Store.CreateAPILog(apiLog); err != nil {
+					slog.Error("bot api: failed to log api call", "err", err)
+				}
+				return
+			}
+
 			slog.Warn("bot api auth: token lookup failed", "err", err)
 			botAPIError(w, "invalid token", http.StatusUnauthorized)
 			return
