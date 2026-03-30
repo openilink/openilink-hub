@@ -213,7 +213,10 @@ func (p *Provider) GetConfig(ctx context.Context, recipient, contextToken string
 }
 
 func (p *Provider) DownloadMedia(ctx context.Context, encryptQueryParam, aesKey string) ([]byte, error) {
-	return p.client.DownloadFile(ctx, encryptQueryParam, aesKey)
+	return p.client.DownloadMedia(ctx, &ilink.CDNMedia{
+		EncryptQueryParam: encryptQueryParam,
+		AESKey:            aesKey,
+	})
 }
 
 func (p *Provider) DownloadVoice(ctx context.Context, encryptQueryParam, aesKey string, sampleRate int) ([]byte, error) {
@@ -362,7 +365,7 @@ func (p *Provider) sendVoice(ctx context.Context, recipient, contextToken string
 						AESKey:            base64.StdEncoding.EncodeToString([]byte(uploaded.AESKey)),
 						EncryptType:       ilink.EncryptAES128ECB,
 					},
-					EncodeType:    4,
+					EncodeType:    ilink.VoiceFormatSILK,
 					SampleRate:    wav.SampleRate,
 					BitsPerSample: 16,
 					PlayTime:      playTime,

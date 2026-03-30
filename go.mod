@@ -11,7 +11,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/mark3labs/mcp-go v0.46.0
 	github.com/minio/minio-go/v7 v7.0.99
-	github.com/openilink/openilink-sdk-go v0.4.2
+	github.com/openilink/openilink-sdk-go v0.5.1
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/youthlin/silk v0.0.4
 	golang.org/x/oauth2 v0.36.0
