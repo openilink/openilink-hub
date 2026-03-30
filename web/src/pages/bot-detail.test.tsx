@@ -113,9 +113,14 @@ describe("BotDetailPage", () => {
     });
   }
 
-  async function clickDeleteButton() {
-    const deleteButton = container.querySelector('button[aria-label="删除账号"]');
+  function getDeleteButton() {
+    const deleteButton = container.querySelector('button[aria-label="删除账号"]') as HTMLButtonElement | null;
     expect(deleteButton).not.toBeNull();
+    return deleteButton!;
+  }
+
+  async function clickDeleteButton() {
+    const deleteButton = getDeleteButton();
 
     await act(async () => {
       deleteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -165,5 +170,35 @@ describe("BotDetailPage", () => {
       );
     });
     expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("does not trigger duplicate deletes while a delete is already in flight", async () => {
+    let resolveDelete: ((value: { ok: true }) => void) | undefined;
+    deleteBotMock.mockImplementation(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+
+    await renderPage();
+    const deleteButton = getDeleteButton();
+
+    await act(async () => {
+      deleteButton.click();
+      deleteButton.click();
+    });
+
+    await vi.waitFor(() => {
+      expect(deleteBotMock).toHaveBeenCalledTimes(1);
+      expect(deleteButton.disabled).toBe(true);
+    });
+
+    resolveDelete?.({ ok: true });
+
+    await vi.waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/dashboard/accounts");
+      expect(toastMock).toHaveBeenCalledTimes(1);
+    });
   });
 });

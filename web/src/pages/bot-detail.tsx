@@ -91,27 +91,40 @@ export function BotDetailPage() {
 
   // Local UI state
   const [syncing, setSyncing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState("");
   const marketplaceRef = useRef<HTMLDivElement>(null);
+  const deleteInFlightRef = useRef(false);
 
   const handleDeleteBot = async () => {
-    if (!bot) return;
+    if (!bot || deleteInFlightRef.current) return;
     const ok = await confirm({
       title: "删除确认",
       description: "确定要删除此账号？相关转发规则将停止工作。",
       confirmText: "删除",
       variant: "destructive",
     });
-    if (!ok) return;
+    if (!ok || deleteInFlightRef.current) return;
+
+    const finishDelete = () => {
+      deleteInFlightRef.current = false;
+      setIsDeleting(false);
+    };
+
+    deleteInFlightRef.current = true;
+    setIsDeleting(true);
 
     deleteBotMutation.mutate(bot.id, {
       onSuccess: () => {
+        finishDelete();
         toast({ title: "已删除账号" });
         navigate("/dashboard/accounts");
       },
-      onError: (err) =>
-        toast({ variant: "destructive", title: "删除失败", description: err.message }),
+      onError: (err) => {
+        finishDelete();
+        toast({ variant: "destructive", title: "删除失败", description: err.message });
+      },
     });
   };
 
@@ -370,6 +383,7 @@ export function BotDetailPage() {
                 variant="destructive"
                 size="icon-sm"
                 aria-label="删除账号"
+                disabled={isDeleting}
                 onClick={() => void handleDeleteBot()}
               >
                 <Trash2 className="h-3.5 w-3.5" />
