@@ -30,7 +30,7 @@ func (s *Server) handlePushWebSocket(w http.ResponseWriter, r *http.Request) {
 				return false
 			}
 			expected, err := url.Parse(s.Config.RPOrigin)
-			if err != nil {
+			if err != nil || expected.Host == "" {
 				return false
 			}
 			return strings.EqualFold(u.Scheme, expected.Scheme) &&

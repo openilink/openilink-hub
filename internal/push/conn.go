@@ -128,6 +128,7 @@ func (c *Conn) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
+		c.Close()
 		c.ws.Close()
 	}()
 
