@@ -152,6 +152,36 @@ describe("BotDetailPage", () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
+  it("does not open duplicate confirmation dialogs while confirmation is pending", async () => {
+    let resolveConfirm: ((value: boolean) => void) | undefined;
+    confirmMock.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveConfirm = resolve;
+        }),
+    );
+
+    await renderPage();
+    const deleteButton = getDeleteButton();
+
+    await act(async () => {
+      deleteButton.click();
+      deleteButton.click();
+    });
+
+    await vi.waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledTimes(1);
+      expect(deleteButton.disabled).toBe(true);
+    });
+
+    resolveConfirm?.(false);
+
+    await vi.waitFor(() => {
+      expect(deleteButton.disabled).toBe(false);
+    });
+    expect(deleteBotMock).not.toHaveBeenCalled();
+  });
+
   it("shows an error toast when deletion fails", async () => {
     deleteBotMock.mockRejectedValue(new Error("delete failed"));
 
