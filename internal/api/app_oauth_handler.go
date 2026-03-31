@@ -189,15 +189,9 @@ func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Requ
 	_, _ = rand.Read(stateBytes)
 	state := hex.EncodeToString(stateBytes)
 
-	// Build hub callback URL
-	scheme := "https"
-	if r.TLS == nil {
-		scheme = r.Header.Get("X-Forwarded-Proto")
-		if scheme == "" {
-			scheme = "http"
-		}
-	}
-	hubURL := scheme + "://" + r.Host
+	// Build hub callback URL using configured origin (not r.Host, which may be
+	// "localhost" behind a reverse proxy / Docker).
+	hubURL := s.Config.RPOrigin
 
 	// Redirect to app's oauth_setup_url
 	setupURL, err := url.Parse(app.OAuthSetupURL)
