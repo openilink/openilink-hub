@@ -279,7 +279,9 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	for k, v := range customHeaders {
-		httpReq.Header.Set(k, v)
+		if !isReservedHeader(k) {
+			httpReq.Header.Set(k, v)
+		}
 	}
 
 	resp, err := http.DefaultClient.Do(httpReq)
@@ -351,6 +353,19 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 		content = *choice.Message.Content
 	}
 	return &CompletionResult{Content: content, Thinking: thinking, Usage: usage}, nil
+}
+
+// reservedHeaders are HTTP headers that must not be overridden by custom config.
+var reservedHeaders = map[string]bool{
+	"authorization":    true,
+	"content-type":     true,
+	"content-length":   true,
+	"host":             true,
+	"transfer-encoding": true,
+}
+
+func isReservedHeader(name string) bool {
+	return reservedHeaders[strings.ToLower(name)]
 }
 
 func truncate(s string, max int) string {

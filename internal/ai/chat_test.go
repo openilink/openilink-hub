@@ -585,6 +585,89 @@ func TestComplete_UsageOnToolCallResponse(t *testing.T) {
 	}
 }
 
+func TestIsReservedHeader(t *testing.T) {
+	reserved := []string{
+		"Authorization", "authorization", "AUTHORIZATION",
+		"Content-Type", "content-type",
+		"Content-Length", "Host", "Transfer-Encoding",
+	}
+	for _, h := range reserved {
+		if !isReservedHeader(h) {
+			t.Errorf("expected %q to be reserved", h)
+		}
+	}
+
+	allowed := []string{
+		"HTTP-Referer", "X-OpenRouter-Title", "X-Custom-Header",
+	}
+	for _, h := range allowed {
+		if isReservedHeader(h) {
+			t.Errorf("expected %q to NOT be reserved", h)
+		}
+	}
+}
+
+func TestCustomHeaders_Applied(t *testing.T) {
+	var gotReferer, gotTitle string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotReferer = r.Header.Get("HTTP-Referer")
+		gotTitle = r.Header.Get("X-OpenRouter-Title")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "ok"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{
+		BaseURL: srv.URL, APIKey: "test-key", Model: "test-model",
+		CustomHeaders: map[string]string{
+			"HTTP-Referer":       "https://openclaw.ai",
+			"X-OpenRouter-Title": "OpenClaw",
+		},
+	}
+	_, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if gotReferer != "https://openclaw.ai" {
+		t.Errorf("HTTP-Referer = %q, want %q", gotReferer, "https://openclaw.ai")
+	}
+	if gotTitle != "OpenClaw" {
+		t.Errorf("X-OpenRouter-Title = %q, want %q", gotTitle, "OpenClaw")
+	}
+}
+
+func TestCustomHeaders_ReservedBlocked(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "ok"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{
+		BaseURL: srv.URL, APIKey: "real-key", Model: "test-model",
+		CustomHeaders: map[string]string{
+			"Authorization": "Bearer evil-override",
+		},
+	}
+	_, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if gotAuth != "Bearer real-key" {
+		t.Errorf("Authorization = %q, want %q (custom override should be blocked)", gotAuth, "Bearer real-key")
+	}
+}
+
 // ==================== Real API test (skipped unless env vars set) ====================
 
 func TestCompleteWithRealAPI(t *testing.T) {

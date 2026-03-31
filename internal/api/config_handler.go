@@ -194,7 +194,15 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if req.AvailableModels != "" {
 		s.Store.SetConfig("ai.available_models", req.AvailableModels)
 	}
-	s.Store.SetConfig("ai.custom_headers", req.CustomHeaders)
+	if req.CustomHeaders != "" {
+		if !json.Valid([]byte(req.CustomHeaders)) {
+			jsonError(w, "custom_headers must be valid JSON", http.StatusBadRequest)
+			return
+		}
+		s.Store.SetConfig("ai.custom_headers", req.CustomHeaders)
+	} else {
+		s.Store.DeleteConfig("ai.custom_headers")
+	}
 	jsonOK(w)
 }
 
