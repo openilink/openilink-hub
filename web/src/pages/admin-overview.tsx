@@ -222,8 +222,10 @@ export function AdminOverviewPage() {
                   {(() => {
                     let models: string[] = [];
                     try {
-                      if (effectiveAIConfig?.available_models)
-                        models = JSON.parse(effectiveAIConfig.available_models);
+                      if (effectiveAIConfig?.available_models) {
+                        const parsed = JSON.parse(effectiveAIConfig.available_models);
+                        if (Array.isArray(parsed)) models = parsed.filter((s: unknown) => typeof s === "string");
+                      }
                     } catch {}
 
                     const setModels = (next: string[]) => {
