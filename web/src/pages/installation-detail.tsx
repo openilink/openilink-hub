@@ -590,7 +590,7 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
                 WebSocket 连接
               </summary>
               <pre className="mt-2 p-3 rounded-md bg-muted/30 border text-xs font-mono overflow-x-auto whitespace-pre-wrap">
-                {`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token=${token || "<your_token>"}`}
+                {`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/bot/v1/ws?token=${token || "<your_token>"}`}
               </pre>
             </details>
 

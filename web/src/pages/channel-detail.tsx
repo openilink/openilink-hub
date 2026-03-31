@@ -310,7 +310,7 @@ export function ChannelDetailPage() {
               <div className="rounded-lg bg-muted/50 p-4 border font-mono text-[11px] space-y-4 leading-relaxed">
                 <div>
                   <p className="text-primary font-bold mb-1">// WebSocket（实时推送）</p>
-                  <code className="block bg-background p-2 rounded border">{`ws://${window.location.host}/api/v1/channels/connect?key=${channel.api_key.slice(0, 12)}...`}</code>
+                  <code className="block bg-background p-2 rounded border">{`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/v1/channels/connect?key=${channel.api_key.slice(0, 12)}...`}</code>
                 </div>
                 <div>
                   <p className="text-primary font-bold mb-1">// HTTP POST（发送回复）</p>

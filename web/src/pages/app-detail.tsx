@@ -336,7 +336,7 @@ function BasicInfoSection({ app, onUpdate }: { app: any; onUpdate: () => void })
   -H "Authorization: Bearer <your_token>" \\
   -d '{"content":"hello"}'`}</pre>
             <p className="font-sans text-xs font-medium text-foreground">WebSocket 连接</p>
-            <pre className="p-2 rounded-md bg-muted/30 border overflow-x-auto whitespace-pre-wrap">{`wss://${window.location.origin.replace(/^https?:\/\//, "")}/bot/v1/ws?token=<your_token>`}</pre>
+            <pre className="p-2 rounded-md bg-muted/30 border overflow-x-auto whitespace-pre-wrap">{`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/bot/v1/ws?token=<your_token>`}</pre>
           </CardContent>
         </Card>
       ) : null}
@@ -398,7 +398,7 @@ function IntegrationTokenGuide({ app }: { app: any }) {
         </div>
         <div className="space-y-1">
           <p className="font-medium text-foreground">WebSocket 连接</p>
-          <pre className="p-2 rounded-md bg-muted/30 border font-mono overflow-x-auto whitespace-pre-wrap">{`wss://${hubUrl.replace(/^https?:\/\//, "")}/bot/v1/ws?token={token}`}</pre>
+          <pre className="p-2 rounded-md bg-muted/30 border font-mono overflow-x-auto whitespace-pre-wrap">{`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/bot/v1/ws?token={token}`}</pre>
         </div>
       </CardContent>
     </Card>
