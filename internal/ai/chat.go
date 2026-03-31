@@ -167,7 +167,7 @@ func CompleteMessages(ctx context.Context, cfg store.AIConfig, messages []Messag
 	if model == "" {
 		model = defaultModel
 	}
-	return callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools)
+	return callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools, cfg.CustomHeaders)
 }
 
 // ContinueWithToolResults feeds tool results back to the LLM and gets the next response.
@@ -205,7 +205,7 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 		})
 	}
 
-	result, err := callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools)
+	result, err := callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools, cfg.CustomHeaders)
 	return result, messages, err
 }
 
@@ -263,7 +263,7 @@ func AppendAssistantToolCalls(messages []Message, calls []ToolCallRequest) []Mes
 	})
 }
 
-func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Message, tools []Tool) (*CompletionResult, error) {
+func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Message, tools []Tool, customHeaders map[string]string) (*CompletionResult, error) {
 	endpoint := strings.TrimRight(baseURL, "/") + "/chat/completions"
 
 	req := chatRequest{Model: model, Messages: messages}
@@ -278,6 +278,9 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	for k, v := range customHeaders {
+		httpReq.Header.Set(k, v)
+	}
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {

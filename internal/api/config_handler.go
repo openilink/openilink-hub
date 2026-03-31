@@ -141,6 +141,7 @@ func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		"hide_thinking":    dbConf["ai.hide_thinking"],
 		"strip_markdown":   dbConf["ai.strip_markdown"],
 		"available_models": dbConf["ai.available_models"],
+		"custom_headers":   dbConf["ai.custom_headers"],
 	}
 	if dbConf["ai.api_key"] != "" {
 		result["enabled"] = "true"
@@ -160,6 +161,7 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 		HideThinking    string `json:"hide_thinking"`
 		StripMarkdown   string `json:"strip_markdown"`
 		AvailableModels string `json:"available_models"`
+		CustomHeaders   string `json:"custom_headers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -192,6 +194,7 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if req.AvailableModels != "" {
 		s.Store.SetConfig("ai.available_models", req.AvailableModels)
 	}
+	s.Store.SetConfig("ai.custom_headers", req.CustomHeaders)
 	jsonOK(w)
 }
 
@@ -205,6 +208,7 @@ func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 	s.Store.DeleteConfig("ai.hide_thinking")
 	s.Store.DeleteConfig("ai.strip_markdown")
 	s.Store.DeleteConfig("ai.available_models")
+	s.Store.DeleteConfig("ai.custom_headers")
 	jsonOK(w)
 }
 

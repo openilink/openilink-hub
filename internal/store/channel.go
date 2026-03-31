@@ -7,15 +7,16 @@ type FilterRule struct {
 }
 
 type AIConfig struct {
-	Enabled      bool   `json:"enabled"`
-	Source       string `json:"source,omitempty"`
-	BaseURL      string `json:"base_url,omitempty"`
-	APIKey       string `json:"api_key,omitempty"`
-	Model        string `json:"model,omitempty"`
-	SystemPrompt string `json:"system_prompt,omitempty"`
-	MaxHistory   int    `json:"max_history,omitempty"`
-	HideThinking  bool `json:"hide_thinking,omitempty"`
-	StripMarkdown  bool `json:"strip_markdown,omitempty"`
+	Enabled       bool              `json:"enabled"`
+	Source        string            `json:"source,omitempty"`
+	BaseURL       string            `json:"base_url,omitempty"`
+	APIKey        string            `json:"api_key,omitempty"`
+	Model         string            `json:"model,omitempty"`
+	SystemPrompt  string            `json:"system_prompt,omitempty"`
+	MaxHistory    int               `json:"max_history,omitempty"`
+	HideThinking  bool              `json:"hide_thinking,omitempty"`
+	StripMarkdown bool              `json:"strip_markdown,omitempty"`
+	CustomHeaders map[string]string `json:"custom_headers,omitempty"`
 }
 
 type WebhookConfig struct {

@@ -725,7 +725,35 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	if v := global["ai.max_history"]; v != "" {
 		fmt.Sscanf(v, "%d", &cfg.MaxHistory)
 	}
+	if v := global["ai.custom_headers"]; v != "" {
+		cfg.CustomHeaders = parseCustomHeaders(v)
+	}
 	return cfg
+}
+
+// parseCustomHeaders parses custom headers from JSON. Supports both array
+// format [["key","value"],...] (from frontend) and object format {"key":"value"}.
+func parseCustomHeaders(raw string) map[string]string {
+	// Try array format first: [["k","v"],...]
+	var arr [][2]string
+	if json.Unmarshal([]byte(raw), &arr) == nil {
+		m := make(map[string]string, len(arr))
+		for _, kv := range arr {
+			if kv[0] != "" {
+				m[kv[0]] = kv[1]
+			}
+		}
+		if len(m) > 0 {
+			return m
+		}
+		return nil
+	}
+	// Fall back to object format: {"k":"v",...}
+	var m map[string]string
+	if json.Unmarshal([]byte(raw), &m) == nil && len(m) > 0 {
+		return m
+	}
+	return nil
 }
 
 // safeHTTPClient blocks connections to private/internal IPs at the dial level,

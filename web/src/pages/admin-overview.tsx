@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   BarChart3,
   Users,
@@ -19,7 +19,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
   Card,
@@ -29,6 +28,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
@@ -93,16 +93,6 @@ export function AdminOverviewPage() {
 
   // Sync query data into local state for form editing
   const effectiveAIConfig = aiConfig ?? aiConfigData;
-
-  const availableModelsText = useMemo(() => {
-    try {
-      return effectiveAIConfig?.available_models
-        ? JSON.parse(effectiveAIConfig.available_models).join("\n")
-        : "";
-    } catch {
-      return "";
-    }
-  }, [effectiveAIConfig?.available_models]);
 
   async function handleSaveAI() {
     if (!effectiveAIConfig) return;
@@ -191,74 +181,192 @@ export function AdminOverviewPage() {
             <CardTitle>AI 配置</CardTitle>
             <CardDescription>所有账号的默认 AI 设置。</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase text-muted-foreground">接口地址</Label>
-              <Input
-                value={effectiveAIConfig?.base_url || ""}
-                onChange={(e) => updateAIConfig({ base_url: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase text-muted-foreground">默认模型</Label>
-              <Input
-                value={effectiveAIConfig?.model || ""}
-                onChange={(e) => updateAIConfig({ model: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase text-muted-foreground">
-                可用模型列表（每行一个）
-              </Label>
-              <Textarea
-                value={availableModelsText}
-                onChange={(e) => {
-                  const models = e.target.value
-                    .split("\n")
-                    .map((s: string) => s.trim())
-                    .filter(Boolean);
-                  setAIConfig((prev: any) => ({
-                    ...(prev ?? aiConfigData),
-                    available_models: JSON.stringify(models),
-                  }));
-                }}
-                rows={4}
-                placeholder={"gpt-4o-mini\ngpt-4o\nclaude-3-5-sonnet-20241022"}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase text-muted-foreground">API Key</Label>
-              <Input
-                type="password"
-                value={effectiveAIConfig?.api_key || ""}
-                onChange={(e) => updateAIConfig({ api_key: e.target.value })}
-                placeholder="••••••••"
-              />
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
-              <div>
-                <p className="text-sm font-medium">隐藏思考过程</p>
-                <p className="text-xs text-muted-foreground">启用后不会将模型的思考内容发送给用户</p>
-              </div>
-              <Switch
-                checked={effectiveAIConfig?.hide_thinking === "true"}
-                onCheckedChange={(checked) =>
-                  updateAIConfig({ hide_thinking: checked ? "true" : "false" })
-                }
-              />
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
-              <div>
-                <p className="text-sm font-medium">Markdown 转纯文本</p>
-                <p className="text-xs text-muted-foreground">启用后将 AI 回复中的 Markdown 格式转为纯文本</p>
-              </div>
-              <Switch
-                checked={effectiveAIConfig?.strip_markdown === "true"}
-                onCheckedChange={(checked) =>
-                  updateAIConfig({ strip_markdown: checked ? "true" : "false" })
-                }
-              />
-            </div>
+          <CardContent>
+            <Tabs defaultValue="basic">
+              <TabsList className="mb-4">
+                <TabsTrigger value="basic">基础</TabsTrigger>
+                <TabsTrigger value="advanced">高级</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="basic" className="space-y-4 mt-0">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">接口地址</Label>
+                  <Input
+                    value={effectiveAIConfig?.base_url || ""}
+                    onChange={(e) => updateAIConfig({ base_url: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">默认模型</Label>
+                  <Input
+                    value={effectiveAIConfig?.model || ""}
+                    onChange={(e) => updateAIConfig({ model: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">API Key</Label>
+                  <Input
+                    type="password"
+                    value={effectiveAIConfig?.api_key || ""}
+                    onChange={(e) => updateAIConfig({ api_key: e.target.value })}
+                    placeholder="••••••••"
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="advanced" className="space-y-4 mt-0">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">
+                    可用模型列表
+                  </Label>
+                  {(() => {
+                    let models: string[] = [];
+                    try {
+                      if (effectiveAIConfig?.available_models)
+                        models = JSON.parse(effectiveAIConfig.available_models);
+                    } catch {}
+
+                    const setModels = (next: string[]) => {
+                      setAIConfig((prev: any) => ({
+                        ...(prev ?? aiConfigData),
+                        available_models: JSON.stringify(next),
+                      }));
+                    };
+
+                    return (
+                      <div className="space-y-2">
+                        {models.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {models.map((m, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted border text-xs font-mono"
+                              >
+                                {m}
+                                <button
+                                  type="button"
+                                  className="ml-0.5 text-muted-foreground hover:text-destructive"
+                                  onClick={() => setModels(models.filter((_, j) => j !== i))}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <Input
+                          placeholder="输入模型名称，按回车添加"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              const v = (e.target as HTMLInputElement).value.trim();
+                              if (v && !models.includes(v)) {
+                                setModels([...models, v]);
+                                (e.target as HTMLInputElement).value = "";
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">
+                    自定义 Headers
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    调用 AI 接口时附加的 HTTP 请求头，例如 OpenRouter 归属信息。
+                  </p>
+                  <div className="space-y-2">
+                    {(() => {
+                      let entries: [string, string][] = [];
+                      try {
+                        const raw = effectiveAIConfig?.custom_headers;
+                        if (raw) {
+                          const parsed = JSON.parse(raw);
+                          entries = Array.isArray(parsed) ? parsed : Object.entries(parsed);
+                        }
+                      } catch {}
+
+                      const sync = (next: [string, string][]) => {
+                        updateAIConfig({ custom_headers: next.length ? JSON.stringify(next) : "" });
+                      };
+
+                      return (
+                        <>
+                          {entries.map(([key, val], i) => (
+                            <div key={i} className="flex gap-2 items-center">
+                              <Input
+                                className="flex-1"
+                                placeholder="Header Name"
+                                value={key}
+                                onChange={(e) => {
+                                  const next = [...entries];
+                                  next[i] = [e.target.value, val];
+                                  sync(next);
+                                }}
+                              />
+                              <Input
+                                className="flex-1"
+                                placeholder="Value"
+                                value={val}
+                                onChange={(e) => {
+                                  const next = [...entries];
+                                  next[i] = [key, e.target.value];
+                                  sync(next);
+                                }}
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0 h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => sync(entries.filter((_, j) => j !== i))}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => sync([...entries, ["", ""]])}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            添加 Header
+                          </Button>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
+                  <div>
+                    <p className="text-sm font-medium">隐藏思考过程</p>
+                    <p className="text-xs text-muted-foreground">启用后不会将模型的思考内容发送给用户</p>
+                  </div>
+                  <Switch
+                    checked={effectiveAIConfig?.hide_thinking === "true"}
+                    onCheckedChange={(checked) =>
+                      updateAIConfig({ hide_thinking: checked ? "true" : "false" })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
+                  <div>
+                    <p className="text-sm font-medium">Markdown 转纯文本</p>
+                    <p className="text-xs text-muted-foreground">启用后将 AI 回复中的 Markdown 格式转为纯文本</p>
+                  </div>
+                  <Switch
+                    checked={effectiveAIConfig?.strip_markdown === "true"}
+                    onCheckedChange={(checked) =>
+                      updateAIConfig({ strip_markdown: checked ? "true" : "false" })
+                    }
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
           <CardFooter className="flex justify-end">
             <Button onClick={handleSaveAI} disabled={saveAIMutation.isPending}>
