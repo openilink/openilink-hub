@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/openilink/openilink-hub/internal/auth"
 )
@@ -191,7 +192,7 @@ func (s *Server) handleAppOAuthSetupRedirect(w http.ResponseWriter, r *http.Requ
 
 	// Build hub callback URL using configured origin (not r.Host, which may be
 	// "localhost" behind a reverse proxy / Docker).
-	hubURL := s.Config.RPOrigin
+	hubURL := strings.TrimRight(s.Config.RPOrigin, "/")
 
 	// Redirect to app's oauth_setup_url
 	setupURL, err := url.Parse(app.OAuthSetupURL)
