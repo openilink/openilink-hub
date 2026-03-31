@@ -161,7 +161,7 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 		HideThinking    string `json:"hide_thinking"`
 		StripMarkdown   string `json:"strip_markdown"`
 		AvailableModels string `json:"available_models"`
-		CustomHeaders   string `json:"custom_headers"`
+		CustomHeaders   *string `json:"custom_headers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -194,14 +194,15 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if req.AvailableModels != "" {
 		s.Store.SetConfig("ai.available_models", req.AvailableModels)
 	}
-	if req.CustomHeaders != "" {
-		if !json.Valid([]byte(req.CustomHeaders)) {
+	if req.CustomHeaders != nil {
+		if *req.CustomHeaders == "" {
+			s.Store.DeleteConfig("ai.custom_headers")
+		} else if !json.Valid([]byte(*req.CustomHeaders)) {
 			jsonError(w, "custom_headers must be valid JSON", http.StatusBadRequest)
 			return
+		} else {
+			s.Store.SetConfig("ai.custom_headers", *req.CustomHeaders)
 		}
-		s.Store.SetConfig("ai.custom_headers", req.CustomHeaders)
-	} else {
-		s.Store.DeleteConfig("ai.custom_headers")
 	}
 	jsonOK(w)
 }
