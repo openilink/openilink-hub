@@ -82,7 +82,7 @@ export function useUninstallApp() {
       api.deleteInstallation(appId, instId),
     onSuccess: (_data, { appId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.apps.installations(appId) });
-      qc.invalidateQueries({ queryKey: ["bots"] });
+      qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
       qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
       qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
       qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });

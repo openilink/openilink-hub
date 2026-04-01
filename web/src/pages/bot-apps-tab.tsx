@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 
 export function BotAppsTab({ botId }: { botId: string }) {
-  const navigate = useNavigate();
   const { data: installations = [] } = useBotApps(botId);
   const [showInstall, setShowInstall] = useState(false);
   const { toast } = useToast();
@@ -130,7 +129,13 @@ export function BotAppsTab({ botId }: { botId: string }) {
         botId={botId}
         open={showInstall}
         onOpenChange={setShowInstall}
-        onInstalled={() => qc.invalidateQueries({ queryKey: queryKeys.bots.apps(botId) })}
+        onInstalled={() => {
+          qc.invalidateQueries({ queryKey: queryKeys.bots.apps(botId) });
+          qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
+          qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
+          qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
+          qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
+        }}
       />
     </div>
   );

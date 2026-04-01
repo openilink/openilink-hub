@@ -25,6 +25,13 @@ export function InstallAppPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const invalidateAppQueries = () => {
+    qc.invalidateQueries({ queryKey: queryKeys.bots.apps(botId!) });
+    qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
+    qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
+    qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
+    qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
+  };
   const { data: app, isLoading: appLoading } = useApp(appId!);
   const { data: allBots = [] } = useBots();
   const bot = allBots.find((b: any) => b.id === botId);
@@ -53,6 +60,7 @@ export function InstallAppPage() {
       if (event.data?.type === "oauth_complete") {
         setWaitingForOAuth(false);
         if (oauthPopup && !oauthPopup.closed) oauthPopup.close();
+        invalidateAppQueries();
         toast({ title: "安装成功" });
         navigate(`/dashboard/accounts/${botId}`);
       }
@@ -66,6 +74,7 @@ export function InstallAppPage() {
           clearInterval(interval);
           setWaitingForOAuth(false);
           if (oauthPopup && !oauthPopup.closed) oauthPopup.close();
+          invalidateAppQueries();
           toast({ title: "安装成功" });
           navigate(`/dashboard/accounts/${botId}`);
         }
@@ -111,11 +120,7 @@ export function InstallAppPage() {
       }
 
       toast({ title: "安装成功" });
-      qc.invalidateQueries({ queryKey: queryKeys.bots.apps(botId!) });
-      qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
-      qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
-      qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
-      qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
+      invalidateAppQueries();
       navigate(`/dashboard/accounts/${botId}/apps/${installationId}`);
     } catch (e: any) {
       toast({ variant: "destructive", title: "安装失败", description: e.message });

@@ -77,9 +77,10 @@ export function BotDetailPage() {
   const { data: marketplaceApps = [] } = useMarketplaceApps();
   const { data: availableModels = [] } = useAvailableModels();
 
-  // Derived: listed apps excluding builtins
+  // Derived: listed apps excluding builtins, installed app IDs for this bot
   const builtinSlugs = new Set(builtinApps.map((a: any) => a.slug));
   const listedApps = listedAppsRaw.filter((a: any) => !builtinSlugs.has(a.slug));
+  const installedOnBot = new Set(installations.map((inst: any) => inst.app_id));
   const marketplaceLoading = false; // All queries load in parallel, handled by isLoading above
 
   // Mutations
@@ -481,7 +482,7 @@ export function BotDetailPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold leading-tight">{app.name}</p>
-                        {app.installed ? (
+                        {installedOnBot.has(app.id) ? (
                           <Badge variant="secondary" className="text-[10px] shrink-0">
                             已安装
                           </Badge>
@@ -496,7 +497,7 @@ export function BotDetailPage() {
                         {parseTools(app.tools).length} 个命令
                       </span>
                     ) : null}
-                    {app.installed ? (
+                    {installedOnBot.has(app.id) ? (
                       <span className="text-[11px] text-muted-foreground/50 shrink-0">已安装</span>
                     ) : (
                       <Button
@@ -534,7 +535,7 @@ export function BotDetailPage() {
                             v{app.version}
                           </Badge>
                         ) : null}
-                        {app.installed ? (
+                        {installedOnBot.has(app.id) ? (
                           <Badge variant="secondary" className="text-[10px] shrink-0">
                             已安装
                           </Badge>
@@ -544,7 +545,7 @@ export function BotDetailPage() {
                         {app.description}
                       </p>
                     </div>
-                    {app.installed ? (
+                    {installedOnBot.has(app.id) ? (
                       <span className="text-[11px] text-muted-foreground/50 shrink-0">已安装</span>
                     ) : (
                       <Button
@@ -582,7 +583,7 @@ export function BotDetailPage() {
                             v{app.version}
                           </Badge>
                         ) : null}
-                        {app.installed ? (
+                        {installedOnBot.has(app.id) ? (
                           <Badge variant="secondary" className="text-[10px] shrink-0">
                             已安装
                           </Badge>
