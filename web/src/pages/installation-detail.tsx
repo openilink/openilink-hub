@@ -23,13 +23,7 @@ import {
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-} from "../components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "../components/ui/card";
 import {
   Table,
   TableBody,
@@ -60,7 +54,14 @@ import { ToolsDisplay, parseTools } from "../components/tools-display";
 
 // ==================== Nav Definition ====================
 
-type SectionKey = "token" | "config" | "app-config" | "tools" | "permissions" | "event-logs" | "api-logs";
+type SectionKey =
+  | "token"
+  | "config"
+  | "app-config"
+  | "tools"
+  | "permissions"
+  | "event-logs"
+  | "api-logs";
 
 function buildNavSections(app: any, inst?: any) {
   const items: { key: SectionKey; label: string; icon: any }[] = [
@@ -109,7 +110,8 @@ export function InstallationDetailPage() {
   const botName = bot ? botDisplayName(bot) : "";
   const loading = installationsLoading;
 
-  const refreshInstallations = () => queryClient.invalidateQueries({ queryKey: queryKeys.bots.apps(botId!) });
+  const refreshInstallations = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.bots.apps(botId!) });
 
   // Local UI state
   const [section, setSection] = useState<SectionKey>("token");
@@ -204,10 +206,7 @@ export function InstallationDetailPage() {
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold tracking-tight">{inst.app_name || app.name}</h1>
-              <InlineHandleEditor
-                value={handle}
-                onSave={handleSaveHandle}
-              />
+              <InlineHandleEditor value={handle} onSave={handleSaveHandle} />
               {app.registry && app.registry !== "builtin" ? (
                 <Badge variant="outline" className="rounded-full font-bold">
                   来自应用市场
@@ -308,14 +307,18 @@ export function InstallationDetailPage() {
               );
             })()}
           {section === "permissions" && <PermissionsSection app={app} inst={inst} />}
-          {section === "app-config" && <AppConfigForm app={app} inst={inst} onUpdate={refreshInstallations} />}
+          {section === "app-config" && (
+            <AppConfigForm app={app} inst={inst} onUpdate={refreshInstallations} />
+          )}
           {section === "config" && (
             <ConfigSection
               inst={inst}
               onUninstall={() => navigate(`/dashboard/accounts/${botId}`)}
             />
           )}
-          {section === "event-logs" && <EventLogsSection appId={inst.app_id} instId={inst.id} botId={botId!} />}
+          {section === "event-logs" && (
+            <EventLogsSection appId={inst.app_id} instId={inst.id} botId={botId!} />
+          )}
           {section === "api-logs" && <ApiLogsSection appId={inst.app_id} instId={inst.id} />}
         </div>
       </div>
@@ -325,13 +328,7 @@ export function InstallationDetailPage() {
 
 // ==================== Inline Handle Editor ====================
 
-function InlineHandleEditor({
-  value,
-  onSave,
-}: {
-  value: string;
-  onSave: (v: string) => void;
-}) {
+function InlineHandleEditor({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -425,7 +422,11 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
 
   function handleCopy(text: string) {
     if (!navigator.clipboard?.writeText) {
-      toast({ variant: "destructive", title: "复制失败", description: "当前浏览器不支持自动复制，请手动选中复制" });
+      toast({
+        variant: "destructive",
+        title: "复制失败",
+        description: "当前浏览器不支持自动复制，请手动选中复制",
+      });
       return;
     }
     navigator.clipboard
@@ -479,30 +480,57 @@ function TokenSection({ app, inst }: { app: any; inst: any }) {
       btn.textContent = "复制";
       btn.setAttribute("aria-label", "复制代码");
       Object.assign(btn.style, {
-        position: "absolute", top: "6px", right: "6px",
-        fontSize: "11px", padding: "2px 8px", borderRadius: "4px",
-        border: "1px solid var(--border)", background: "var(--background)",
-        color: "var(--muted-foreground)", cursor: "pointer",
+        position: "absolute",
+        top: "6px",
+        right: "6px",
+        fontSize: "11px",
+        padding: "2px 8px",
+        borderRadius: "4px",
+        border: "1px solid var(--border)",
+        background: "var(--background)",
+        color: "var(--muted-foreground)",
+        cursor: "pointer",
       });
       btn.addEventListener("click", () => {
         if (!navigator.clipboard?.writeText) {
           btn.textContent = "失败";
-          toast({ variant: "destructive", title: "复制失败", description: "当前浏览器不支持自动复制，请手动选中复制" });
-          timeouts.push(setTimeout(() => { btn.textContent = "复制"; }, 2000));
+          toast({
+            variant: "destructive",
+            title: "复制失败",
+            description: "当前浏览器不支持自动复制，请手动选中复制",
+          });
+          timeouts.push(
+            setTimeout(() => {
+              btn.textContent = "复制";
+            }, 2000),
+          );
           return;
         }
-        navigator.clipboard.writeText(codeText).then(() => {
-          btn.textContent = "已复制";
-          timeouts.push(setTimeout(() => { btn.textContent = "复制"; }, 2000));
-        }).catch(() => {
-          btn.textContent = "失败";
-          toast({ variant: "destructive", title: "复制失败", description: "请手动选中复制" });
-          timeouts.push(setTimeout(() => { btn.textContent = "复制"; }, 2000));
-        });
+        navigator.clipboard
+          .writeText(codeText)
+          .then(() => {
+            btn.textContent = "已复制";
+            timeouts.push(
+              setTimeout(() => {
+                btn.textContent = "复制";
+              }, 2000),
+            );
+          })
+          .catch(() => {
+            btn.textContent = "失败";
+            toast({ variant: "destructive", title: "复制失败", description: "请手动选中复制" });
+            timeouts.push(
+              setTimeout(() => {
+                btn.textContent = "复制";
+              }, 2000),
+            );
+          });
       });
       pre.appendChild(btn);
     });
-    return () => { timeouts.forEach(clearTimeout); };
+    return () => {
+      timeouts.forEach(clearTimeout);
+    };
   }, [guideHtml]);
   const showGenericGuide = !guideText && app.registry === "builtin";
   const showUsageGuide = guideText || showGenericGuide;
@@ -650,7 +678,7 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
     setSaving(true);
     try {
       await api.updateInstallation(inst.app_id, inst.id, {
-        config: JSON.stringify(form),
+        config: form,
       });
       toast({ title: "配置已保存" });
       onUpdate();
@@ -697,13 +725,7 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
 
 // ==================== Config Section ====================
 
-function ConfigSection({
-  inst,
-  onUninstall,
-}: {
-  inst: any;
-  onUninstall: () => void;
-}) {
+function ConfigSection({ inst, onUninstall }: { inst: any; onUninstall: () => void }) {
   const { toast } = useToast();
   const [showUninstallDialog, setShowUninstallDialog] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
@@ -766,7 +788,15 @@ function ConfigSection({
 
 // ==================== Event Logs Section ====================
 
-function EventLogsSection({ appId, instId, botId }: { appId: string; instId: string; botId: string }) {
+function EventLogsSection({
+  appId,
+  instId,
+  botId,
+}: {
+  appId: string;
+  instId: string;
+  botId: string;
+}) {
   const navigate = useNavigate();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -844,8 +874,15 @@ function EventLogsSection({ appId, instId, botId }: { appId: string; instId: str
                   key={log.id || log.trace_id + log.created_at}
                   className={log.trace_id ? "cursor-pointer focus-visible:bg-muted/50" : ""}
                   tabIndex={log.trace_id ? 0 : undefined}
-                  onClick={() => log.trace_id && navigate(`/dashboard/accounts/${botId}/traces/${log.trace_id}`)}
-                  onKeyDown={(e) => { if (log.trace_id && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); navigate(`/dashboard/accounts/${botId}/traces/${log.trace_id}`); } }}
+                  onClick={() =>
+                    log.trace_id && navigate(`/dashboard/accounts/${botId}/traces/${log.trace_id}`)
+                  }
+                  onKeyDown={(e) => {
+                    if (log.trace_id && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      navigate(`/dashboard/accounts/${botId}/traces/${log.trace_id}`);
+                    }
+                  }}
                 >
                   <TableCell className="font-mono whitespace-nowrap">
                     {formatTime(log.created_at)}
@@ -989,9 +1026,7 @@ function PermissionsSection({ app, inst }: { app: any; inst: any }) {
   const events: string[] = app?.events || [];
   const readScopes = scopes.filter((s: string) => s.endsWith(":read"));
   const writeScopes = scopes.filter((s: string) => s.endsWith(":write"));
-  const otherScopes = scopes.filter(
-    (s: string) => !s.endsWith(":read") && !s.endsWith(":write")
-  );
+  const otherScopes = scopes.filter((s: string) => !s.endsWith(":read") && !s.endsWith(":write"));
 
   function eventLabelEntry(key: string): { label: string; showKey: boolean } {
     const found = EVENT_TYPES.find((e) => e.key === key);
@@ -1009,13 +1044,20 @@ function PermissionsSection({ app, inst }: { app: any; inst: any }) {
         <CardContent className="pt-6 space-y-4">
           {readScopes.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">读取权限</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                读取权限
+              </p>
               <div className="space-y-1.5">
                 {readScopes.map((scope: string) => (
-                  <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div
+                    key={scope}
+                    className="flex items-center gap-2 text-sm text-muted-foreground"
+                  >
                     <Eye className="h-3.5 w-3.5 shrink-0" />
                     <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                    <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                    <span className="font-mono text-xs ml-auto text-muted-foreground/60">
+                      {scope}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1024,13 +1066,20 @@ function PermissionsSection({ app, inst }: { app: any; inst: any }) {
 
           {writeScopes.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">写入权限</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                写入权限
+              </p>
               <div className="space-y-1.5">
                 {writeScopes.map((scope: string) => (
-                  <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div
+                    key={scope}
+                    className="flex items-center gap-2 text-sm text-muted-foreground"
+                  >
                     <Zap className="h-3.5 w-3.5 shrink-0" />
                     <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                    <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                    <span className="font-mono text-xs ml-auto text-muted-foreground/60">
+                      {scope}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1039,13 +1088,20 @@ function PermissionsSection({ app, inst }: { app: any; inst: any }) {
 
           {otherScopes.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">其他权限</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                其他权限
+              </p>
               <div className="space-y-1.5">
                 {otherScopes.map((scope: string) => (
-                  <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div
+                    key={scope}
+                    className="flex items-center gap-2 text-sm text-muted-foreground"
+                  >
                     <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
                     <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                    <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                    <span className="font-mono text-xs ml-auto text-muted-foreground/60">
+                      {scope}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1054,14 +1110,18 @@ function PermissionsSection({ app, inst }: { app: any; inst: any }) {
 
           {events.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                订阅事件
+              </p>
               <div className="flex flex-wrap gap-1.5">
                 {events.map((event: string) => {
                   const { label, showKey } = eventLabelEntry(event);
                   return (
                     <Badge key={event} variant="outline" className="text-xs">
                       {label}
-                      {showKey && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
+                      {showKey && (
+                        <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>
+                      )}
                     </Badge>
                   );
                 })}

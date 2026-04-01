@@ -149,3 +149,36 @@ func TestHandler_InvalidURL(t *testing.T) {
 		t.Fatal("expected error for unreachable URL")
 	}
 }
+
+// TestHandler_DoubleEncodedConfig verifies that a double-serialized config
+// (a JSON string instead of a JSON object, as produced by the old frontend
+// bug: JSON.stringify in config field + JSON.stringify in request body)
+// causes the handler to silently skip forwarding — reproducing issue #197.
+func TestHandler_DoubleEncodedConfig(t *testing.T) {
+	forwarded := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	// Config is a JSON-encoded string (double-encode: the frontend did JSON.stringify twice)
+	doubleEncoded, _ := json.Marshal(`{"forward_url":"` + ts.URL + `"}`)
+
+	inst := &store.AppInstallation{
+		ID:               "inst-bug",
+		BotID:            "bot-456",
+		Config:           json.RawMessage(doubleEncoded),
+		AppWebhookSecret: "test-secret",
+	}
+	event := &app.Event{Type: "message.text", ID: "evt-000"}
+
+	h := &Handler{}
+	_ = h.HandleEvent(inst, event)
+
+	if forwarded {
+		t.Log("forwarded=true: backend unwrapping fix is active")
+	} else {
+		t.Error("BUG REPRODUCED: double-encoded config causes silent skip — message NOT forwarded (issue #197)")
+	}
+}

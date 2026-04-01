@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Eye, Zap, Loader2, ExternalLink, ShieldCheck, Terminal, Sliders } from "lucide-react";
+import {
+  ArrowLeft,
+  Eye,
+  Zap,
+  Loader2,
+  ExternalLink,
+  ShieldCheck,
+  Terminal,
+  Sliders,
+} from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Input } from "../components/ui/input";
@@ -98,7 +107,11 @@ export function InstallAppPage() {
 
       if (result?.needs_oauth && result?.oauth_redirect) {
         setWaitingForOAuth(true);
-        const popup = window.open(result.oauth_redirect, "oauth_popup", "width=600,height=700,scrollbars=yes");
+        const popup = window.open(
+          result.oauth_redirect,
+          "oauth_popup",
+          "width=600,height=700,scrollbars=yes",
+        );
         setOAuthPopup(popup);
         setInstalling(false);
         return;
@@ -111,7 +124,7 @@ export function InstallAppPage() {
         if (hasConfig) {
           try {
             await api.updateInstallation(appId!, installationId, {
-              config: JSON.stringify(configForm),
+              config: configForm,
             });
           } catch {
             toast({ title: "配置保存失败", description: "应用已安装，但配置未保存。" });
@@ -134,11 +147,17 @@ export function InstallAppPage() {
       <div className="max-w-xl mx-auto py-20 text-center space-y-4">
         <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
         <h2 className="text-lg font-bold">等待授权完成</h2>
-        <p className="text-sm text-muted-foreground">请在弹出窗口中完成应用授权。完成后此页面将自动更新。</p>
-        <Button variant="outline" size="sm" onClick={() => {
-          setWaitingForOAuth(false);
-          if (oauthPopup && !oauthPopup.closed) oauthPopup.close();
-        }}>
+        <p className="text-sm text-muted-foreground">
+          请在弹出窗口中完成应用授权。完成后此页面将自动更新。
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setWaitingForOAuth(false);
+            if (oauthPopup && !oauthPopup.closed) oauthPopup.close();
+          }}
+        >
           取消
         </Button>
       </div>
@@ -171,15 +190,15 @@ export function InstallAppPage() {
   const writeScopes = scopes.filter((s: string) => s.endsWith(":write"));
   const otherScopes = scopes.filter((s: string) => !s.endsWith(":read") && !s.endsWith(":write"));
   const events: string[] = app.events || [];
-  const hasPermissions = readScopes.length > 0 || writeScopes.length > 0 || otherScopes.length > 0 || events.length > 0;
+  const hasPermissions =
+    readScopes.length > 0 || writeScopes.length > 0 || otherScopes.length > 0 || events.length > 0;
 
   // Parse config_schema
   let schemaProperties: Record<string, any> = {};
   if (app.config_schema) {
     try {
-      const parsed = typeof app.config_schema === "string"
-        ? JSON.parse(app.config_schema)
-        : app.config_schema;
+      const parsed =
+        typeof app.config_schema === "string" ? JSON.parse(app.config_schema) : app.config_schema;
       schemaProperties = parsed.properties || {};
     } catch {
       // ignore
@@ -234,9 +253,7 @@ export function InstallAppPage() {
               </a>
             )}
           </div>
-          {app.description && (
-            <p className="text-sm text-muted-foreground">{app.description}</p>
-          )}
+          {app.description && <p className="text-sm text-muted-foreground">{app.description}</p>}
           <div className="flex items-center gap-3 pt-2">
             <div className="flex items-center gap-2">
               <Input
@@ -267,7 +284,9 @@ export function InstallAppPage() {
             className="w-full h-9 px-3 rounded-md border bg-background text-sm"
           >
             {tabs.map((t) => (
-              <option key={t.key} value={t.key}>{t.label}</option>
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
             ))}
           </select>
         </div>
@@ -308,13 +327,20 @@ export function InstallAppPage() {
                   <CardContent className="pt-6 space-y-4">
                     {readScopes.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">读取权限</p>
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          读取权限
+                        </p>
                         <div className="space-y-1.5">
                           {readScopes.map((scope: string) => (
-                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div
+                              key={scope}
+                              className="flex items-center gap-2 text-sm text-muted-foreground"
+                            >
                               <Eye className="h-3.5 w-3.5 shrink-0" />
                               <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">
+                                {scope}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -322,13 +348,20 @@ export function InstallAppPage() {
                     )}
                     {writeScopes.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">写入权限</p>
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          写入权限
+                        </p>
                         <div className="space-y-1.5">
                           {writeScopes.map((scope: string) => (
-                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div
+                              key={scope}
+                              className="flex items-center gap-2 text-sm text-muted-foreground"
+                            >
                               <Zap className="h-3.5 w-3.5 shrink-0" />
                               <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">
+                                {scope}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -336,13 +369,20 @@ export function InstallAppPage() {
                     )}
                     {otherScopes.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">其他权限</p>
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          其他权限
+                        </p>
                         <div className="space-y-1.5">
                           {otherScopes.map((scope: string) => (
-                            <div key={scope} className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div
+                              key={scope}
+                              className="flex items-center gap-2 text-sm text-muted-foreground"
+                            >
                               <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
                               <span>{SCOPE_DESCRIPTIONS[scope] || scope}</span>
-                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">{scope}</span>
+                              <span className="font-mono text-xs ml-auto text-muted-foreground/60">
+                                {scope}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -350,14 +390,20 @@ export function InstallAppPage() {
                     )}
                     {events.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">订阅事件</p>
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                          订阅事件
+                        </p>
                         <div className="flex flex-wrap gap-1.5">
                           {events.map((event: string) => {
                             const found = EVENT_TYPES.find((e) => e.key === event);
                             return (
                               <Badge key={event} variant="outline" className="text-xs">
                                 {found ? found.label : event}
-                                {found && <span className="font-mono text-muted-foreground/60 ml-1">· {event}</span>}
+                                {found && (
+                                  <span className="font-mono text-muted-foreground/60 ml-1">
+                                    · {event}
+                                  </span>
+                                )}
                               </Badge>
                             );
                           })}

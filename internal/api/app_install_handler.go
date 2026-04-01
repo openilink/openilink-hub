@@ -88,7 +88,18 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 	}
 	cfg := inst.Config
 	if req.Config != nil {
-		cfg = req.Config
+		// Unwrap double-encoded config JSON strings (e.g., sent as a quoted
+		// string instead of a raw object due to a prior frontend bug).
+		var s string
+		if json.Unmarshal(req.Config, &s) == nil {
+			if unwrapped := json.RawMessage(s); json.Valid(unwrapped) {
+				cfg = unwrapped
+			} else {
+				cfg = req.Config
+			}
+		} else {
+			cfg = req.Config
+		}
 	}
 	enabled := inst.Enabled
 	if req.Enabled != nil {
