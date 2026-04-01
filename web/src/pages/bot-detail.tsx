@@ -598,7 +598,7 @@ export function BotDetailPage() {
                         {app.author}
                       </span>
                     ) : null}
-                    {app.installed && app.update_available ? (
+                    {installedOnBot.has(app.id) && app.update_available ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -609,7 +609,7 @@ export function BotDetailPage() {
                         <RefreshCw className="h-3.5 w-3.5" />
                         更新
                       </Button>
-                    ) : app.installed ? (
+                    ) : installedOnBot.has(app.id) ? (
                       <span className="text-[11px] text-muted-foreground/50 shrink-0">已安装</span>
                     ) : (
                       <Button
