@@ -34,4 +34,4 @@ docs/plans/
 runner.yaml
 
 # Build output
-dist/
+dist/.worktrees/
