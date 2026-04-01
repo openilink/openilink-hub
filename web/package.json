@@ -12,7 +12,8 @@
     "check:fix": "vp check --fix",
     "lint": "vp lint",
     "fmt": "vp fmt",
-    "test": "vp test"
+    "test": "vp test",
+    "prepare": "vp config"
   },
   "dependencies": {
     "@bprogress/react": "^1.2.7",
