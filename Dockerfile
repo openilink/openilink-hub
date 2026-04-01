@@ -3,7 +3,7 @@ FROM node:22-bookworm-slim AS frontend
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app/web
 COPY web/package.json web/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN VITE_GIT_HOOKS=0 pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm run build
 
