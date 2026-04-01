@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
@@ -7,6 +8,9 @@ import { Badge } from "../components/ui/badge";
 import { api } from "../lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useBotApps } from "@/hooks/use-bots";
+import { useUninstallApp } from "@/hooks/use-apps";
+import { queryKeys } from "@/lib/query-keys";
 import { Blocks, Plus, Trash2, Loader2, Eye, Zap, Search } from "lucide-react";
 import { AppIcon } from "../components/app-icon";
 import { SCOPE_DESCRIPTIONS } from "../lib/constants";
@@ -20,20 +24,12 @@ import {
 
 export function BotAppsTab({ botId }: { botId: string }) {
   const navigate = useNavigate();
-  const [installations, setInstallations] = useState<any[]>([]);
+  const { data: installations = [] } = useBotApps(botId);
   const [showInstall, setShowInstall] = useState(false);
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
-
-  async function load() {
-    try {
-      setInstallations((await api.listBotApps(botId)) || []);
-    } catch {}
-  }
-
-  useEffect(() => {
-    load();
-  }, [botId]);
+  const qc = useQueryClient();
+  const uninstallMutation = useUninstallApp();
 
   async function handleUninstall(appId: string, instId: string) {
     const ok = await confirm({
@@ -44,9 +40,8 @@ export function BotAppsTab({ botId }: { botId: string }) {
     });
     if (!ok) return;
     try {
-      await api.deleteInstallation(appId, instId);
+      await uninstallMutation.mutateAsync({ appId, instId });
       toast({ title: "已卸载" });
-      load();
     } catch (e: any) {
       toast({ variant: "destructive", title: "卸载失败", description: e.message });
     }
@@ -55,7 +50,7 @@ export function BotAppsTab({ botId }: { botId: string }) {
   async function handleToggle(inst: any) {
     try {
       await api.updateInstallation(inst.app_id, inst.id, { enabled: !inst.enabled });
-      load();
+      qc.invalidateQueries({ queryKey: queryKeys.bots.apps(botId) });
     } catch {}
   }
 
@@ -135,7 +130,7 @@ export function BotAppsTab({ botId }: { botId: string }) {
         botId={botId}
         open={showInstall}
         onOpenChange={setShowInstall}
-        onInstalled={load}
+        onInstalled={() => qc.invalidateQueries({ queryKey: queryKeys.bots.apps(botId) })}
       />
     </div>
   );

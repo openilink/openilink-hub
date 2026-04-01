@@ -97,6 +97,7 @@ type AppStore interface {
 	UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool) error
 	SetAppWebhookVerified(id string, verified bool) error
 	UpdateAppWebhookURL(id, webhookURL string) error
+	InstalledAppIDs(userID string) (map[string]bool, error)
 	RegenerateInstallationToken(id string) (string, error)
 	GetInstallationByHandle(botID, handle string) (*AppInstallation, error)
 	DeleteInstallation(id string) error

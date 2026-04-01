@@ -62,9 +62,30 @@ export function useInstallApp() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ appId, data }: { appId: string; data: any }) => api.installApp(appId, data),
-    onSuccess: (_data, { appId }) => {
+    onSuccess: (_data, { appId, data }) => {
       qc.invalidateQueries({ queryKey: queryKeys.apps.installations(appId) });
       qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
+      if (data?.bot_id) {
+        qc.invalidateQueries({ queryKey: queryKeys.bots.apps(data.bot_id) });
+      }
+      qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
+      qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
+      qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
+    },
+  });
+}
+
+export function useUninstallApp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ appId, instId }: { appId: string; instId: string }) =>
+      api.deleteInstallation(appId, instId),
+    onSuccess: (_data, { appId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.apps.installations(appId) });
+      qc.invalidateQueries({ queryKey: ["bots"] });
+      qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
+      qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
+      qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
     },
   });
 }

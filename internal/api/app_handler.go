@@ -147,13 +147,13 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/apps?listing=listed — public marketplace; otherwise my apps
 func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
 	var apps []store.App
 	var err error
 
 	if r.URL.Query().Get("listing") == "listed" {
 		apps, err = s.Store.ListListedApps()
 	} else {
-		userID := auth.UserIDFromContext(r.Context())
 		apps, err = s.Store.ListAppsByOwner(userID)
 	}
 	if err != nil {
@@ -164,8 +164,24 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	if apps == nil {
 		apps = []store.App{}
 	}
+
+	// Annotate with installation status for the current user.
+	installedIDs, err := s.Store.InstalledAppIDs(userID)
+	if err != nil {
+		slog.Warn("failed to load installed app IDs", "user_id", userID, "err", err)
+	}
+
+	type appEntry struct {
+		store.App
+		Installed bool `json:"installed"`
+	}
+	result := make([]appEntry, len(apps))
+	for i, a := range apps {
+		result[i] = appEntry{App: a, Installed: installedIDs[a.ID]}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(apps)
+	json.NewEncoder(w).Encode(result)
 }
 
 // GET /api/apps/{id}

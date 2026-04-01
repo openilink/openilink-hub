@@ -7,10 +7,12 @@ import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { Label } from "../components/ui/label";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, botDisplayName } from "../lib/api";
 import { useApp } from "@/hooks/use-apps";
 import { useBots } from "@/hooks/use-bots";
 import { useToast } from "@/hooks/use-toast";
+import { queryKeys } from "@/lib/query-keys";
 import { AppIcon } from "../components/app-icon";
 import { SCOPE_DESCRIPTIONS, EVENT_TYPES } from "../lib/constants";
 import { ToolsDisplay, parseTools } from "../components/tools-display";
@@ -22,6 +24,7 @@ export function InstallAppPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const qc = useQueryClient();
   const { data: app, isLoading: appLoading } = useApp(appId!);
   const { data: allBots = [] } = useBots();
   const bot = allBots.find((b: any) => b.id === botId);
@@ -108,6 +111,11 @@ export function InstallAppPage() {
       }
 
       toast({ title: "安装成功" });
+      qc.invalidateQueries({ queryKey: queryKeys.bots.apps(botId!) });
+      qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
+      qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
+      qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
       navigate(`/dashboard/accounts/${botId}/apps/${installationId}`);
     } catch (e: any) {
       toast({ variant: "destructive", title: "安装失败", description: e.message });

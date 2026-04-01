@@ -306,6 +306,24 @@ func (db *DB) GetInstallationByToken(token string) (*store.AppInstallation, erro
 	return i, nil
 }
 
+func (db *DB) InstalledAppIDs(userID string) (map[string]bool, error) {
+	rows, err := db.Query(`SELECT DISTINCT i.app_id FROM app_installations i
+		JOIN bots b ON b.id = i.bot_id WHERE b.user_id = ?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = true
+	}
+	return ids, rows.Err()
+}
+
 func (db *DB) ListInstallationsByApp(appID string) ([]store.AppInstallation, error) {
 	return db.listInstallations("i.app_id = ?", appID)
 }

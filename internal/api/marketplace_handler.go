@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/registry"
 	"github.com/openilink/openilink-hub/internal/store"
 )
@@ -77,19 +78,32 @@ func (s *Server) handleMarketplace(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/marketplace/builtin — list all builtin apps
 func (s *Server) handleBuiltinApps(w http.ResponseWriter, r *http.Request) {
+	userID := auth.UserIDFromContext(r.Context())
+
 	apps, err := s.Store.ListMarketplaceApps()
 	if err != nil {
 		jsonError(w, "list failed", http.StatusInternalServerError)
 		return
 	}
-	var result []store.App
+
+	installedIDs, err := s.Store.InstalledAppIDs(userID)
+	if err != nil {
+		slog.Warn("failed to load installed app IDs", "user_id", userID, "err", err)
+	}
+
+	type builtinEntry struct {
+		store.App
+		Installed bool `json:"installed"`
+	}
+
+	var result []builtinEntry
 	for _, a := range apps {
 		if a.Registry == "builtin" {
-			result = append(result, a)
+			result = append(result, builtinEntry{App: a, Installed: installedIDs[a.ID]})
 		}
 	}
 	if result == nil {
-		result = []store.App{}
+		result = []builtinEntry{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)

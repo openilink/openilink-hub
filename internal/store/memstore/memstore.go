@@ -370,6 +370,7 @@ func (s *Store) UpdateMarketplaceApp(string, string, string, string, string, str
 }
 func (s *Store) DeleteApp(string) error                                     { return nil }
 func (s *Store) InstallApp(string, string) (*store.AppInstallation, error)  { return nil, errNotImplemented }
+func (s *Store) InstalledAppIDs(string) (map[string]bool, error) { return nil, nil }
 func (s *Store) ListInstallationsByApp(string) ([]store.AppInstallation, error) { return nil, nil }
 func (s *Store) UpdateInstallation(string, string, json.RawMessage, json.RawMessage, bool) error {
 	return nil
