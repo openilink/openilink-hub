@@ -59,16 +59,30 @@ export function InstallAppPage() {
   const [installing, setInstalling] = useState(false);
   const [waitingForOAuth, setWaitingForOAuth] = useState(false);
   const [oauthPopup, setOAuthPopup] = useState<Window | null>(null);
+  const [oauthInstallationId, setOAuthInstallationId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("permissions");
+
+  // Save config for an installation if the app has a config_schema and the user filled values.
+  async function saveConfigIfNeeded(installationId: string) {
+    if (!app?.config_schema || !installationId) return;
+    const hasConfig = Object.values(configForm).some((v) => v !== "");
+    if (!hasConfig) return;
+    try {
+      await api.updateInstallation(appId!, installationId, { config: configForm });
+    } catch {
+      toast({ title: "配置保存失败", description: "应用已安装，但配置未保存。" });
+    }
+  }
 
   // Listen for OAuth completion from popup
   useEffect(() => {
     if (!waitingForOAuth) return;
 
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = async (event: MessageEvent) => {
       if (event.data?.type === "oauth_complete") {
         setWaitingForOAuth(false);
         if (oauthPopup && !oauthPopup.closed) oauthPopup.close();
+        if (oauthInstallationId) await saveConfigIfNeeded(oauthInstallationId);
         invalidateAppQueries();
         toast({ title: "安装成功" });
         navigate(`/dashboard/accounts/${botId}`);
@@ -79,10 +93,12 @@ export function InstallAppPage() {
     const interval = setInterval(async () => {
       try {
         const installations = await api.listBotApps(botId!);
-        if (installations?.find((i: any) => i.app_id === appId)) {
+        const found = installations?.find((i: any) => i.app_id === appId);
+        if (found) {
           clearInterval(interval);
           setWaitingForOAuth(false);
           if (oauthPopup && !oauthPopup.closed) oauthPopup.close();
+          await saveConfigIfNeeded(found.id);
           invalidateAppQueries();
           toast({ title: "安装成功" });
           navigate(`/dashboard/accounts/${botId}`);
@@ -94,7 +110,7 @@ export function InstallAppPage() {
       window.removeEventListener("message", handleMessage);
       clearInterval(interval);
     };
-  }, [waitingForOAuth, oauthPopup, botId, appId, navigate, toast]);
+  }, [waitingForOAuth, oauthPopup, oauthInstallationId, botId, appId, navigate, toast]);
 
   async function handleInstall() {
     setInstalling(true);
@@ -106,6 +122,8 @@ export function InstallAppPage() {
       });
 
       if (result?.needs_oauth && result?.oauth_redirect) {
+        const instId = result?.id || result?.installation_id;
+        if (instId) setOAuthInstallationId(instId);
         setWaitingForOAuth(true);
         const popup = window.open(
           result.oauth_redirect,
@@ -118,19 +136,7 @@ export function InstallAppPage() {
       }
 
       const installationId = result?.id || result?.installation_id;
-
-      if (app.config_schema && installationId) {
-        const hasConfig = Object.values(configForm).some((v) => v !== "");
-        if (hasConfig) {
-          try {
-            await api.updateInstallation(appId!, installationId, {
-              config: configForm,
-            });
-          } catch {
-            toast({ title: "配置保存失败", description: "应用已安装，但配置未保存。" });
-          }
-        }
-      }
+      if (installationId) await saveConfigIfNeeded(installationId);
 
       toast({ title: "安装成功" });
       invalidateAppQueries();
