@@ -1,2 +1,0 @@
-#!/bin/sh
-cd web && pnpm exec vp staged

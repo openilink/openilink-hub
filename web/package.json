@@ -13,7 +13,10 @@
     "lint": "vp lint",
     "fmt": "vp fmt",
     "test": "vp test",
-    "prepare": "vp config"
+    "prepare": "cd .. && husky"
+  },
+  "lint-staged": {
+    "*.@(js|ts|tsx|md|yaml|yml)": "vp check --fix"
   },
   "dependencies": {
     "@bprogress/react": "^1.2.7",
@@ -54,7 +57,9 @@
     "@vitejs/plugin-react": "^6.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "husky": "^9.1.7",
     "jsdom": "^29.0.1",
+    "lint-staged": "^16.4.0",
     "lucide-react": "^0.577.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",
