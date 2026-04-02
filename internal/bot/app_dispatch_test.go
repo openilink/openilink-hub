@@ -47,10 +47,22 @@ func TestResolveMediaURLs(t *testing.T) {
 	if result[1].Media.FileSize != 1024 {
 		t.Error("file size should be preserved")
 	}
+	if result[1].Media.EQP != "" {
+		t.Errorf("file EQP should be cleared, got %q", result[1].Media.EQP)
+	}
+	if result[1].Media.AESKey != "" {
+		t.Errorf("file AESKey should be cleared, got %q", result[1].Media.AESKey)
+	}
 
 	wantImg := "https://hub.example.com/api/v1/channels/media?aes=def456&bot=bot-123&ct=image%2Fjpeg&eqp=eqp-image-param"
 	if result[2].Media.URL != wantImg {
 		t.Errorf("image URL = %q, want %q", result[2].Media.URL, wantImg)
+	}
+	if result[2].Media.EQP != "" {
+		t.Errorf("image EQP should be cleared, got %q", result[2].Media.EQP)
+	}
+	if result[2].Media.AESKey != "" {
+		t.Errorf("image AESKey should be cleared, got %q", result[2].Media.AESKey)
 	}
 
 	// Original not mutated

@@ -1,12 +1,14 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/provider"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // GET /api/v1/channels/media?bot=xxx&eqp=xxx&aes=xxx
@@ -62,7 +64,11 @@ func (s *Server) handleChannelMedia(w http.ResponseWriter, r *http.Request) {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if token != "" {
 			inst, err := s.Store.GetInstallationByToken(token)
-			if err == nil && inst != nil {
+			if err == nil && inst != nil && inst.Enabled && installationHasScope(inst, "message:read") {
+				if botID != "" && inst.BotID != botID {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
 				botInst, ok := s.BotManager.GetInstance(inst.BotID)
 				if ok {
 					s.serveChannelMedia(w, r, botInst, eqp, aes)
@@ -147,7 +153,7 @@ func (s *Server) handleMediaProxy(w http.ResponseWriter, r *http.Request) {
 		if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 			if token != "" {
-				if inst, err := s.Store.GetInstallationByToken(token); err == nil && inst != nil && inst.BotID == botID {
+				if inst, err := s.Store.GetInstallationByToken(token); err == nil && inst != nil && inst.Enabled && inst.BotID == botID && installationHasScope(inst, "message:read") {
 					authed = true
 				}
 			}
@@ -176,4 +182,21 @@ func (s *Server) handleMediaProxy(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	w.Write(data)
+}
+
+// installationHasScope checks if the installation has the given scope granted.
+func installationHasScope(inst *store.AppInstallation, scope string) bool {
+	if len(inst.Scopes) == 0 || string(inst.Scopes) == "[]" || string(inst.Scopes) == "null" {
+		return false
+	}
+	var scopes []string
+	if err := json.Unmarshal(inst.Scopes, &scopes); err != nil {
+		return false
+	}
+	for _, s := range scopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
 }

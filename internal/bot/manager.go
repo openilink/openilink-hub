@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strconv"
 	"sync"
 	"time"
@@ -742,9 +743,12 @@ func (m *Manager) processMedia(inst *Instance, msg *provider.InboundMessage) map
 			}
 		} else {
 			// Fallback: proxy URL via Hub (no storage configured)
-			item.Media.URL = fmt.Sprintf("%s/api/v1/channels/media?bot=%s&eqp=%s&aes=%s&ct=%s",
-				m.baseURL, inst.DBID, item.Media.EncryptQueryParam, item.Media.AESKey,
-				mediaContentType(item.Type))
+			q := url.Values{}
+			q.Set("bot", inst.DBID)
+			q.Set("eqp", item.Media.EncryptQueryParam)
+			q.Set("aes", item.Media.AESKey)
+			q.Set("ct", mediaContentType(item.Type))
+			item.Media.URL = fmt.Sprintf("%s/api/v1/channels/media?%s", m.baseURL, q.Encode())
 		}
 	}
 	return silkKeys

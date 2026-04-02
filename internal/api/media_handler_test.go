@@ -111,7 +111,7 @@ func setupMediaTestEnv(t *testing.T) (*httptest.Server, store.Store, *store.Bot,
 	t.Cleanup(mgr.StopAll)
 
 	// Create an app and install it on the bot.
-	scopesJSON, _ := json.Marshal([]string{"messages:read"})
+	scopesJSON, _ := json.Marshal([]string{"message:read"})
 	app, err := s.CreateApp(&store.App{
 		OwnerID: u.ID,
 		Name:    "MediaTestApp",
@@ -124,6 +124,15 @@ func setupMediaTestEnv(t *testing.T) (*httptest.Server, store.Store, *store.Bot,
 	inst, err := s.InstallApp(app.ID, b.ID)
 	if err != nil {
 		t.Fatalf("InstallApp: %v", err)
+	}
+	// Grant message:read scope so Bearer auth passes scope check.
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, true); err != nil {
+		t.Fatalf("UpdateInstallation: %v", err)
+	}
+	// Re-read to pick up updated scopes.
+	inst, err = s.GetInstallation(inst.ID)
+	if err != nil {
+		t.Fatalf("GetInstallation: %v", err)
 	}
 
 	// Set up object store with a test file.
@@ -256,6 +265,96 @@ func TestMediaProxy_BearerWrongBot(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("expected 401, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Tests: disabled installation and missing scope
+// ---------------------------------------------------------------------------
+
+func TestChannelMedia_BearerDisabledInstallation(t *testing.T) {
+	ts, s, _, inst := setupMediaTestEnv(t)
+
+	// Disable the installation.
+	scopesJSON, _ := json.Marshal([]string{"message:read"})
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, false); err != nil {
+		t.Fatalf("UpdateInstallation: %v", err)
+	}
+
+	resp, err := doMediaReq(t, ts, "/api/v1/channels/media?eqp=test&aes=test123",
+		"Bearer "+inst.AppToken)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 401 for disabled installation, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestChannelMedia_BearerNoScope(t *testing.T) {
+	ts, s, _, inst := setupMediaTestEnv(t)
+
+	// Clear scopes on the installation.
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), json.RawMessage("[]"), true); err != nil {
+		t.Fatalf("UpdateInstallation: %v", err)
+	}
+
+	resp, err := doMediaReq(t, ts, "/api/v1/channels/media?eqp=test&aes=test123",
+		"Bearer "+inst.AppToken)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 401 for missing scope, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestMediaProxy_BearerDisabledInstallation(t *testing.T) {
+	ts, s, b, inst := setupMediaTestEnv(t)
+
+	// Disable the installation.
+	scopesJSON, _ := json.Marshal([]string{"message:read"})
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, false); err != nil {
+		t.Fatalf("UpdateInstallation: %v", err)
+	}
+
+	resp, err := doMediaReq(t, ts, "/api/v1/media/"+b.ID+"/2024-01-01/test.png",
+		"Bearer "+inst.AppToken)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 401 for disabled installation, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestMediaProxy_BearerNoScope(t *testing.T) {
+	ts, s, b, inst := setupMediaTestEnv(t)
+
+	// Clear scopes on the installation.
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), json.RawMessage("[]"), true); err != nil {
+		t.Fatalf("UpdateInstallation: %v", err)
+	}
+
+	resp, err := doMediaReq(t, ts, "/api/v1/media/"+b.ID+"/2024-01-01/test.png",
+		"Bearer "+inst.AppToken)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 401 for missing scope, got %d: %s", resp.StatusCode, string(body))
 	}
 }
 

@@ -640,6 +640,8 @@ func resolveMediaURLs(items []relay.MessageItem, baseURL, botDBID string) []rela
 		q.Set("aes", m.AESKey)
 		q.Set("ct", mediaContentType(out[i].Type))
 		m.URL = fmt.Sprintf("%s/api/v1/channels/media?%s", baseURL, q.Encode())
+		m.EQP = ""
+		m.AESKey = ""
 		out[i].Media = &m
 	}
 	return out
