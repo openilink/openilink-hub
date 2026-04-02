@@ -59,7 +59,6 @@ export function InstallAppPage() {
   const [installing, setInstalling] = useState(false);
   const [waitingForOAuth, setWaitingForOAuth] = useState(false);
   const [oauthPopup, setOAuthPopup] = useState<Window | null>(null);
-  const [oauthInstallationId, setOAuthInstallationId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("permissions");
 
   // Save config for an installation if the app has a config_schema and the user filled values.
@@ -82,7 +81,12 @@ export function InstallAppPage() {
       if (event.data?.type === "oauth_complete") {
         setWaitingForOAuth(false);
         if (oauthPopup && !oauthPopup.closed) oauthPopup.close();
-        if (oauthInstallationId) await saveConfigIfNeeded(oauthInstallationId);
+        // Look up the installation to save config (OAuth flow creates it server-side).
+        try {
+          const installations = await api.listBotApps(botId!);
+          const found = installations?.find((i: any) => i.app_id === appId);
+          if (found) await saveConfigIfNeeded(found.id);
+        } catch {}
         invalidateAppQueries();
         toast({ title: "安装成功" });
         navigate(`/dashboard/accounts/${botId}`);
@@ -110,7 +114,7 @@ export function InstallAppPage() {
       window.removeEventListener("message", handleMessage);
       clearInterval(interval);
     };
-  }, [waitingForOAuth, oauthPopup, oauthInstallationId, botId, appId, navigate, toast]);
+  }, [waitingForOAuth, oauthPopup, botId, appId, navigate, toast]);
 
   async function handleInstall() {
     setInstalling(true);
@@ -122,8 +126,6 @@ export function InstallAppPage() {
       });
 
       if (result?.needs_oauth && result?.oauth_redirect) {
-        const instId = result?.id || result?.installation_id;
-        if (instId) setOAuthInstallationId(instId);
         setWaitingForOAuth(true);
         const popup = window.open(
           result.oauth_redirect,
