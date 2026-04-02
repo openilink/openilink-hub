@@ -36,3 +36,4 @@ runner.yaml
 # Build output
 dist/
 .worktrees/
+.claude/worktrees/
