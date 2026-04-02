@@ -27,11 +27,12 @@ type bridgeConfig struct {
 func (h *Handler) HandleEvent(inst *store.AppInstallation, event *app.Event) error {
 	var cfg bridgeConfig
 	if err := json.Unmarshal(inst.Config, &cfg); err != nil {
-		// Attempt to unwrap double-encoded config (stored as a JSON string
-		// instead of a JSON object due to a prior frontend bug, issue #197).
-		var s string
-		if json.Unmarshal(inst.Config, &s) == nil {
-			json.Unmarshal([]byte(s), &cfg)
+		// TODO: remove after data migration — unwrap double-encoded config
+		// (stored as a JSON string instead of a JSON object due to a prior
+		// frontend bug, issue #197).
+		var raw string
+		if json.Unmarshal(inst.Config, &raw) == nil && len(raw) > 0 && raw[0] == '{' {
+			json.Unmarshal([]byte(raw), &cfg)
 		}
 	}
 	if cfg.ForwardURL == "" {
