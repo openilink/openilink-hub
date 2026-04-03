@@ -67,96 +67,7 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
-		// Check for active WebSocket connection first — deliver via WS if connected.
-		// This must happen before the builtin handler check so that apps like bridge
-		// (which register a builtin handler for HTTP forwarding) can still receive
-		// events over a live WebSocket connection.
-		// Try installation-level WS first, then app-level WS.
-		if m.appWSHub != nil {
-			wsConn := m.appWSHub.Get(installations[i].ID)
-			if wsConn == nil {
-				wsConn = m.appWSHub.GetAppLevel(installations[i].AppID)
-			}
-			if wsConn != nil {
-				span := tracer.StartChild(rootSpan, "ws:"+installations[i].AppSlug, store.SpanKindClient, map[string]any{
-					"app.name": installations[i].AppName,
-					"app.slug": installations[i].AppSlug,
-					"delivery": "websocket",
-				})
-				envelope := map[string]any{
-					"type":            "event",
-					"v":               1,
-					"trace_id":        event.TraceID,
-					"installation_id": installations[i].ID,
-					"bot":             map[string]string{"id": installations[i].BotID},
-					"event": map[string]any{
-						"type":      event.Type,
-						"id":        event.ID,
-						"timestamp": event.Timestamp,
-						"data":      event.Data,
-					},
-				}
-				if err := wsConn.SendJSON(envelope); err != nil {
-					slog.Warn("ws delivery failed, falling back to webhook", "inst", installations[i].ID, "app", installations[i].AppSlug, "err", err)
-					span.EndWithError("ws send: " + err.Error())
-					// Fall through to webhook delivery below
-				} else {
-					// Write event log only on successful WS delivery to avoid
-					// duplicates when falling through to webhook (DeliverWithRetry
-					// writes its own log).
-					envJSON, _ := json.Marshal(envelope)
-					m.appDisp.Store.CreateEventLog(&store.AppEventLog{
-						InstallationID: installations[i].ID,
-						TraceID:        event.TraceID,
-						EventType:      event.Type,
-						EventID:        event.ID,
-						RequestBody:    string(envJSON),
-					})
-					slog.Info("event delivered via ws", "inst", installations[i].ID, "app", installations[i].AppSlug, "event", event.Type, "event_id", event.ID)
-					span.End()
-					continue
-				}
-			}
-		}
-
-		// Builtin apps with handler: route to internal handler (e.g. bridge HTTP forwarding).
-		// This runs after the WS check so a live WS connection takes priority.
-		if installations[i].AppRegistry == "builtin" {
-			if h := builtin.Get(installations[i].AppSlug); h != nil {
-				span := tracer.StartChild(rootSpan, "builtin:"+installations[i].AppSlug, store.SpanKindInternal, map[string]any{
-					"app.name": installations[i].AppName,
-					"app.slug": installations[i].AppSlug,
-				})
-				if err := h.HandleEvent(&installations[i], event); err != nil {
-					span.EndWithError(err.Error())
-				} else {
-					span.End()
-				}
-				continue
-			}
-			// No builtin handler — fall through to webhook delivery
-		}
-
-		// Webhook delivery (fallback when no WS connection and no builtin handler)
-		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppWebhookURL, store.SpanKindClient, map[string]any{
-			"app.name":    installations[i].AppName,
-			"app.slug":    installations[i].AppSlug,
-			"http.url":    installations[i].AppWebhookURL,
-			"http.method": "POST",
-		})
-		result := m.appDisp.DeliverWithRetry(&installations[i], event)
-		if result != nil {
-			reply := result.Reply
-			if result.ReplyURL != "" {
-				reply = "[media] " + result.ReplyURL
-			}
-			span.SetAttr("http.status_code", result.StatusCode)
-			span.SetAttr("http.response_body", reply)
-			span.End()
-		} else {
-			span.EndWithError("no result")
-		}
-		m.sendAppResult(inst, msg.Sender, result, tracer, rootSpan)
+		m.deliverEventToApp(inst, &installations[i], event, msg.Sender, tracer, rootSpan)
 	}
 }
 
@@ -198,17 +109,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 			"group":  groupInfo(msg), "handle": handle,
 		})
 		event.TraceID = tracer.TraceID()
-
-		// Builtin apps with internal handler: route directly
-		if installation.AppRegistry == "builtin" {
-			if h := builtin.Get(installation.AppSlug); h != nil {
-				m.deliverBuiltinMention(inst, installation, event, msg.Sender, tracer, rootSpan)
-				return true
-			}
-			// No internal handler — fall through to WebSocket/webhook
-		}
-
-		m.deliverToInstallation(inst, installation, event, msg.Sender, tracer, rootSpan)
+		m.deliverEventToApp(inst, installation, event, msg.Sender, tracer, rootSpan)
 		return true
 	}
 
@@ -217,31 +118,19 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		"group":  groupInfo(msg), "content": text, "handle": handle,
 	})
 	event.TraceID = tracer.TraceID()
-
-	// Builtin apps with internal handler: route directly
-	if installation.AppRegistry == "builtin" {
-		if h := builtin.Get(installation.AppSlug); h != nil {
-			m.deliverBuiltinMention(inst, installation, event, msg.Sender, tracer, rootSpan)
-			return true
-		}
-		// No internal handler — fall through to WebSocket/webhook
-	}
-
-	m.deliverToInstallation(inst, installation, event, msg.Sender, tracer, rootSpan)
+	m.deliverEventToApp(inst, installation, event, msg.Sender, tracer, rootSpan)
 	return true
 }
 
-// deliverToInstallation delivers an event to a single non-builtin installation,
-// trying WebSocket first and falling back to webhook.
-func (m *Manager) deliverToInstallation(inst *Instance, installation *store.AppInstallation, event *appdelivery.Event, sender string, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
-	// Try WebSocket delivery first (installation-level, then app-level)
+// deliverEventToApp delivers an event to a single app installation.
+// The three delivery channels (WebSocket, builtin handler, webhook) are
+// independent — each fires if its precondition is met, none blocks the others.
+func (m *Manager) deliverEventToApp(inst *Instance, installation *store.AppInstallation, event *appdelivery.Event, sender string, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
+	// Channel 1: WebSocket (installation-level, then app-level)
 	if m.appWSHub != nil {
 		wsConn := m.appWSHub.Get(installation.ID)
 		if wsConn == nil {
 			wsConn = m.appWSHub.GetAppLevel(installation.AppID)
-		}
-		if wsConn == nil {
-			slog.Warn("no ws connection found", "inst", installation.ID, "app", installation.AppSlug, "app_id", installation.AppID)
 		}
 		if wsConn != nil {
 			span := tracer.StartChild(rootSpan, "ws:"+installation.AppSlug, store.SpanKindClient, map[string]any{
@@ -263,12 +152,9 @@ func (m *Manager) deliverToInstallation(inst *Instance, installation *store.AppI
 				},
 			}
 			if err := wsConn.SendJSON(envelope); err != nil {
-				slog.Warn("ws delivery failed, falling back to webhook", "inst", installation.ID, "app", installation.AppSlug, "err", err)
+				slog.Warn("ws delivery failed", "inst", installation.ID, "app", installation.AppSlug, "err", err)
 				span.EndWithError("ws send: " + err.Error())
-				// Fall through to webhook
 			} else {
-				// Write event log after successful send to avoid duplicates
-				// when falling through to webhook (DeliverWithRetry writes its own).
 				envJSON, _ := json.Marshal(envelope)
 				m.appDisp.Store.CreateEventLog(&store.AppEventLog{
 					InstallationID: installation.ID,
@@ -279,46 +165,47 @@ func (m *Manager) deliverToInstallation(inst *Instance, installation *store.AppI
 				})
 				slog.Info("event delivered via ws", "inst", installation.ID, "app", installation.AppSlug, "event", event.Type, "event_id", event.ID)
 				span.End()
-				return
 			}
 		}
 	}
 
-	// Webhook delivery (fallback)
-	span := tracer.StartChild(rootSpan, "POST "+installation.AppWebhookURL, store.SpanKindClient, map[string]any{
-		"app.name":    installation.AppName,
-		"app.slug":    installation.AppSlug,
-		"http.url":    installation.AppWebhookURL,
-		"http.method": "POST",
-	})
-	result := m.appDisp.DeliverWithRetry(installation, event)
-	if result != nil {
-		span.SetAttr("http.status_code", result.StatusCode)
-		span.SetAttr("http.response_body", result.Reply)
-		span.End()
-	} else {
-		span.EndWithError("no result")
-	}
-	m.sendAppResult(inst, sender, result, tracer, rootSpan)
-}
-
-// deliverBuiltinMention handles event delivery for builtin apps via mention.
-// If no builtin handler exists, falls through to WebSocket/webhook delivery.
-func (m *Manager) deliverBuiltinMention(inst *Instance, installation *store.AppInstallation, event *appdelivery.Event, sender string, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
-	if h := builtin.Get(installation.AppSlug); h != nil {
-		span := tracer.StartChild(rootSpan, "builtin:"+installation.AppSlug, store.SpanKindInternal, map[string]any{
-			"app.name": installation.AppName,
-			"app.slug": installation.AppSlug,
-		})
-		if err := h.HandleEvent(installation, event); err != nil {
-			span.EndWithError(err.Error())
-		} else {
-			span.End()
+	// Channel 2: Builtin handler (e.g. bridge HTTP forwarding)
+	if installation.AppRegistry == "builtin" {
+		if h := builtin.Get(installation.AppSlug); h != nil {
+			span := tracer.StartChild(rootSpan, "builtin:"+installation.AppSlug, store.SpanKindInternal, map[string]any{
+				"app.name": installation.AppName,
+				"app.slug": installation.AppSlug,
+			})
+			if err := h.HandleEvent(installation, event); err != nil {
+				span.EndWithError(err.Error())
+			} else {
+				span.End()
+			}
 		}
-		return
 	}
-	// No builtin handler — deliver via WebSocket/webhook
-	m.deliverToInstallation(inst, installation, event, sender, tracer, rootSpan)
+
+	// Channel 3: Webhook
+	if installation.AppWebhookURL != "" {
+		span := tracer.StartChild(rootSpan, "POST "+installation.AppWebhookURL, store.SpanKindClient, map[string]any{
+			"app.name":    installation.AppName,
+			"app.slug":    installation.AppSlug,
+			"http.url":    installation.AppWebhookURL,
+			"http.method": "POST",
+		})
+		result := m.appDisp.DeliverWithRetry(installation, event)
+		if result != nil {
+			reply := result.Reply
+			if result.ReplyURL != "" {
+				reply = "[media] " + result.ReplyURL
+			}
+			span.SetAttr("http.status_code", result.StatusCode)
+			span.SetAttr("http.response_body", reply)
+			span.End()
+		} else {
+			span.EndWithError("no result")
+		}
+		m.sendAppResult(inst, sender, result, tracer, rootSpan)
+	}
 }
 
 // tryDeliverCommand checks if the message is a /command and delivers it.
@@ -352,24 +239,7 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
-		// Builtin apps with handler: route to internal handler
-		if installations[i].AppRegistry == "builtin" {
-			if h := builtin.Get(installations[i].AppSlug); h != nil {
-				span := tracer.StartChild(rootSpan, "builtin:"+installations[i].AppSlug, store.SpanKindInternal, map[string]any{
-					"app.name": installations[i].AppName,
-					"app.slug": installations[i].AppSlug,
-				})
-				if err := h.HandleEvent(&installations[i], event); err != nil {
-					span.EndWithError(err.Error())
-				} else {
-					span.End()
-				}
-				continue
-			}
-			// No builtin handler — fall through to WebSocket/webhook delivery
-		}
-
-		m.deliverToInstallation(inst, &installations[i], event, msg.Sender, tracer, rootSpan)
+		m.deliverEventToApp(inst, &installations[i], event, msg.Sender, tracer, rootSpan)
 	}
 	return true
 }

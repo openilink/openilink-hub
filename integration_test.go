@@ -2990,9 +2990,9 @@ func TestAppEventDelivery_HTTPAndWebSocket(t *testing.T) {
 		t.Errorf("phase 2: ws content = %v, want 'hello via websocket'", wsData["content"])
 	}
 
-	// Webhook must NOT have been called again — WS took priority (#208 fix)
-	time.Sleep(300 * time.Millisecond)
-	if webhookCalls.Load() != webhookBefore {
-		t.Errorf("phase 2 (#208 regression): webhook was called while WS was active (want 0 extra calls, got %d)", webhookCalls.Load()-webhookBefore)
+	// Webhook must ALSO have been called — channels are independent (#208 fix).
+	time.Sleep(500 * time.Millisecond)
+	if webhookCalls.Load() != webhookBefore+1 {
+		t.Errorf("phase 2: want 1 extra webhook call (channels are independent), got %d", webhookCalls.Load()-webhookBefore)
 	}
 }

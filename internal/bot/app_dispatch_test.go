@@ -210,13 +210,13 @@ func textMessage(sender, content string) (provider.InboundMessage, parsedMessage
 
 // --- tests ---
 
-// TestDeliverToApps_WSPriorityOverBuiltin verifies the fix for issue #208:
+// TestDeliverToApps_WSAndBuiltinBothFire verifies the fix for issue #208:
 // when a builtin app (bridge) has an active WebSocket connection, events must
-// be delivered to the WS *before* the builtin HTTP handler is tried.
+// be delivered to BOTH the WS client AND the builtin handler independently.
 //
 // Before the fix, the builtin handler ran first and did continue, so the WS
 // branch was never reached and the connected client received nothing.
-func TestDeliverToApps_WSPriorityOverBuiltin(t *testing.T) {
+func TestDeliverToApps_WSAndBuiltinBothFire(t *testing.T) {
 	const (
 		botID   = "bot-ws-priority"
 		appID   = "app-ws-priority"
@@ -285,9 +285,9 @@ func TestDeliverToApps_WSPriorityOverBuiltin(t *testing.T) {
 		t.Fatal("timed out: event was not delivered to the WebSocket")
 	}
 
-	// The builtin HTTP handler must NOT have been called (WS takes priority).
-	if fakeHandler.called {
-		t.Error("regression: builtin handler was called even though WS was active — WS events will be missed")
+	// The builtin handler must ALSO have been called — channels are independent.
+	if !fakeHandler.called {
+		t.Error("builtin handler was not called — all delivery channels should fire independently")
 	}
 }
 
