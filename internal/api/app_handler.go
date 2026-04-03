@@ -63,6 +63,17 @@ func buildListingSnapshot(app *store.App) string {
 	return string(b)
 }
 
+func (s *Server) transitionAppAwayFromListed(appID, currentListing, nextListing string) error {
+	if currentListing != "listed" || nextListing == "listed" {
+		return s.Store.SetListing(appID, nextListing)
+	}
+	if err := s.Store.DeleteInstallationsByAppID(appID); err != nil {
+		slog.Error("failed to delete installations during listing transition", "app_id", appID, "from", currentListing, "to", nextListing, "err", err)
+		return err
+	}
+	return s.Store.SetListing(appID, nextListing)
+}
+
 // POST /api/apps
 func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
@@ -82,7 +93,7 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		Version          string          `json:"version"`
 		Readme           string          `json:"readme"`
 		Guide            string          `json:"guide"`
-		ConfigSchema     string `json:"config_schema"`
+		ConfigSchema     string          `json:"config_schema"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -369,7 +380,7 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if coreChanged {
-			if err := s.Store.SetListing(appID, "pending"); err != nil {
+			if err := s.transitionAppAwayFromListed(appID, app.Listing, "pending"); err != nil {
 				slog.Error("failed to revert listing to pending", "app", appID, "err", err)
 				jsonError(w, "failed to revert listing", http.StatusInternalServerError)
 				return
@@ -526,10 +537,11 @@ func (s *Server) handleReviewListing(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "review failed", http.StatusInternalServerError)
 		return
 	}
-	// When rejecting a listing, remove all installations
 	if !req.Approve {
 		if err := s.Store.DeleteInstallationsByAppID(appID); err != nil {
 			slog.Error("failed to delete installations on reject", "app_id", appID, "err", err)
+			jsonError(w, "review cleanup failed", http.StatusInternalServerError)
+			return
 		}
 	}
 	app, _ := s.Store.GetApp(appID)
@@ -643,19 +655,18 @@ func (s *Server) handleAdminSetListing(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "listing must be 'listed' or 'unlisted'", http.StatusBadRequest)
 		return
 	}
-	if err := s.Store.SetListing(appID, req.Listing); err != nil {
+	app, err := s.Store.GetApp(appID)
+	if err != nil {
+		jsonError(w, "app not found", http.StatusNotFound)
+		return
+	}
+	if err := s.transitionAppAwayFromListed(appID, app.Listing, req.Listing); err != nil {
 		slog.Error("set listing failed", "err", err)
 		jsonError(w, "set listing failed", http.StatusInternalServerError)
 		return
 	}
-	// When unlisting an app, remove all installations so users can re-install after re-listing
-	if req.Listing == "unlisted" {
-		if err := s.Store.DeleteInstallationsByAppID(appID); err != nil {
-			slog.Error("failed to delete installations on delist", "app_id", appID, "err", err)
-		}
-	}
 	slog.Info("admin set listing", "app_id", appID, "listing", req.Listing)
-	app, _ := s.Store.GetApp(appID)
+	app, _ = s.Store.GetApp(appID)
 	if app != nil {
 		if err := s.Store.CreateAppReview(&store.AppReview{
 			AppID:    appID,

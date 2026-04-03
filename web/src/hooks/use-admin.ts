@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+import { invalidateAllAppQueries } from "@/hooks/use-apps";
 
 // ── Queries ──────────────────────────────────────────────
 
@@ -110,10 +111,7 @@ export function useSetAppListing() {
       api.setAppListing(id, listing),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.admin.apps() });
-      qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
-      qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
-      qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
-      qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
+      invalidateAllAppQueries(qc);
     },
   });
 }
@@ -126,10 +124,7 @@ export function useReviewListing() {
     onSuccess: (_data, { appId }) => {
       qc.invalidateQueries({ queryKey: queryKeys.admin.apps() });
       qc.invalidateQueries({ queryKey: queryKeys.apps.reviews(appId) });
-      qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
-      qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
-      qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
-      qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
+      invalidateAllAppQueries(qc);
     },
   });
 }
@@ -140,10 +135,7 @@ export function useDeleteAdminApp() {
     mutationFn: (id: string) => api.deleteApp(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.admin.apps() });
-      qc.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
-      qc.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
-      qc.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
-      qc.invalidateQueries({ queryKey: queryKeys.bots.all() });
+      invalidateAllAppQueries(qc);
     },
   });
 }

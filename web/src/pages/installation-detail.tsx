@@ -46,8 +46,9 @@ import { Label } from "../components/ui/label";
 import { api, botDisplayName } from "../lib/api";
 import { useBotApps, useBots } from "@/hooks/use-bots";
 import { useApp } from "@/hooks/use-apps";
-import { useQueryClient } from "@tanstack/react-query";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
+import { invalidateAllAppQueries } from "@/hooks/use-apps";
 import { SCOPE_DESCRIPTIONS, EVENT_TYPES } from "../lib/constants";
 import { useToast } from "@/hooks/use-toast";
 import { AppIcon } from "../components/app-icon";
@@ -743,7 +744,7 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
 
 // ==================== Config Section ====================
 
-function ConfigSection({ inst, onUninstall, queryClient }: { inst: any; onUninstall: () => void; queryClient: any }) {
+function ConfigSection({ inst, onUninstall, queryClient }: { inst: any; onUninstall: () => void; queryClient: QueryClient }) {
   const { toast } = useToast();
   const [showUninstallDialog, setShowUninstallDialog] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
@@ -753,11 +754,7 @@ function ConfigSection({ inst, onUninstall, queryClient }: { inst: any; onUninst
     try {
       await api.deleteInstallation(inst.app_id, inst.id);
       toast({ title: "已卸载" });
-      queryClient.invalidateQueries({ queryKey: queryKeys.bots.apps(inst.bot_id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.bots.all() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.marketplace.apps() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.marketplace.builtin() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all({ listing: "listed" }) });
+      invalidateAllAppQueries(queryClient, inst.bot_id);
       onUninstall();
     } catch (e: any) {
       toast({ variant: "destructive", title: "卸载失败", description: e.message });

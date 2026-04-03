@@ -1869,23 +1869,24 @@ func TestMarketplaceInstalledStatusIsPerUser(t *testing.T) {
 	cookie1 := &http.Cookie{Name: "session", Value: session1}
 	cookie2 := &http.Cookie{Name: "session", Value: session2}
 
+	registryApps := []map[string]any{
+		{
+			"slug":        "remote-app",
+			"name":        "Remote App",
+			"description": "Remote app from registry",
+			"version":     "1.0.0",
+			"author":      "Registry Author",
+			"homepage":    "https://example.com/remote-app",
+			"tools":       []any{},
+			"events":      []any{},
+			"scopes":      []string{"message:write"},
+		},
+	}
 	registryTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"version": 1,
-			"apps": []map[string]any{
-				{
-					"slug":        "remote-app",
-					"name":        "Remote App",
-					"description": "Remote app from registry",
-					"version":     "1.0.0",
-					"author":      "Registry Author",
-					"homepage":    "https://example.com/remote-app",
-					"tools":       []any{},
-					"events":      []any{},
-					"scopes":      []string{"message:write"},
-				},
-			},
+			"apps":    registryApps,
 		})
 	}))
 	t.Cleanup(registryTS.Close)
@@ -1950,5 +1951,30 @@ func TestMarketplaceInstalledStatusIsPerUser(t *testing.T) {
 
 	t.Run("other user does not inherit installed status", func(t *testing.T) {
 		assertInstalled(t, cookie2, false)
+	})
+
+	admin, err := s.CreateUserFull("admin", "", "Admin", "hashed", store.RoleAdmin)
+	if err != nil {
+		t.Fatalf("CreateUserFull(admin): %v", err)
+	}
+	_ = s.UpdateUserStatus(admin.ID, store.StatusActive)
+	adminSession, err := auth.CreateSession(s, admin.ID)
+	if err != nil {
+		t.Fatalf("CreateSession(admin): %v", err)
+	}
+	adminCookie := &http.Cookie{Name: "session", Value: adminSession}
+
+	t.Run("unlisting clears installed status for owner", func(t *testing.T) {
+		resp := doJSON(t, ts, "PUT", "/api/admin/apps/"+app.ID+"/listing", map[string]any{
+			"listing": "unlisted",
+		}, withCookie(adminCookie))
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body := decodeJSON(t, resp)
+			t.Fatalf("expected 200, got %d: %v", resp.StatusCode, body)
+		}
+
+		assertInstalled(t, cookie1, false)
 	})
 }
