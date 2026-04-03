@@ -26,9 +26,9 @@ import (
 	"github.com/openilink/openilink-hub/internal/provider/ilink/mockserver"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
+	"github.com/openilink/openilink-hub/internal/storage"
 	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/store/postgres"
-	"github.com/openilink/openilink-hub/internal/storage"
 )
 
 // ==================== Test infrastructure ====================
@@ -59,13 +59,14 @@ func testDB(t *testing.T) *postgres.DB {
 }
 
 type testEnv struct {
-	t      *testing.T
-	db     store.Store
-	srv    *httptest.Server
-	client *http.Client
-	mgr    *bot.Manager
-	hub    *relay.Hub
-	cfg    *config.Config
+	t        *testing.T
+	db       store.Store
+	srv      *httptest.Server
+	client   *http.Client
+	mgr      *bot.Manager
+	hub      *relay.Hub
+	cfg      *config.Config
+	appWSHub *appdelivery.WSHub
 }
 
 func setup(t *testing.T) *testEnv {
@@ -89,8 +90,11 @@ func setup(t *testing.T) *testEnv {
 	hub := relay.NewHub(server.SetupUpstreamHandler())
 	aiSink := &sink.AI{Store: db}
 	mgr := bot.NewManager(db, hub, aiSink, nil, "http://localhost")
+	appWSHub := api.NewAppWSHub()
+	mgr.SetAppWSHub(appWSHub)
 	server.BotManager = mgr
 	server.Hub = hub
+	server.AppWSHub = appWSHub
 
 	ts := httptest.NewServer(server.Handler())
 	jar, _ := cookiejar.New(nil)
@@ -98,7 +102,7 @@ func setup(t *testing.T) *testEnv {
 	return &testEnv{
 		t: t, db: db, srv: ts, cfg: cfg,
 		client: &http.Client{Jar: jar},
-		mgr: mgr, hub: hub,
+		mgr:    mgr, hub: hub, appWSHub: appWSHub,
 	}
 }
 
@@ -2210,7 +2214,6 @@ func TestMediaStorageAndProxy(t *testing.T) {
 	t.Logf("Full media URL: %s", mediaURL)
 }
 
-
 // ==================== Webhook Plugin E2E (two-table schema) ====================
 
 // submitPlugin is a helper that submits a plugin and returns (pluginID, versionID).
@@ -2239,7 +2242,10 @@ func TestWebhookPluginFullLifecycle(t *testing.T) {
 	defer env.close()
 
 	env.register("plugadmin", "password123")
-	u, _ := env.db.GetUserByUsername("plugadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
+	u, _ := env.db.GetUserByUsername("plugadmin")
+	if u != nil {
+		env.db.UpdateUserRole(u.ID, "admin")
+	}
 
 	pluginScript := `// @name 测试通知
 // @author testauthor
@@ -2332,7 +2338,9 @@ function onResponse(ctx) {
 	sent := mock.Engine().SentMessages()
 	replyFound := false
 	for _, m := range sent {
-		if m.Text == "auto-reply" { replyFound = true }
+		if m.Text == "auto-reply" {
+			replyFound = true
+		}
 	}
 	if !replyFound {
 		t.Error("reply not sent")
@@ -2344,7 +2352,10 @@ func TestWebhookPluginRejectWithReason(t *testing.T) {
 	defer env.close()
 
 	env.register("rejectadmin", "password123")
-	u, _ := env.db.GetUserByUsername("rejectadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
+	u, _ := env.db.GetUserByUsername("rejectadmin")
+	if u != nil {
+		env.db.UpdateUserRole(u.ID, "admin")
+	}
 
 	pluginID, versionID := env.submitPlugin("// @name BadPlugin\nfunction onRequest(ctx) {}")
 
@@ -2417,7 +2428,10 @@ func TestWebhookPluginDeleteByAdmin(t *testing.T) {
 	defer env.close()
 
 	env.register("deladmin", "password123")
-	u, _ := env.db.GetUserByUsername("deladmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
+	u, _ := env.db.GetUserByUsername("deladmin")
+	if u != nil {
+		env.db.UpdateUserRole(u.ID, "admin")
+	}
 
 	pluginID, _ := env.submitPlugin("// @name DeleteMe\nfunction onRequest(ctx) {}")
 
@@ -2435,7 +2449,10 @@ func TestWebhookPluginVersionHistory(t *testing.T) {
 	defer env.close()
 
 	env.register("veradmin", "password123")
-	u, _ := env.db.GetUserByUsername("veradmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
+	u, _ := env.db.GetUserByUsername("veradmin")
+	if u != nil {
+		env.db.UpdateUserRole(u.ID, "admin")
+	}
 
 	// Submit v1
 	pluginID, v1ID := env.submitPlugin("// @name VersionedPlugin\n// @version 1.0.0\nfunction onRequest(ctx) {}")
@@ -2478,7 +2495,10 @@ func TestWebhookPluginResubmitSupersedesPending(t *testing.T) {
 	}
 
 	// v1 should be superseded, v2 should be pending
-	u, _ := env.db.GetUserByUsername("resubuser"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
+	u, _ := env.db.GetUserByUsername("resubuser")
+	if u != nil {
+		env.db.UpdateUserRole(u.ID, "admin")
+	}
 	code, versions := env.getList("/api/webhook-plugins/" + pluginID + "/versions")
 	assertCode(t, "versions", code, 200)
 	if len(versions) != 2 {
@@ -2520,7 +2540,10 @@ func TestWebhookPluginInstallToChannel(t *testing.T) {
 	defer env.close()
 
 	env.register("chtadmin", "password123")
-	u, _ := env.db.GetUserByUsername("chtadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
+	u, _ := env.db.GetUserByUsername("chtadmin")
+	if u != nil {
+		env.db.UpdateUserRole(u.ID, "admin")
+	}
 
 	pluginID, versionID := env.submitPlugin(`// @name ChanPlugin
 // @version 1.0.0
@@ -2578,7 +2601,10 @@ func TestWebhookPluginInstallCountTracksUsers(t *testing.T) {
 	defer env.close()
 
 	env.register("countadmin", "password123")
-	u, _ := env.db.GetUserByUsername("countadmin"); if u != nil { env.db.UpdateUserRole(u.ID, "admin") }
+	u, _ := env.db.GetUserByUsername("countadmin")
+	if u != nil {
+		env.db.UpdateUserRole(u.ID, "admin")
+	}
 
 	pluginID, versionID := env.submitPlugin("// @name CountPlugin\nfunction onRequest(ctx) {}")
 	env.approveVersion(versionID)
@@ -2832,5 +2858,141 @@ func TestAIToolImageReply(t *testing.T) {
 	}
 	if llmCallCount.Load() != 2 {
 		t.Errorf("LLM called %d times, want 2", llmCallCount.Load())
+	}
+}
+
+// TestAppEventDelivery_HTTPAndWebSocket is an end-to-end integration test for
+// issue #208. It verifies both delivery paths:
+//
+//  1. HTTP (webhook): when no WebSocket is connected, an inbound message is
+//     delivered to the app's webhook URL.
+//
+//  2. WebSocket: once the app connects via /bot/v1/ws, subsequent inbound
+//     messages arrive over the WebSocket and the webhook is NOT called,
+//     confirming that WS takes priority over the HTTP handler.
+func TestAppEventDelivery_HTTPAndWebSocket(t *testing.T) {
+	env := setup(t)
+	defer env.close()
+
+	// --- Webhook receiver ---
+	var webhookCalls atomic.Int32
+	var lastWebhookBody map[string]any
+	hookSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webhookCalls.Add(1)
+		json.NewDecoder(r.Body).Decode(&lastWebhookBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer hookSrv.Close()
+
+	// --- Create user, bot, app, installation ---
+	env.register("appdeliveryuser", "password123")
+	botObj := env.createBotForUser("DeliveryBot")
+	if err := env.mgr.StartBot(context.Background(), botObj); err != nil {
+		t.Fatalf("StartBot: %v", err)
+	}
+
+	uid := env.userID()
+	appObj, err := env.db.CreateApp(&store.App{
+		OwnerID:    uid,
+		Name:       "DeliveryApp",
+		Slug:       "delivery-app-inttest",
+		Events:     json.RawMessage(`["message"]`),
+		Scopes:     json.RawMessage(`["message:read","message:write"]`),
+		Tools:      json.RawMessage(`[]`),
+		WebhookURL: hookSrv.URL,
+	})
+	if err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+
+	inst, err := env.db.InstallApp(appObj.ID, botObj.ID)
+	if err != nil {
+		t.Fatalf("InstallApp: %v", err)
+	}
+	// Grant scopes — handleInstallApp does this via UpdateInstallation; direct
+	// db.InstallApp leaves scopes as "[]", which fails instHasScope checks.
+	if err := env.db.UpdateInstallation(inst.ID, "", inst.Config, appObj.Scopes, true); err != nil {
+		t.Fatalf("UpdateInstallation scopes: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond) // allow bot dispatcher to settle
+
+	botInst, ok := env.mgr.GetInstance(botObj.ID)
+	if !ok {
+		t.Fatal("bot instance not found")
+	}
+	engine := botInst.Provider.(*mockserver.Provider).Engine()
+
+	// ==============================================================
+	// Phase 1: HTTP (webhook) delivery — no WS connected yet
+	// ==============================================================
+	engine.InjectInbound(mockserver.InboundRequest{
+		Sender: "user-http@test",
+		Text:   "hello via http",
+	})
+	time.Sleep(600 * time.Millisecond)
+
+	if n := webhookCalls.Load(); n != 1 {
+		t.Errorf("phase 1: want 1 webhook call, got %d", n)
+	} else {
+		// Verify payload shape
+		event, _ := lastWebhookBody["event"].(map[string]any)
+		data, _ := event["data"].(map[string]any)
+		if data["content"] != "hello via http" {
+			t.Errorf("phase 1: webhook content = %v, want 'hello via http'", data["content"])
+		}
+	}
+
+	// ==============================================================
+	// Phase 2: WebSocket delivery — connect, then inject a message
+	// ==============================================================
+	wsURL := "ws" + strings.TrimPrefix(env.srv.URL, "http") + "/bot/v1/ws?token=" + inst.AppToken
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("ws dial: %v", err)
+	}
+	defer ws.Close()
+
+	// Consume the init message
+	ws.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := ws.ReadMessage(); err != nil {
+		t.Fatalf("ws: read init: %v", err)
+	}
+	ws.SetReadDeadline(time.Time{})
+
+	webhookBefore := webhookCalls.Load()
+
+	engine.InjectInbound(mockserver.InboundRequest{
+		Sender: "user-ws@test",
+		Text:   "hello via websocket",
+	})
+
+	// Read the event envelope from the WS connection
+	ws.SetReadDeadline(time.Now().Add(3 * time.Second))
+	_, raw, err := ws.ReadMessage()
+	ws.SetReadDeadline(time.Time{})
+	if err != nil {
+		t.Fatalf("phase 2: timed out waiting for WS event: %v", err)
+	}
+
+	var envelope map[string]any
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatalf("phase 2: unmarshal ws envelope: %v", err)
+	}
+	if envelope["type"] != "event" {
+		t.Errorf("phase 2: envelope type = %v, want 'event'", envelope["type"])
+	}
+	if envelope["installation_id"] != inst.ID {
+		t.Errorf("phase 2: installation_id = %v, want %q", envelope["installation_id"], inst.ID)
+	}
+	wsEvent, _ := envelope["event"].(map[string]any)
+	wsData, _ := wsEvent["data"].(map[string]any)
+	if wsData["content"] != "hello via websocket" {
+		t.Errorf("phase 2: ws content = %v, want 'hello via websocket'", wsData["content"])
+	}
+
+	// Webhook must NOT have been called again — WS took priority (#208 fix)
+	time.Sleep(300 * time.Millisecond)
+	if webhookCalls.Load() != webhookBefore {
+		t.Errorf("phase 2 (#208 regression): webhook was called while WS was active (want 0 extra calls, got %d)", webhookCalls.Load()-webhookBefore)
 	}
 }

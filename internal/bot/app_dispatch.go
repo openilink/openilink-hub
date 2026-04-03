@@ -67,25 +67,11 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 	event.TraceID = tracer.TraceID()
 
 	for i := range installations {
-		// Builtin apps with handler: route to internal handler
-		if installations[i].AppRegistry == "builtin" {
-			if h := builtin.Get(installations[i].AppSlug); h != nil {
-				span := tracer.StartChild(rootSpan, "builtin:"+installations[i].AppSlug, store.SpanKindInternal, map[string]any{
-					"app.name": installations[i].AppName,
-					"app.slug": installations[i].AppSlug,
-				})
-				if err := h.HandleEvent(&installations[i], event); err != nil {
-					span.EndWithError(err.Error())
-				} else {
-					span.End()
-				}
-				continue
-			}
-			// No builtin handler — fall through to WebSocket/webhook delivery
-		}
-
-		// Check for active WebSocket connection — deliver via WS if connected
-		// Try installation-level WS first, then app-level WS
+		// Check for active WebSocket connection first — deliver via WS if connected.
+		// This must happen before the builtin handler check so that apps like bridge
+		// (which register a builtin handler for HTTP forwarding) can still receive
+		// events over a live WebSocket connection.
+		// Try installation-level WS first, then app-level WS.
 		if m.appWSHub != nil {
 			wsConn := m.appWSHub.Get(installations[i].ID)
 			if wsConn == nil {
@@ -93,9 +79,9 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 			}
 			if wsConn != nil {
 				span := tracer.StartChild(rootSpan, "ws:"+installations[i].AppSlug, store.SpanKindClient, map[string]any{
-					"app.name":    installations[i].AppName,
-					"app.slug":    installations[i].AppSlug,
-					"delivery":    "websocket",
+					"app.name": installations[i].AppName,
+					"app.slug": installations[i].AppSlug,
+					"delivery": "websocket",
 				})
 				envelope := map[string]any{
 					"type":            "event",
@@ -133,7 +119,25 @@ func (m *Manager) deliverToApps(inst *Instance, msg provider.InboundMessage, p p
 			}
 		}
 
-		// Webhook delivery (fallback when no WS connection)
+		// Builtin apps with handler: route to internal handler (e.g. bridge HTTP forwarding).
+		// This runs after the WS check so a live WS connection takes priority.
+		if installations[i].AppRegistry == "builtin" {
+			if h := builtin.Get(installations[i].AppSlug); h != nil {
+				span := tracer.StartChild(rootSpan, "builtin:"+installations[i].AppSlug, store.SpanKindInternal, map[string]any{
+					"app.name": installations[i].AppName,
+					"app.slug": installations[i].AppSlug,
+				})
+				if err := h.HandleEvent(&installations[i], event); err != nil {
+					span.EndWithError(err.Error())
+				} else {
+					span.End()
+				}
+				continue
+			}
+			// No builtin handler — fall through to webhook delivery
+		}
+
+		// Webhook delivery (fallback when no WS connection and no builtin handler)
 		span := tracer.StartChild(rootSpan, "POST "+installations[i].AppWebhookURL, store.SpanKindClient, map[string]any{
 			"app.name":    installations[i].AppName,
 			"app.slug":    installations[i].AppSlug,
@@ -191,7 +195,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 		event := appdelivery.NewEvent("command", map[string]any{
 			"command": command, "text": cmdArgs,
 			"sender": map[string]any{"id": msg.Sender, "role": "user"},
-			"group": groupInfo(msg), "handle": handle,
+			"group":  groupInfo(msg), "handle": handle,
 		})
 		event.TraceID = tracer.TraceID()
 
@@ -210,7 +214,7 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 
 	event := appdelivery.NewEvent("message.text", map[string]any{
 		"sender": map[string]any{"id": msg.Sender, "role": "user"},
-		"group": groupInfo(msg), "content": text, "handle": handle,
+		"group":  groupInfo(msg), "content": text, "handle": handle,
 	})
 	event.TraceID = tracer.TraceID()
 
@@ -343,7 +347,7 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 	event := appdelivery.NewEvent("command", map[string]any{
 		"command": command, "text": args,
 		"sender": map[string]any{"id": msg.Sender, "role": "user"},
-		"group": groupInfo(msg),
+		"group":  groupInfo(msg),
 	})
 	event.TraceID = tracer.TraceID()
 

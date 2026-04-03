@@ -1,9 +1,16 @@
 package bot
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
+	appdelivery "github.com/openilink/openilink-hub/internal/app"
+	"github.com/openilink/openilink-hub/internal/builtin"
+	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/relay"
+	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/store/memstore"
 )
 
 func TestResolveMediaURLs(t *testing.T) {
@@ -145,5 +152,193 @@ func TestResolveMediaURLs_AlreadyStorageURL(t *testing.T) {
 	result := resolveMediaURLs(items, "https://hub.example.com", "bot-123")
 	if result[0].Media.URL != "https://storage.example.com/bot-123/img.jpg" {
 		t.Error("items without EQP should keep original URL")
+	}
+}
+
+// --- helpers for app_dispatch unit tests ---
+
+// noopTraceStore satisfies store.TraceStore with no-ops so spans don't
+// need a real database during these unit tests.
+type noopTraceStore struct{}
+
+func (noopTraceStore) InsertSpan(traceID, spanID, parentSpanID, name, kind, statusCode, statusMessage string,
+	startTime, endTime int64, attrsJSON, eventsJSON []byte, botID string) error {
+	return nil
+}
+func (noopTraceStore) AppendSpan(traceID, botID, name, kind, statusCode, statusMessage string, attrs map[string]any) error {
+	return nil
+}
+func (noopTraceStore) ListRootSpans(botID string, limit int) ([]store.TraceSpan, error) {
+	return nil, nil
+}
+func (noopTraceStore) ListSpansByTrace(traceID string) ([]store.TraceSpan, error) { return nil, nil }
+
+// fakeBuiltinHandler records whether HandleEvent was invoked.
+type fakeBuiltinHandler struct{ called bool }
+
+func (h *fakeBuiltinHandler) HandleEvent(_ *store.AppInstallation, _ *appdelivery.Event) error {
+	h.called = true
+	return nil
+}
+
+// newTestManager builds a minimal Manager for app_dispatch tests.
+func newTestManager(ms *memstore.Store, hub *appdelivery.WSHub) *Manager {
+	disp := appdelivery.NewDispatcher(ms)
+	return &Manager{
+		instances: make(map[string]*Instance),
+		store:     ms,
+		appDisp:   disp,
+		appWSHub:  hub,
+	}
+}
+
+func newTestTracer(botID string) (*store.Tracer, *store.SpanBuilder) {
+	tracer := store.NewTracer(noopTraceStore{}, botID)
+	root := tracer.Start("test", store.SpanKindInternal, nil)
+	return tracer, root
+}
+
+func textMessage(sender, content string) (provider.InboundMessage, parsedMessage) {
+	msg := provider.InboundMessage{
+		ExternalID: "msg-test",
+		Sender:     sender,
+		Items:      []provider.MessageItem{{Type: "text", Text: content}},
+	}
+	p := parsedMessage{msgType: "text", content: content}
+	return msg, p
+}
+
+// --- tests ---
+
+// TestDeliverToApps_WSPriorityOverBuiltin verifies the fix for issue #208:
+// when a builtin app (bridge) has an active WebSocket connection, events must
+// be delivered to the WS *before* the builtin HTTP handler is tried.
+//
+// Before the fix, the builtin handler ran first and did continue, so the WS
+// branch was never reached and the connected client received nothing.
+func TestDeliverToApps_WSPriorityOverBuiltin(t *testing.T) {
+	const (
+		botID   = "bot-ws-priority"
+		appID   = "app-ws-priority"
+		instID  = "inst-ws-priority"
+		appSlug = "fake-bridge-ws"
+	)
+
+	// Register a fake builtin so the old short-circuit code path exists.
+	fakeHandler := &fakeBuiltinHandler{}
+	builtin.Register(builtin.AppManifest{
+		Slug:   appSlug,
+		Events: []string{"message"},
+		Scopes: []string{"message:read"},
+	}, fakeHandler)
+
+	ms := memstore.New()
+	ms.AddApp(&store.App{
+		ID:       appID,
+		Slug:     appSlug,
+		Registry: "builtin",
+		Events:   json.RawMessage(`["message"]`),
+		Scopes:   json.RawMessage(`["message:read","message:write"]`),
+		Tools:    json.RawMessage(`[]`),
+		Status:   "active",
+	})
+	ms.AddInstallation(&store.AppInstallation{
+		ID:          instID,
+		AppID:       appID,
+		BotID:       botID,
+		AppSlug:     appSlug,
+		AppRegistry: "builtin",
+		AppToken:    "tok-ws-priority",
+		Scopes:      json.RawMessage(`["message:read","message:write"]`),
+		Enabled:     true,
+	})
+
+	// Register a WS connection for this installation.
+	hub := appdelivery.NewWSHub()
+	sendCh := make(chan []byte, 4)
+	hub.Register(instID, &appdelivery.WSConn{
+		InstID: instID,
+		BotID:  botID,
+		Send:   sendCh,
+	})
+
+	m := newTestManager(ms, hub)
+	tracer, root := newTestTracer(botID)
+	msg, p := textMessage("user-1", "hello bridge")
+
+	m.deliverToApps(&Instance{DBID: botID}, msg, p, tracer, root)
+
+	// The event must arrive on the WS channel.
+	select {
+	case data := <-sendCh:
+		var env map[string]any
+		if err := json.Unmarshal(data, &env); err != nil {
+			t.Fatalf("unmarshal ws payload: %v", err)
+		}
+		if env["type"] != "event" {
+			t.Errorf("type = %v, want 'event'", env["type"])
+		}
+		if env["installation_id"] != instID {
+			t.Errorf("installation_id = %v, want %q", env["installation_id"], instID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out: event was not delivered to the WebSocket")
+	}
+
+	// The builtin HTTP handler must NOT have been called (WS takes priority).
+	if fakeHandler.called {
+		t.Error("regression: builtin handler was called even though WS was active — WS events will be missed")
+	}
+}
+
+// TestDeliverToApps_BuiltinHandlerWhenNoWS verifies that the builtin handler
+// is still invoked when there is no active WebSocket connection.
+func TestDeliverToApps_BuiltinHandlerWhenNoWS(t *testing.T) {
+	const (
+		botID   = "bot-no-ws"
+		appID   = "app-no-ws"
+		instID  = "inst-no-ws"
+		appSlug = "fake-bridge-noWs"
+	)
+
+	fakeHandler := &fakeBuiltinHandler{}
+	builtin.Register(builtin.AppManifest{
+		Slug:   appSlug,
+		Events: []string{"message"},
+		Scopes: []string{"message:read"},
+	}, fakeHandler)
+
+	ms := memstore.New()
+	ms.AddApp(&store.App{
+		ID:       appID,
+		Slug:     appSlug,
+		Registry: "builtin",
+		Events:   json.RawMessage(`["message"]`),
+		Scopes:   json.RawMessage(`["message:read","message:write"]`),
+		Tools:    json.RawMessage(`[]`),
+		Status:   "active",
+	})
+	ms.AddInstallation(&store.AppInstallation{
+		ID:          instID,
+		AppID:       appID,
+		BotID:       botID,
+		AppSlug:     appSlug,
+		AppRegistry: "builtin",
+		AppToken:    "tok-no-ws",
+		Scopes:      json.RawMessage(`["message:read","message:write"]`),
+		Enabled:     true,
+	})
+
+	// Empty hub — no active WS connection.
+	hub := appdelivery.NewWSHub()
+
+	m := newTestManager(ms, hub)
+	tracer, root := newTestTracer(botID)
+	msg, p := textMessage("user-1", "hi no ws")
+
+	m.deliverToApps(&Instance{DBID: botID}, msg, p, tracer, root)
+
+	if !fakeHandler.called {
+		t.Error("builtin handler was not called when no WS connection was active")
 	}
 }
