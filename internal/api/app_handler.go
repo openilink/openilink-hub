@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -63,9 +64,28 @@ func buildListingSnapshot(app *store.App) string {
 	return string(b)
 }
 
-func (s *Server) transitionAppAwayFromListed(appID, currentListing, nextListing string) error {
-	if err := s.Store.TransitionListingWithCleanup(appID, currentListing, nextListing, ""); err != nil {
-		slog.Error("failed to delete installations during listing transition", "app_id", appID, "from", currentListing, "to", nextListing, "err", err)
+func normalizeJSON(raw json.RawMessage) json.RawMessage {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return bytes.TrimSpace(raw)
+	}
+	normalized, err := json.Marshal(v)
+	if err != nil {
+		return bytes.TrimSpace(raw)
+	}
+	return normalized
+}
+
+func jsonRawEqual(a, b json.RawMessage) bool {
+	return bytes.Equal(normalizeJSON(a), normalizeJSON(b))
+}
+
+func (s *Server) transitionAppAwayFromListed(appID, nextListing string) error {
+	if err := s.Store.TransitionListingWithCleanup(appID, nextListing, ""); err != nil {
+		slog.Error("failed to transition app listing with cleanup", "app_id", appID, "to", nextListing, "err", err)
 		return err
 	}
 	return nil
@@ -360,13 +380,13 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		if req.WebhookURL != nil && *req.WebhookURL != app.WebhookURL {
 			coreChanged = true
 		}
-		if req.Tools != nil {
+		if req.Tools != nil && !jsonRawEqual(req.Tools, app.Tools) {
 			coreChanged = true
 		}
-		if req.Events != nil {
+		if req.Events != nil && !jsonRawEqual(req.Events, app.Events) {
 			coreChanged = true
 		}
-		if req.Scopes != nil {
+		if req.Scopes != nil && !jsonRawEqual(req.Scopes, app.Scopes) {
 			coreChanged = true
 		}
 		if req.ConfigSchema != nil && *req.ConfigSchema != app.ConfigSchema {
@@ -377,7 +397,7 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if coreChanged {
-			if err := s.transitionAppAwayFromListed(appID, app.Listing, "pending"); err != nil {
+			if err := s.transitionAppAwayFromListed(appID, "pending"); err != nil {
 				slog.Error("failed to revert listing to pending", "app", appID, "err", err)
 				jsonError(w, "failed to revert listing", http.StatusInternalServerError)
 				return
@@ -538,7 +558,7 @@ func (s *Server) handleReviewListing(w http.ResponseWriter, r *http.Request) {
 	if req.Approve {
 		err = s.Store.ReviewListing(appID, true, "")
 	} else {
-		err = s.Store.TransitionListingWithCleanup(appID, app.Listing, "rejected", req.Reason)
+		err = s.Store.TransitionListingWithCleanup(appID, "rejected", req.Reason)
 	}
 	if err != nil {
 		jsonError(w, "review failed", http.StatusInternalServerError)
@@ -656,7 +676,7 @@ func (s *Server) handleAdminSetListing(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "app not found", http.StatusNotFound)
 		return
 	}
-	if err := s.transitionAppAwayFromListed(appID, app.Listing, req.Listing); err != nil {
+	if err := s.transitionAppAwayFromListed(appID, req.Listing); err != nil {
 		slog.Error("set listing failed", "err", err)
 		jsonError(w, "set listing failed", http.StatusInternalServerError)
 		return

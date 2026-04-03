@@ -102,7 +102,7 @@ type AppStore interface {
 	GetInstallationByHandle(botID, handle string) (*AppInstallation, error)
 	DeleteInstallation(id string) error
 	DeleteInstallationsByAppID(appID string) error
-	TransitionListingWithCleanup(id, currentListing, nextListing, rejectReason string) error
+	TransitionListingWithCleanup(id, nextListing, rejectReason string) error
 	CreateOAuthCode(code, appID, botID, state, codeChallenge string) error
 	ExchangeOAuthCode(code string) (appID, botID, codeChallenge string, err error)
 	CleanExpiredOAuthCodes()

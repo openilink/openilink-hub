@@ -1978,3 +1978,56 @@ func TestMarketplaceInstalledStatusIsPerUser(t *testing.T) {
 		assertInstalled(t, cookie1, false)
 	})
 }
+
+func TestUpdateListedAppWithEquivalentJSONDoesNotUnlist(t *testing.T) {
+	env := setupTestEnv(t)
+
+	app, err := env.store.CreateApp(&store.App{
+		OwnerID:      env.user.ID,
+		Name:         "Listed App",
+		Slug:         "listed-app",
+		Description:  "listed app",
+		Listing:      "listed",
+		Tools:        json.RawMessage(`[{"name":"tool","description":"Tool"}]`),
+		Events:       json.RawMessage(`["message"]`),
+		Scopes:       json.RawMessage(`["message:read"]`),
+		ConfigSchema: `{"type":"object"}`,
+		Version:      "1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	bot := createTestBot(t, env.store, env.user.ID, "Listed Bot")
+	inst, err := env.store.InstallApp(app.ID, bot.ID)
+	if err != nil {
+		t.Fatalf("InstallApp: %v", err)
+	}
+
+	resp := doJSON(t, env.ts, "PUT", "/api/apps/"+app.ID, map[string]any{
+		"tools":         []map[string]any{{"description": "Tool", "name": "tool"}},
+		"events":        []string{"message"},
+		"scopes":        []string{"message:read"},
+		"config_schema": `{"type":"object"}`,
+		"version":       "1.0.0",
+	}, withCookie(env.cookie))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body := decodeJSON(t, resp)
+		t.Fatalf("expected 200, got %d: %v", resp.StatusCode, body)
+	}
+
+	updated, err := env.store.GetApp(app.ID)
+	if err != nil {
+		t.Fatalf("GetApp: %v", err)
+	}
+	if updated.Listing != "listed" {
+		t.Fatalf("listing = %q, want listed", updated.Listing)
+	}
+	gotInst, err := env.store.GetInstallation(inst.ID)
+	if err != nil {
+		t.Fatalf("GetInstallation: %v", err)
+	}
+	if gotInst.ID != inst.ID {
+		t.Fatalf("installation id = %q, want %q", gotInst.ID, inst.ID)
+	}
+}

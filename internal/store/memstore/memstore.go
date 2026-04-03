@@ -402,7 +402,7 @@ func (s *Store) DeleteInstallationsByAppID(appID string) error {
 	}
 	return nil
 }
-func (s *Store) TransitionListingWithCleanup(id, currentListing, nextListing, rejectReason string) error {
+func (s *Store) TransitionListingWithCleanup(id, nextListing, rejectReason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -410,6 +410,7 @@ func (s *Store) TransitionListingWithCleanup(id, currentListing, nextListing, re
 	if !ok {
 		return fmt.Errorf("app %s not found", id)
 	}
+	currentListing := app.Listing
 	if currentListing == "listed" && nextListing != "listed" {
 		for instID, inst := range s.installations {
 			if inst.AppID != id {

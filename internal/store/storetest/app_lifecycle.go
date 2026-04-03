@@ -770,7 +770,7 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		if err != nil {
 			t.Fatalf("InstallApp(cleanup): %v", err)
 		}
-		if err := s.TransitionListingWithCleanup(cleanupApp.ID, "listed", "unlisted", ""); err != nil {
+		if err := s.TransitionListingWithCleanup(cleanupApp.ID, "unlisted", ""); err != nil {
 			t.Fatalf("TransitionListingWithCleanup: %v", err)
 		}
 		got, err := s.GetApp(cleanupApp.ID)

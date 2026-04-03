@@ -415,12 +415,17 @@ func (db *DB) DeleteInstallationsByAppID(appID string) error {
 	return err
 }
 
-func (db *DB) TransitionListingWithCleanup(id, currentListing, nextListing, rejectReason string) error {
+func (db *DB) TransitionListingWithCleanup(id, nextListing, rejectReason string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+
+	var currentListing string
+	if err := tx.QueryRow("SELECT listing FROM apps WHERE id = ?", id).Scan(&currentListing); err != nil {
+		return err
+	}
 
 	if currentListing == "listed" && nextListing != "listed" {
 		if _, err := tx.Exec("DELETE FROM app_installations WHERE app_id = ?", id); err != nil {
