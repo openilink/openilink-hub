@@ -476,6 +476,7 @@ function PasskeySection() {
   const [success, setSuccess] = useState("");
   const [showXiaomiGuide, setShowXiaomiGuide] = useState(false);
   const { confirm, ConfirmDialog } = useConfirm();
+  const supportsPasskey = typeof window !== "undefined" && "PublicKeyCredential" in window;
 
   async function handleAdd() {
     if (isXiaomiDevice() && !showXiaomiGuide) {
@@ -530,7 +531,7 @@ function PasskeySection() {
             使用生物识别（指纹、Face ID）或安全密钥进行登录，更安全、更快捷。
           </CardDescription>
         </div>
-        <Button size="sm" onClick={handleAdd} disabled={adding} className="h-9">
+        <Button size="sm" onClick={handleAdd} disabled={adding || !supportsPasskey} className="h-9" title={supportsPasskey ? undefined : "需要 HTTPS 安全连接才能使用通行密钥"}>
           {adding ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
@@ -549,6 +550,12 @@ function PasskeySection() {
         {success ? (
           <div className="text-xs p-3 rounded-lg bg-green-500/5 text-green-600 border border-green-500/10">
             {success}
+          </div>
+        ) : null}
+
+        {!supportsPasskey ? (
+          <div className="text-xs p-3 rounded-lg bg-amber-500/5 text-amber-700 dark:text-amber-400 border border-amber-500/10">
+            当前环境不支持通行密钥。请通过 HTTPS 安全连接访问后再试。
           </div>
         ) : null}
 
