@@ -293,12 +293,12 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("ai api returned %d: %s", resp.StatusCode, truncate(string(body), 200))
+		return nil, fmt.Errorf("ai api returned %d: %s", resp.StatusCode, truncate(string(body), 1000))
 	}
 
 	var result chatResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("ai response parse failed: %s", truncate(string(body), 200))
+		return nil, fmt.Errorf("ai response parse failed: %s", truncate(string(body), 1000))
 	}
 
 	if result.Error != nil {

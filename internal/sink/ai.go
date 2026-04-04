@@ -454,12 +454,12 @@ func (s *AI) collectTools(botID string) []ai.Tool {
 	return tools
 }
 
-// ensureObjectSchema normalises a tool parameters value so it is always a
-// valid JSON Schema with "type":"object".  It handles three common cases:
+// ensureObjectSchema normalises a tool parameters value into a valid
+// OpenAI-compatible JSON Schema ("type":"object").  It handles:
 //   - empty / literal "null"  → default empty-object schema
-//   - bare properties map (keys are property names, not "type"/"properties")
-//     → wrapped into {"type":"object","properties":…}
-//   - already well-formed     → returned as-is
+//   - bare properties map (no "type"/"properties" keys) → wrapped
+//   - per-property "required":true → hoisted to top-level "required" array
+//   - already well-formed → cleaned of per-property "required" if present
 func ensureObjectSchema(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 || string(raw) == "null" {
 		return json.RawMessage(`{"type":"object","properties":{}}`)
@@ -468,19 +468,52 @@ func ensureObjectSchema(raw json.RawMessage) json.RawMessage {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return json.RawMessage(`{"type":"object","properties":{}}`)
 	}
-	// Already has "type" → trust it
-	if _, ok := m["type"]; ok {
-		return raw
+
+	// Determine whether this is already a schema (has "type") or a bare
+	// properties map (keys are property names like "text", "size").
+	_, hasType := m["type"]
+
+	var propsRaw map[string]json.RawMessage
+	if hasType {
+		// Already a schema – extract properties to clean them
+		if p, ok := m["properties"]; ok {
+			json.Unmarshal(p, &propsRaw)
+		}
+	} else {
+		// Bare properties map – the top-level keys are property names
+		propsRaw = m
 	}
-	// Looks like a bare properties map – wrap it
-	wrapped, err := json.Marshal(map[string]any{
+
+	// Hoist per-property "required":true to a top-level array and strip it.
+	var required []string
+	cleanedProps := make(map[string]any, len(propsRaw))
+	for name, propRaw := range propsRaw {
+		var prop map[string]any
+		if err := json.Unmarshal(propRaw, &prop); err != nil {
+			cleanedProps[name] = propRaw
+			continue
+		}
+		if req, ok := prop["required"]; ok {
+			if b, isBool := req.(bool); isBool && b {
+				required = append(required, name)
+			}
+			delete(prop, "required")
+		}
+		cleanedProps[name] = prop
+	}
+
+	schema := map[string]any{
 		"type":       "object",
-		"properties": m,
-	})
+		"properties": cleanedProps,
+	}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	out, err := json.Marshal(schema)
 	if err != nil {
 		return json.RawMessage(`{"type":"object","properties":{}}`)
 	}
-	return wrapped
+	return out
 }
 
 // executeToolCall delivers a tool call to the corresponding app and returns the result.
