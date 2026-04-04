@@ -262,7 +262,9 @@ export function LoginPage() {
                 <p className="text-xs text-muted-foreground max-w-[260px] mx-auto leading-relaxed">
                   {scanStatus === "scanned"
                     ? "请在手机上确认登录"
-                    : "打开微信，扫描二维码即可登录。首次使用会自动创建账号并绑定 Bot。"}
+                    : registrationEnabled
+                      ? "打开微信，扫描二维码即可登录。首次使用会自动创建账号并绑定 Bot。"
+                      : "打开微信，扫描二维码即可登录。仅限已绑定的微信账号。"}
                 </p>
               </div>
 
