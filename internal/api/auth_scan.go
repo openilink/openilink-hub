@@ -165,7 +165,7 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 		// Check registration gate (always allow first user for bootstrap)
 		count, _ := s.Store.UserCount()
 		if count > 0 && !s.registrationEnabled() {
-			sendEvent("error", `{"message":"registration is disabled"}`)
+			sendEvent("error", `{"message":"当前未开放注册，仅限已有账号扫码登录"}`)
 			return
 		}
 		suffix := creds.BotID
