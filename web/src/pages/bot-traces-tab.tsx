@@ -91,8 +91,10 @@ export function BotTracesTab({ botId }: { botId: string }) {
                     <TableCell className="font-mono text-xs max-w-[120px] truncate">
                       {sender}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      {content}
+                    <TableCell className="text-xs text-muted-foreground truncate max-w-[200px]" title={root.status_code === "error" && root.status_message ? root.status_message : undefined}>
+                      {root.status_code === "error" && root.status_message ? (
+                        <span className="text-destructive">{root.status_message}</span>
+                      ) : content}
                     </TableCell>
                     <TableCell className="text-right font-mono text-[10px] text-muted-foreground">
                       {root.attributes?.["ai.tokens.total"] || "\u2014"}

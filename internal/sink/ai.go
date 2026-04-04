@@ -439,7 +439,7 @@ func (s *AI) collectTools(botID string) []ai.Tool {
 				continue
 			}
 			params := t.Parameters
-			if len(params) == 0 {
+			if len(params) == 0 || string(params) == "null" {
 				params = json.RawMessage(`{"type":"object","properties":{}}`)
 			}
 			// Use installation ID as prefix for unique routing

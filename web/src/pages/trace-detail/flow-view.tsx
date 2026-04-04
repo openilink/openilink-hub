@@ -82,10 +82,16 @@ function SpanNodeComponent({ data }: { data: any }) {
           {span.kind}
         </Badge>
       </div>
-      <div className="text-[11px] font-mono font-medium truncate">{span.name}</div>
-      <div className="text-[9px] text-muted-foreground font-mono mt-0.5">
-        {formatDuration(dur)}
-      </div>
+      <div className="text-[11px] font-mono font-medium truncate" title={span.name}>{span.name}</div>
+      {span.status_code === "error" && span.status_message ? (
+        <div className="text-[9px] text-destructive font-mono mt-0.5 truncate" title={span.status_message}>
+          {span.status_message}
+        </div>
+      ) : (
+        <div className="text-[9px] text-muted-foreground font-mono mt-0.5">
+          {formatDuration(dur)}
+        </div>
+      )}
       <Handle type="source" position={Position.Bottom} className="!bg-muted-foreground !w-2 !h-2" />
     </div>
   );

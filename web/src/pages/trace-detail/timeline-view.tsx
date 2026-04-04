@@ -108,7 +108,7 @@ export function TimelineView({ spans, selectedSpanId, onSelectSpan }: TimelineVi
                   <div className="w-4 h-4 shrink-0" />
                 )}
                 <StatusIcon code={span.status_code} size="w-3 h-3" />
-                <span className="text-[11px] font-mono truncate ml-1">{span.name}</span>
+                <span className="text-[11px] font-mono truncate ml-1" title={span.status_code === "error" && span.status_message ? `❌ ${span.status_message}` : span.name}>{span.name}</span>
               </div>
             );
           })}

@@ -79,7 +79,7 @@ export function SpanDetail({ span, open, onClose }: SpanDetailProps) {
           </div>
           <SheetTitle className="font-mono text-sm truncate">{displaySpan.name}</SheetTitle>
           {displaySpan.status_message && (
-            <SheetDescription className="text-destructive text-xs">{displaySpan.status_message}</SheetDescription>
+            <SheetDescription className="text-destructive text-xs whitespace-pre-wrap break-words">{displaySpan.status_message}</SheetDescription>
           )}
         </SheetHeader>
 
