@@ -479,6 +479,7 @@ function PasskeySection() {
   const supportsPasskey = typeof window !== "undefined" && "PublicKeyCredential" in window;
 
   async function handleAdd() {
+    if (!supportsPasskey) return;
     if (isXiaomiDevice() && !showXiaomiGuide) {
       setShowXiaomiGuide(true);
       return;
@@ -554,7 +555,7 @@ function PasskeySection() {
         ) : null}
 
         {!supportsPasskey ? (
-          <div className="text-xs p-3 rounded-lg bg-amber-500/5 text-amber-700 dark:text-amber-400 border border-amber-500/10">
+          <div className="text-xs p-3 rounded-lg bg-amber-500/5 text-amber-700 dark:text-amber-400 border border-amber-500/15">
             当前环境不支持通行密钥。请通过 HTTPS 安全连接访问后再试。
           </div>
         ) : null}
