@@ -137,8 +137,8 @@ func (s *Server) handleUpdateCronJob(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, "invalid cron expression: "+err.Error(), http.StatusBadRequest)
 			return
 		}
+		scheduleChanged = *req.CronExpr != existing.CronExpr
 		cronExpr = *req.CronExpr
-		scheduleChanged = true
 	}
 	if req.Message != nil {
 		message = *req.Message
@@ -170,7 +170,11 @@ func (s *Server) handleUpdateCronJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, _ := s.Store.GetCronJob(jobID)
+	updated, err := s.Store.GetCronJob(jobID)
+	if err != nil {
+		jsonError(w, "update readback failed", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updated)
 }

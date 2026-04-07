@@ -22,8 +22,19 @@ export function useCreateCronJob(botId: string) {
 export function useUpdateCronJob(botId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ jobId, data }: { jobId: string; data: any }) =>
-      api.updateCronJob(botId, jobId, data),
+    mutationFn: ({
+      jobId,
+      data,
+    }: {
+      jobId: string;
+      data: Partial<{
+        name: string;
+        cron_expr: string;
+        message: string;
+        recipient: string;
+        enabled: boolean;
+      }>;
+    }) => api.updateCronJob(botId, jobId, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.bots.cronJobs(botId) }),
   });
 }

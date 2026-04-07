@@ -96,3 +96,8 @@ func (db *DB) MarkCronJobRun(id string, lastRunAt int64, nextRunAt *int64) error
 	_, err := db.Exec(`UPDATE cron_jobs SET last_run_at = ?, next_run_at = ? WHERE id = ?`, lastRunAt, nextRunAt, id)
 	return err
 }
+
+func (db *DB) SetCronJobNextRun(id string, nextRunAt *int64) error {
+	_, err := db.Exec(`UPDATE cron_jobs SET next_run_at = ? WHERE id = ?`, nextRunAt, id)
+	return err
+}

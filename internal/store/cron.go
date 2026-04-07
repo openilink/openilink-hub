@@ -27,4 +27,6 @@ type CronStore interface {
 	ClaimDueCronJobs(now int64) ([]CronJob, error)
 	// MarkCronJobRun updates last_run_at and next_run_at after a job fires.
 	MarkCronJobRun(id string, lastRunAt int64, nextRunAt *int64) error
+	// SetCronJobNextRun updates only next_run_at without touching other fields.
+	SetCronJobNextRun(id string, nextRunAt *int64) error
 }

@@ -637,6 +637,7 @@ func (s *Store) UpdateCronJob(string, string, string, string, string, bool, *int
 func (s *Store) DeleteCronJob(string) error                        { return errNotImplemented }
 func (s *Store) ClaimDueCronJobs(int64) ([]store.CronJob, error)   { return nil, errNotImplemented }
 func (s *Store) MarkCronJobRun(string, int64, *int64) error        { return errNotImplemented }
+func (s *Store) SetCronJobNextRun(string, *int64) error            { return errNotImplemented }
 
 // --- WebhookLogStore (stub) ---
 

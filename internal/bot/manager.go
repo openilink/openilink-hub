@@ -220,15 +220,20 @@ func (m *Manager) checkReminders() {
 	}
 }
 
-// cronLoop periodically fires due cron jobs (scheduled tasks).
+// cronLoop fires due cron jobs aligned to wall-clock minute boundaries.
 func (m *Manager) cronLoop(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
+	// Recover any jobs left with NULL next_run_at from a prior crash.
+	m.recoverStuckCronJobs()
+	// Fire immediately for any already-due jobs, then align to minute boundaries.
+	m.fireCronJobs()
 	for {
+		next := time.Now().Truncate(time.Minute).Add(time.Minute)
+		timer := time.NewTimer(time.Until(next))
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			m.fireCronJobs()
 		}
 	}
@@ -244,8 +249,9 @@ func (m *Manager) fireCronJobs() {
 	for _, job := range jobs {
 		inst, ok := m.GetInstance(job.BotID)
 		if !ok {
-			// Bot not running — still advance next_run_at so the job doesn't stay stuck.
-			m.rescheduleCronJob(job, now)
+			// Bot not running — restore next_run_at so it retries on next tick.
+			retryAt := now.Unix()
+			m.store.SetCronJobNextRun(job.ID, &retryAt)
 			continue
 		}
 
@@ -262,13 +268,14 @@ func (m *Manager) fireCronJobs() {
 		_, err := inst.Send(context.Background(), msg)
 		if err != nil {
 			slog.Error("cron: send failed", "job", job.ID, "bot", job.BotID, "err", err)
-			// Re-schedule without marking as run so it retries next tick.
-			m.rescheduleCronJob(job, now)
+			// Restore next_run_at so it retries on next tick.
+			retryAt := now.Unix()
+			m.store.SetCronJobNextRun(job.ID, &retryAt)
 			continue
 		}
 		slog.Info("cron: job fired", "job", job.ID, "name", job.Name, "bot", job.BotID)
 
-		// Mark as run and schedule next occurrence.
+		// Mark as run and advance to next occurrence.
 		var nextRunAt *int64
 		if next, err := cron.NextAfter(job.CronExpr, now); err == nil {
 			v := next.Unix()
@@ -280,16 +287,28 @@ func (m *Manager) fireCronJobs() {
 	}
 }
 
-// rescheduleCronJob re-sets next_run_at without updating last_run_at (used on skip/failure).
-func (m *Manager) rescheduleCronJob(job store.CronJob, now time.Time) {
-	var nextRunAt *int64
-	if next, err := cron.NextAfter(job.CronExpr, now); err == nil {
-		v := next.Unix()
-		nextRunAt = &v
+// recoverStuckCronJobs fixes enabled jobs with NULL next_run_at (e.g. after a crash mid-claim).
+func (m *Manager) recoverStuckCronJobs() {
+	// Query all bots' cron jobs and fix any with NULL next_run_at that are enabled.
+	bots, err := m.store.GetAllBots()
+	if err != nil {
+		return
 	}
-	// Update only next_run_at; preserve existing last_run_at via the update handler.
-	if err := m.store.UpdateCronJob(job.ID, job.Name, job.CronExpr, job.Message, job.Recipient, job.Enabled, nextRunAt); err != nil {
-		slog.Error("cron: reschedule failed", "job", job.ID, "err", err)
+	now := time.Now()
+	for _, bot := range bots {
+		jobs, err := m.store.ListCronJobsByBot(bot.ID)
+		if err != nil {
+			continue
+		}
+		for _, job := range jobs {
+			if job.Enabled && job.NextRunAt == nil {
+				if next, err := cron.NextAfter(job.CronExpr, now); err == nil {
+					v := next.Unix()
+					m.store.SetCronJobNextRun(job.ID, &v)
+					slog.Info("cron: recovered stuck job", "job", job.ID, "next", next)
+				}
+			}
+		}
 	}
 }
 

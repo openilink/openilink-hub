@@ -15,3 +15,6 @@ CREATE TABLE IF NOT EXISTS cron_jobs (
 
 CREATE INDEX idx_cron_jobs_bot ON cron_jobs(bot_id);
 CREATE INDEX idx_cron_jobs_next ON cron_jobs(enabled, next_run_at);
+
+-- +goose Down
+DROP TABLE IF EXISTS cron_jobs;
