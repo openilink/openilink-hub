@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/openilink/openilink-hub/internal/provider"
 )
@@ -45,7 +47,11 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		Secret string `json:"secret"`
 	}
 	if len(inst.Config) > 0 {
-		json.Unmarshal(inst.Config, &cfg)
+		if err := json.Unmarshal(inst.Config, &cfg); err != nil {
+			slog.Error("github: invalid installation config", "installation_id", inst.ID, "err", err)
+			http.Error(w, "invalid installation config", http.StatusInternalServerError)
+			return
+		}
 	}
 	if cfg.Secret != "" {
 		sig := r.Header.Get("X-Hub-Signature-256")
@@ -83,8 +89,11 @@ func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sendCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
 	contextToken := s.Store.GetLatestContextToken(inst.BotID)
-	_, err = botInst.Send(r.Context(), provider.OutboundMessage{
+	_, err = botInst.Send(sendCtx, provider.OutboundMessage{
 		Text:         text,
 		ContextToken: contextToken,
 	})
