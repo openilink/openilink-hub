@@ -141,6 +141,10 @@ func (s *Server) handleUpdateCronJob(w http.ResponseWriter, r *http.Request) {
 		cronExpr = *req.CronExpr
 	}
 	if req.Message != nil {
+		if *req.Message == "" {
+			jsonError(w, "message cannot be empty", http.StatusBadRequest)
+			return
+		}
 		message = *req.Message
 	}
 	if req.Recipient != nil {
