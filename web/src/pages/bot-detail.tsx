@@ -15,6 +15,7 @@ import {
   Pencil,
   Check,
   X,
+  Clock,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -48,6 +49,7 @@ import { Input } from "@/components/ui/input";
 import { AppIcon } from "../components/app-icon";
 import { parseTools } from "../components/tools-display";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { BotCronTab } from "./bot-cron-tab";
 
 const DEFAULT_MODEL = "__default__";
 
@@ -141,7 +143,8 @@ export function BotDetailPage() {
       { id: bot.id, data: { reminder_hours: hours } },
       {
         onSuccess: () => toast({ title: "已保存" }),
-        onError: (e) => toast({ variant: "destructive", title: "保存失败", description: e.message }),
+        onError: (e) =>
+          toast({ variant: "destructive", title: "保存失败", description: e.message }),
       },
     );
   };
@@ -201,7 +204,12 @@ export function BotDetailPage() {
                           toast({ title: "已保存" });
                           setEditingDisplayName(false);
                         },
-                        onError: (err) => toast({ variant: "destructive", title: "保存失败", description: err.message }),
+                        onError: (err) =>
+                          toast({
+                            variant: "destructive",
+                            title: "保存失败",
+                            description: err.message,
+                          }),
                       },
                     );
                   }}
@@ -227,9 +235,7 @@ export function BotDetailPage() {
                 </form>
               ) : (
                 <div className="flex items-center gap-1.5 group/name">
-                  <h1 className="text-2xl font-bold tracking-tight">
-                    {botDisplayName(bot)}
-                  </h1>
+                  <h1 className="text-2xl font-bold tracking-tight">{botDisplayName(bot)}</h1>
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -302,7 +308,12 @@ export function BotDetailPage() {
                   { botId: id!, enabled },
                   {
                     onSuccess: () => toast({ title: enabled ? "AI 回复已开启" : "AI 回复已关闭" }),
-                    onError: (err) => toast({ variant: "destructive", title: "操作失败", description: err.message }),
+                    onError: (err) =>
+                      toast({
+                        variant: "destructive",
+                        title: "操作失败",
+                        description: err.message,
+                      }),
                   },
                 );
               }}
@@ -320,8 +331,14 @@ export function BotDetailPage() {
                   setAIModelMutation.mutate(
                     { botId: id!, model },
                     {
-                      onSuccess: () => toast({ title: model ? `已切换到模型：${model}` : "已恢复全局默认模型" }),
-                      onError: (err) => toast({ variant: "destructive", title: "操作失败", description: err.message }),
+                      onSuccess: () =>
+                        toast({ title: model ? `已切换到模型：${model}` : "已恢复全局默认模型" }),
+                      onError: (err) =>
+                        toast({
+                          variant: "destructive",
+                          title: "操作失败",
+                          description: err.message,
+                        }),
                     },
                   );
                 }}
@@ -332,7 +349,9 @@ export function BotDetailPage() {
                 <SelectContent>
                   <SelectItem value={DEFAULT_MODEL}>使用全局默认</SelectItem>
                   {availableModels.filter(Boolean).map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -367,14 +386,27 @@ export function BotDetailPage() {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs space-y-1">
-                  <p>上次消息: {bot.last_msg_at ? new Date(bot.last_msg_at * 1000).toLocaleString() : "无"}</p>
-                  <p>上次提醒: {bot.last_reminded_at ? new Date(bot.last_reminded_at * 1000).toLocaleString() : "无"}</p>
-                  <p>下次提醒: {bot.last_msg_at
-                    ? new Date(Math.max(
-                        bot.last_msg_at + bot.reminder_hours * 3600,
-                        (bot.last_reminded_at || 0) + 3600
-                      ) * 1000).toLocaleString()
-                    : "等待首条消息"}</p>
+                  <p>
+                    上次消息:{" "}
+                    {bot.last_msg_at ? new Date(bot.last_msg_at * 1000).toLocaleString() : "无"}
+                  </p>
+                  <p>
+                    上次提醒:{" "}
+                    {bot.last_reminded_at
+                      ? new Date(bot.last_reminded_at * 1000).toLocaleString()
+                      : "无"}
+                  </p>
+                  <p>
+                    下次提醒:{" "}
+                    {bot.last_msg_at
+                      ? new Date(
+                          Math.max(
+                            bot.last_msg_at + bot.reminder_hours * 3600,
+                            (bot.last_reminded_at || 0) + 3600,
+                          ) * 1000,
+                        ).toLocaleString()
+                      : "等待首条消息"}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             )}
@@ -401,6 +433,9 @@ export function BotDetailPage() {
           </Tooltip>
         </div>
       </div>
+
+      {/* Cron Jobs (Scheduled Tasks) */}
+      <BotCronTab botId={id!} />
 
       {/* Installed Apps + Marketplace */}
       <>

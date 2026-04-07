@@ -10,9 +10,12 @@ export const queryKeys = {
     trace: (botId: string, traceId: string) => ["bots", botId, "traces", traceId] as const,
     channels: (id: string) => ["bots", id, "channels"] as const,
     contacts: (id: string) => ["bots", id, "contacts"] as const,
-    messages: (id: string, limit = 30, cursor?: string) => ["bots", id, "messages", { limit, cursor }] as const,
+    messages: (id: string, limit = 30, cursor?: string) =>
+      ["bots", id, "messages", { limit, cursor }] as const,
     stats: () => ["bots", "stats"] as const,
-    webhookLogs: (botId: string, channelId?: string, limit = 50) => ["bots", botId, "webhook-logs", { channelId, limit }] as const,
+    cronJobs: (id: string) => ["bots", id, "cron-jobs"] as const,
+    webhookLogs: (botId: string, channelId?: string, limit = 50) =>
+      ["bots", botId, "webhook-logs", { channelId, limit }] as const,
   },
 
   apps: {
@@ -21,8 +24,10 @@ export const queryKeys = {
     installations: (appId: string) => ["apps", appId, "installations"] as const,
     installation: (appId: string, iid: string) => ["apps", appId, "installations", iid] as const,
     reviews: (appId: string) => ["apps", appId, "reviews"] as const,
-    eventLogs: (appId: string, iid: string, limit = 50) => ["apps", appId, "installations", iid, "event-logs", { limit }] as const,
-    apiLogs: (appId: string, iid: string, limit = 50) => ["apps", appId, "installations", iid, "api-logs", { limit }] as const,
+    eventLogs: (appId: string, iid: string, limit = 50) =>
+      ["apps", appId, "installations", iid, "event-logs", { limit }] as const,
+    apiLogs: (appId: string, iid: string, limit = 50) =>
+      ["apps", appId, "installations", iid, "api-logs", { limit }] as const,
   },
 
   marketplace: {

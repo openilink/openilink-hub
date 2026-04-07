@@ -624,6 +624,20 @@ func (s *Store) ResolvePluginScript(string) (string, string, int, error) {
 	return "", "", 0, errNotImplemented
 }
 
+// --- CronStore (stub) ---
+
+func (s *Store) CreateCronJob(*store.CronJob) (*store.CronJob, error) {
+	return nil, errNotImplemented
+}
+func (s *Store) GetCronJob(string) (*store.CronJob, error)          { return nil, errNotImplemented }
+func (s *Store) ListCronJobsByBot(string) ([]store.CronJob, error)  { return nil, nil }
+func (s *Store) UpdateCronJob(string, string, string, string, string, bool, *int64) error {
+	return nil
+}
+func (s *Store) DeleteCronJob(string) error                         { return nil }
+func (s *Store) GetDueCronJobs(int64) ([]store.CronJob, error)     { return nil, nil }
+func (s *Store) MarkCronJobRun(string, int64, *int64) error         { return nil }
+
 // --- WebhookLogStore (stub) ---
 
 func (s *Store) CreateWebhookLog(*store.WebhookLog) (int64, error)                   { return 0, nil }

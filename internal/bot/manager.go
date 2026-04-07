@@ -11,6 +11,7 @@ import (
 	"time"
 
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
+	"github.com/openilink/openilink-hub/internal/cron"
 	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/push"
 	"github.com/openilink/openilink-hub/internal/relay"
@@ -83,6 +84,8 @@ func (m *Manager) StartAll(ctx context.Context) {
 
 	// Start background reminder checker
 	go m.reminderLoop(ctx)
+	// Start background cron job scheduler
+	go m.cronLoop(ctx)
 }
 
 func (m *Manager) StartBot(ctx context.Context, bot *store.Bot) error {
@@ -214,6 +217,57 @@ func (m *Manager) checkReminders() {
 			slog.Error("mark reminded failed", "bot", bot.ID, "err", err)
 		}
 		slog.Info("reminder sent", "bot", bot.ID, "hours", hours)
+	}
+}
+
+// cronLoop periodically fires due cron jobs (scheduled tasks).
+func (m *Manager) cronLoop(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.fireCronJobs()
+		}
+	}
+}
+
+func (m *Manager) fireCronJobs() {
+	now := time.Now()
+	jobs, err := m.store.GetDueCronJobs(now.Unix())
+	if err != nil {
+		slog.Error("cron: get due jobs failed", "err", err)
+		return
+	}
+	for _, job := range jobs {
+		inst, ok := m.GetInstance(job.BotID)
+		if !ok {
+			continue
+		}
+
+		token := m.store.GetLatestContextToken(job.BotID)
+		_, err := inst.Send(context.Background(), provider.OutboundMessage{
+			Text:         job.Message,
+			Recipient:    job.Recipient,
+			ContextToken: token,
+		})
+		if err != nil {
+			slog.Error("cron: send failed", "job", job.ID, "bot", job.BotID, "err", err)
+		} else {
+			slog.Info("cron: job fired", "job", job.ID, "name", job.Name, "bot", job.BotID)
+		}
+
+		// Calculate next run time
+		var nextRunAt *int64
+		if next, err := cron.NextAfter(job.CronExpr, now); err == nil {
+			v := next.Unix()
+			nextRunAt = &v
+		}
+		if err := m.store.MarkCronJobRun(job.ID, now.Unix(), nextRunAt); err != nil {
+			slog.Error("cron: mark run failed", "job", job.ID, "err", err)
+		}
 	}
 }
 

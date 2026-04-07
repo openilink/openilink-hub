@@ -55,18 +55,27 @@ export const api = {
   oauthProviders: () =>
     request<{ providers: any[] }>("/api/auth/oauth/providers").then((data) => ({
       providers: (data.providers || []).map((p: any) =>
-        typeof p === "string" ? { name: p, display_name: p, type: "oauth" } : p
+        typeof p === "string" ? { name: p, display_name: p, type: "oauth" } : p,
       ) as Array<{ name: string; display_name: string; type: string; key?: string }>,
     })),
   me: () =>
-    request<{ id: string; username: string; display_name: string; role: string; email?: string; has_password: boolean; has_passkey: boolean; has_oauth: boolean }>("/api/me"),
+    request<{
+      id: string;
+      username: string;
+      display_name: string;
+      role: string;
+      email?: string;
+      has_password: boolean;
+      has_passkey: boolean;
+      has_oauth: boolean;
+    }>("/api/me"),
   info: () => request<{ ai: boolean; registration_enabled: boolean; version: string }>("/api/info"),
 
   // Passkeys
   listPasskeys: () => request<any[]>("/api/me/passkeys"),
   passkeyBindBegin: () => request<any>("/api/me/passkeys/register/begin", { method: "POST" }),
   passkeyBindFinishRaw: (body: string, name?: string) =>
-    fetch(`/api/me/passkeys/register/finish${name ? `?name=${encodeURIComponent(name)}` : ''}`, {
+    fetch(`/api/me/passkeys/register/finish${name ? `?name=${encodeURIComponent(name)}` : ""}`, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
@@ -97,8 +106,10 @@ export const api = {
     request<import("./trace-utils").TraceSpan[]>(`/api/bots/${botId}/traces?limit=${limit}`),
   getTrace: (botId: string, traceId: string) =>
     request<import("./trace-utils").TraceSpan[]>(`/api/bots/${botId}/traces/${traceId}`),
-  updateBot: (id: string, data: { name?: string; display_name?: string; reminder_hours?: number }) =>
-    request(`/api/bots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  updateBot: (
+    id: string,
+    data: { name?: string; display_name?: string; reminder_hours?: number },
+  ) => request(`/api/bots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   setBotAI: (botId: string, enabled: boolean) =>
     request(`/api/bots/${botId}/ai`, {
       method: "PUT",
@@ -110,6 +121,20 @@ export const api = {
       body: JSON.stringify({ model }),
     }),
   botContacts: (id: string) => request<any[]>(`/api/bots/${id}/contacts`),
+
+  // Cron jobs (scheduled tasks)
+  listCronJobs: (botId: string) => request<any[]>(`/api/bots/${botId}/cron-jobs`),
+  createCronJob: (
+    botId: string,
+    data: { name: string; cron_expr: string; message: string; recipient?: string },
+  ) => request<any>(`/api/bots/${botId}/cron-jobs`, { method: "POST", body: JSON.stringify(data) }),
+  updateCronJob: (botId: string, jobId: string, data: any) =>
+    request<any>(`/api/bots/${botId}/cron-jobs/${jobId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteCronJob: (botId: string, jobId: string) =>
+    request(`/api/bots/${botId}/cron-jobs/${jobId}`, { method: "DELETE" }),
 
   // Channels (under bots)
   listChannels: (botId: string) => request<any[]>(`/api/bots/${botId}/channels`),
@@ -137,9 +162,13 @@ export const api = {
 
   // Messages (under bots)
   messages: (botId: string, limit = 30, cursor?: string) =>
-    request<{ messages: any[]; next_cursor: string; has_more: boolean; can_send?: boolean; send_disabled_reason?: string }>(
-      `/api/bots/${botId}/messages?limit=${limit}${cursor ? "&cursor=" + cursor : ""}`,
-    ),
+    request<{
+      messages: any[];
+      next_cursor: string;
+      has_more: boolean;
+      can_send?: boolean;
+      send_disabled_reason?: string;
+    }>(`/api/bots/${botId}/messages?limit=${limit}${cursor ? "&cursor=" + cursor : ""}`),
   sendMessage: (botId: string, data: any) =>
     request(`/api/bots/${botId}/send`, { method: "POST", body: JSON.stringify(data) }),
 
@@ -152,8 +181,16 @@ export const api = {
 
   // Admin: OIDC config
   getOIDCConfig: () => request<any[]>("/api/admin/config/oidc"),
-  setOIDCConfig: (slug: string, data: { display_name: string; issuer_url: string; client_id: string; client_secret: string; scopes?: string }) =>
-    request(`/api/admin/config/oidc/${slug}`, { method: "PUT", body: JSON.stringify(data) }),
+  setOIDCConfig: (
+    slug: string,
+    data: {
+      display_name: string;
+      issuer_url: string;
+      client_id: string;
+      client_secret: string;
+      scopes?: string;
+    },
+  ) => request(`/api/admin/config/oidc/${slug}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteOIDCConfig: (slug: string) =>
     request(`/api/admin/config/oidc/${slug}`, { method: "DELETE" }),
 
@@ -219,8 +256,7 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ approve, reason: reason || "" }),
     }),
-  listAppReviews: (appId: string) =>
-    request<any[]>(`/api/apps/${appId}/reviews`),
+  listAppReviews: (appId: string) => request<any[]>(`/api/apps/${appId}/reviews`),
 
   // Webhook logs
   webhookLogs: (botId: string, channelId?: string, limit = 50) =>
@@ -231,21 +267,26 @@ export const api = {
   // Marketplace
   getMarketplaceApps: () => request<any[]>("/api/marketplace"),
   getBuiltinApps: () => request<any[]>("/api/marketplace/builtin"),
-  syncMarketplaceApp: (slug: string) => request<any>(`/api/marketplace/sync/${slug}`, { method: "POST" }),
+  syncMarketplaceApp: (slug: string) =>
+    request<any>(`/api/marketplace/sync/${slug}`, { method: "POST" }),
 
   // Registry admin
   getRegistries: () => request<any[]>("/api/admin/registries"),
-  createRegistry: (data: { name: string; url: string }) => request<any>("/api/admin/registries", { method: "POST", body: JSON.stringify(data) }),
-  updateRegistry: (id: string, data: { enabled: boolean }) => request<any>(`/api/admin/registries/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  createRegistry: (data: { name: string; url: string }) =>
+    request<any>("/api/admin/registries", { method: "POST", body: JSON.stringify(data) }),
+  updateRegistry: (id: string, data: { enabled: boolean }) =>
+    request<any>(`/api/admin/registries/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteRegistry: (id: string) => request<any>(`/api/admin/registries/${id}`, { method: "DELETE" }),
 
   // Registry config
   getRegistryConfig: () => request<any>("/api/admin/config/registry"),
-  setRegistryConfig: (data: { enabled: string }) => request<any>("/api/admin/config/registry", { method: "PUT", body: JSON.stringify(data) }),
+  setRegistryConfig: (data: { enabled: string }) =>
+    request<any>("/api/admin/config/registry", { method: "PUT", body: JSON.stringify(data) }),
 
   // Registration config
   getRegistrationConfig: () => request<{ enabled: string }>("/api/admin/config/registration"),
-  setRegistrationConfig: (data: { enabled: string }) => request<any>("/api/admin/config/registration", { method: "PUT", body: JSON.stringify(data) }),
+  setRegistrationConfig: (data: { enabled: string }) =>
+    request<any>("/api/admin/config/registration", { method: "PUT", body: JSON.stringify(data) }),
 
   // Admin: Dashboard
   adminStats: () => request<any>("/api/admin/stats"),
