@@ -51,7 +51,7 @@ function cronDescription(expr: string): string {
 export function BotCronTab({ botId }: { botId: string }) {
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
-  const { data: jobs = [], isLoading } = useCronJobs(botId);
+  const { data: jobs = [], isLoading, isError, error } = useCronJobs(botId);
   const createMutation = useCreateCronJob(botId);
   const updateMutation = useUpdateCronJob(botId);
   const deleteMutation = useDeleteCronJob(botId);
@@ -141,6 +141,14 @@ export function BotCronTab({ botId }: { botId: string }) {
     );
   }
 
+  if (isError) {
+    return (
+      <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+        加载定时任务失败{error instanceof Error ? `：${error.message}` : ""}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {ConfirmDialog}
@@ -194,11 +202,25 @@ export function BotCronTab({ botId }: { botId: string }) {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <Switch checked={job.enabled} onCheckedChange={(v) => handleToggle(job, v)} />
-                <Button variant="ghost" size="icon-sm" onClick={() => openEdit(job)}>
+                <Switch
+                  aria-label={`${job.enabled ? "停用" : "启用"}定时任务 ${job.name || job.cron_expr}`}
+                  checked={job.enabled}
+                  onCheckedChange={(v) => handleToggle(job, v)}
+                />
+                <Button
+                  aria-label={`编辑定时任务 ${job.name || job.cron_expr}`}
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => openEdit(job)}
+                >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="icon-sm" onClick={() => void handleDelete(job)}>
+                <Button
+                  aria-label={`删除定时任务 ${job.name || job.cron_expr}`}
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => void handleDelete(job)}
+                >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>

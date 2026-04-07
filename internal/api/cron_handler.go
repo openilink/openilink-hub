@@ -63,12 +63,14 @@ func (s *Server) handleCreateCronJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate first next_run_at
-	var nextRunAt *int64
-	if next, err := cron.NextAfter(req.CronExpr, time.Now()); err == nil {
-		v := next.Unix()
-		nextRunAt = &v
+	// Calculate first next_run_at — fail if the expression cannot be scheduled.
+	next, err := cron.NextAfter(req.CronExpr, time.Now())
+	if err != nil {
+		jsonError(w, "unable to schedule cron job: "+err.Error(), http.StatusBadRequest)
+		return
 	}
+	v := next.Unix()
+	nextRunAt := &v
 
 	job := &store.CronJob{
 		BotID:     botID,
@@ -109,11 +111,11 @@ func (s *Server) handleUpdateCronJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name      string `json:"name"`
-		CronExpr  string `json:"cron_expr"`
-		Message   string `json:"message"`
-		Recipient string `json:"recipient"`
-		Enabled   *bool  `json:"enabled"`
+		Name      *string `json:"name"`
+		CronExpr  *string `json:"cron_expr"`
+		Message   *string `json:"message"`
+		Recipient *string `json:"recipient"`
+		Enabled   *bool   `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid JSON", http.StatusBadRequest)
@@ -125,34 +127,42 @@ func (s *Server) handleUpdateCronJob(w http.ResponseWriter, r *http.Request) {
 	message := existing.Message
 	recipient := existing.Recipient
 	enabled := existing.Enabled
+	scheduleChanged := false
 
-	if req.Name != "" {
-		name = req.Name
+	if req.Name != nil {
+		name = *req.Name
 	}
-	if req.CronExpr != "" {
-		if err := cron.Validate(req.CronExpr); err != nil {
+	if req.CronExpr != nil {
+		if err := cron.Validate(*req.CronExpr); err != nil {
 			jsonError(w, "invalid cron expression: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		cronExpr = req.CronExpr
+		cronExpr = *req.CronExpr
+		scheduleChanged = true
 	}
-	if req.Message != "" {
-		message = req.Message
+	if req.Message != nil {
+		message = *req.Message
 	}
-	if req.Recipient != "" {
-		recipient = req.Recipient
+	if req.Recipient != nil {
+		recipient = *req.Recipient
 	}
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
 
-	// Recalculate next_run_at if expression changed or re-enabled
-	var nextRunAt *int64
-	if enabled {
-		if next, err := cron.NextAfter(cronExpr, time.Now()); err == nil {
-			v := next.Unix()
-			nextRunAt = &v
+	// Recalculate next_run_at only when schedule changed or job was re-enabled.
+	nextRunAt := existing.NextRunAt
+	reEnabled := req.Enabled != nil && *req.Enabled && !existing.Enabled
+	if !enabled {
+		nextRunAt = nil
+	} else if scheduleChanged || reEnabled || existing.NextRunAt == nil {
+		next, err := cron.NextAfter(cronExpr, time.Now())
+		if err != nil {
+			jsonError(w, "unable to schedule cron job: "+err.Error(), http.StatusBadRequest)
+			return
 		}
+		v := next.Unix()
+		nextRunAt = &v
 	}
 
 	if err := s.Store.UpdateCronJob(jobID, name, cronExpr, message, recipient, enabled, nextRunAt); err != nil {

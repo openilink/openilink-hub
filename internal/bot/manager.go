@@ -236,30 +236,39 @@ func (m *Manager) cronLoop(ctx context.Context) {
 
 func (m *Manager) fireCronJobs() {
 	now := time.Now()
-	jobs, err := m.store.GetDueCronJobs(now.Unix())
+	jobs, err := m.store.ClaimDueCronJobs(now.Unix())
 	if err != nil {
-		slog.Error("cron: get due jobs failed", "err", err)
+		slog.Error("cron: claim due jobs failed", "err", err)
 		return
 	}
 	for _, job := range jobs {
 		inst, ok := m.GetInstance(job.BotID)
 		if !ok {
+			// Bot not running — still advance next_run_at so the job doesn't stay stuck.
+			m.rescheduleCronJob(job, now)
 			continue
 		}
 
-		token := m.store.GetLatestContextToken(job.BotID)
-		_, err := inst.Send(context.Background(), provider.OutboundMessage{
-			Text:         job.Message,
-			Recipient:    job.Recipient,
-			ContextToken: token,
-		})
-		if err != nil {
-			slog.Error("cron: send failed", "job", job.ID, "bot", job.BotID, "err", err)
-		} else {
-			slog.Info("cron: job fired", "job", job.ID, "name", job.Name, "bot", job.BotID)
+		// Only use context token when no explicit recipient is set,
+		// to avoid sending in the wrong conversation thread.
+		msg := provider.OutboundMessage{
+			Text:      job.Message,
+			Recipient: job.Recipient,
+		}
+		if job.Recipient == "" {
+			msg.ContextToken = m.store.GetLatestContextToken(job.BotID)
 		}
 
-		// Calculate next run time
+		_, err := inst.Send(context.Background(), msg)
+		if err != nil {
+			slog.Error("cron: send failed", "job", job.ID, "bot", job.BotID, "err", err)
+			// Re-schedule without marking as run so it retries next tick.
+			m.rescheduleCronJob(job, now)
+			continue
+		}
+		slog.Info("cron: job fired", "job", job.ID, "name", job.Name, "bot", job.BotID)
+
+		// Mark as run and schedule next occurrence.
 		var nextRunAt *int64
 		if next, err := cron.NextAfter(job.CronExpr, now); err == nil {
 			v := next.Unix()
@@ -268,6 +277,19 @@ func (m *Manager) fireCronJobs() {
 		if err := m.store.MarkCronJobRun(job.ID, now.Unix(), nextRunAt); err != nil {
 			slog.Error("cron: mark run failed", "job", job.ID, "err", err)
 		}
+	}
+}
+
+// rescheduleCronJob re-sets next_run_at without updating last_run_at (used on skip/failure).
+func (m *Manager) rescheduleCronJob(job store.CronJob, now time.Time) {
+	var nextRunAt *int64
+	if next, err := cron.NextAfter(job.CronExpr, now); err == nil {
+		v := next.Unix()
+		nextRunAt = &v
+	}
+	// Update only next_run_at; preserve existing last_run_at via the update handler.
+	if err := m.store.UpdateCronJob(job.ID, job.Name, job.CronExpr, job.Message, job.Recipient, job.Enabled, nextRunAt); err != nil {
+		slog.Error("cron: reschedule failed", "job", job.ID, "err", err)
 	}
 }
 

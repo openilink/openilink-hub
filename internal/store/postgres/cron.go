@@ -56,9 +56,11 @@ func (db *DB) DeleteCronJob(id string) error {
 	return err
 }
 
-func (db *DB) GetDueCronJobs(now int64) ([]store.CronJob, error) {
-	rows, err := db.Query(`SELECT id, bot_id, user_id, name, cron_expr, message, recipient, enabled, last_run_at, next_run_at, created_at
-		FROM cron_jobs WHERE enabled = TRUE AND next_run_at IS NOT NULL AND next_run_at <= $1`, now)
+func (db *DB) ClaimDueCronJobs(now int64) ([]store.CronJob, error) {
+	// Atomically claim and return due jobs using UPDATE ... RETURNING.
+	rows, err := db.Query(`UPDATE cron_jobs SET next_run_at = NULL
+		WHERE enabled = TRUE AND next_run_at IS NOT NULL AND next_run_at <= $1
+		RETURNING id, bot_id, user_id, name, cron_expr, message, recipient, enabled, last_run_at, next_run_at, created_at`, now)
 	if err != nil {
 		return nil, err
 	}

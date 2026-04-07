@@ -21,8 +21,10 @@ type CronStore interface {
 	ListCronJobsByBot(botID string) ([]CronJob, error)
 	UpdateCronJob(id, name, cronExpr, message, recipient string, enabled bool, nextRunAt *int64) error
 	DeleteCronJob(id string) error
-	// GetDueCronJobs returns enabled jobs whose next_run_at <= now.
-	GetDueCronJobs(now int64) ([]CronJob, error)
+	// ClaimDueCronJobs atomically claims enabled jobs whose next_run_at <= now
+	// by setting next_run_at = NULL (preventing other instances from claiming them).
+	// Returns the claimed jobs.
+	ClaimDueCronJobs(now int64) ([]CronJob, error)
 	// MarkCronJobRun updates last_run_at and next_run_at after a job fires.
 	MarkCronJobRun(id string, lastRunAt int64, nextRunAt *int64) error
 }

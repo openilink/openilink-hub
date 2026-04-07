@@ -22,8 +22,8 @@ func NextAfter(expr string, t time.Time) (time.Time, error) {
 	// Start from the next minute boundary.
 	t = t.Truncate(time.Minute).Add(time.Minute)
 
-	// Brute-force search — at most ~527,040 minutes (366 days).
-	limit := t.Add(366 * 24 * time.Hour)
+	// Search across at least one leap cycle so Feb 29 schedules remain reachable.
+	limit := t.AddDate(4, 0, 0)
 	for t.Before(limit) {
 		if fields[3].has(int(t.Month())) && fields[2].has(t.Day()) && fields[4].has(int(t.Weekday())) &&
 			fields[1].has(t.Hour()) && fields[0].has(t.Minute()) {
@@ -48,7 +48,7 @@ func NextAfter(expr string, t time.Time) (time.Time, error) {
 		// Otherwise advance one minute.
 		t = t.Add(time.Minute)
 	}
-	return time.Time{}, fmt.Errorf("no match within 366 days")
+	return time.Time{}, fmt.Errorf("no match within 4 years")
 }
 
 // Validate checks whether a cron expression is syntactically valid.

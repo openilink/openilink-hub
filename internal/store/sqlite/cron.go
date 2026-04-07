@@ -56,22 +56,40 @@ func (db *DB) DeleteCronJob(id string) error {
 	return err
 }
 
-func (db *DB) GetDueCronJobs(now int64) ([]store.CronJob, error) {
-	rows, err := db.Query(`SELECT id, bot_id, user_id, name, cron_expr, message, recipient, enabled, last_run_at, next_run_at, created_at
+func (db *DB) ClaimDueCronJobs(now int64) ([]store.CronJob, error) {
+	// Atomically claim due jobs by setting next_run_at = NULL, then return them.
+	// SQLite serializes writes, so this is safe against concurrent callers.
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`SELECT id, bot_id, user_id, name, cron_expr, message, recipient, enabled, last_run_at, next_run_at, created_at
 		FROM cron_jobs WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?`, now)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var jobs []store.CronJob
 	for rows.Next() {
 		var j store.CronJob
 		if err := rows.Scan(&j.ID, &j.BotID, &j.UserID, &j.Name, &j.CronExpr, &j.Message, &j.Recipient, &j.Enabled, &j.LastRunAt, &j.NextRunAt, &j.CreatedAt); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		jobs = append(jobs, j)
 	}
-	return jobs, rows.Err()
+	rows.Close()
+
+	if len(jobs) > 0 {
+		// Mark claimed by clearing next_run_at
+		_, err = tx.Exec(`UPDATE cron_jobs SET next_run_at = NULL WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?`, now)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return jobs, tx.Commit()
 }
 
 func (db *DB) MarkCronJobRun(id string, lastRunAt int64, nextRunAt *int64) error {

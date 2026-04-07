@@ -19,6 +19,7 @@ func TestNextAfter(t *testing.T) {
 		{"daily at 12", "0 12 * * *", time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)},
 		{"weekday 9am", "0 9 * * 1-5", time.Date(2026, 4, 8, 9, 0, 0, 0, time.UTC)}, // Apr 7 is Tuesday, next is Wed
 		{"first of month", "0 9 1 * *", time.Date(2026, 5, 1, 9, 0, 0, 0, time.UTC)},
+		{"leap day", "0 9 29 2 *", time.Date(2028, 2, 29, 9, 0, 0, 0, time.UTC)}, // 2026 is not a leap year
 	}
 
 	for _, tt := range tests {
