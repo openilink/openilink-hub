@@ -97,6 +97,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/channels/status", s.handleChannelStatus)
 	mux.HandleFunc("GET /api/v1/channels/media", s.handleChannelMedia)
 
+	// --- GitHub webhook (public, token-authenticated) ---
+	mux.HandleFunc("POST /api/hooks/github", s.handleGitHubWebhook)
+
 	// --- Registry public endpoint ---
 	mux.HandleFunc("GET /api/registry/v1/apps.json", s.handleRegistryApps)
 
