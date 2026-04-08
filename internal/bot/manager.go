@@ -225,7 +225,7 @@ func (m *Manager) cronLoop(ctx context.Context) {
 	// Recover any jobs left with NULL next_run_at from a prior crash.
 	m.recoverStuckCronJobs()
 	// Fire immediately for any already-due jobs, then align to minute boundaries.
-	m.fireCronJobs()
+	m.fireCronJobs(ctx)
 	for {
 		next := time.Now().Truncate(time.Minute).Add(time.Minute)
 		timer := time.NewTimer(time.Until(next))
@@ -234,12 +234,12 @@ func (m *Manager) cronLoop(ctx context.Context) {
 			timer.Stop()
 			return
 		case <-timer.C:
-			m.fireCronJobs()
+			m.fireCronJobs(ctx)
 		}
 	}
 }
 
-func (m *Manager) fireCronJobs() {
+func (m *Manager) fireCronJobs(ctx context.Context) {
 	now := time.Now()
 	jobs, err := m.store.ClaimDueCronJobs(now.Unix())
 	if err != nil {
@@ -249,8 +249,8 @@ func (m *Manager) fireCronJobs() {
 	for _, job := range jobs {
 		inst, ok := m.GetInstance(job.BotID)
 		if !ok {
-			// Bot not running — restore next_run_at so it retries on next tick.
-			retryAt := now.Unix()
+			// Bot not running — retry on the next minute tick.
+			retryAt := now.Truncate(time.Minute).Add(time.Minute).Unix()
 			m.store.SetCronJobNextRun(job.ID, &retryAt)
 			continue
 		}
@@ -265,11 +265,13 @@ func (m *Manager) fireCronJobs() {
 			msg.ContextToken = m.store.GetLatestContextToken(job.BotID)
 		}
 
-		_, err := inst.Send(context.Background(), msg)
+		sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		_, err := inst.Send(sendCtx, msg)
+		cancel()
 		if err != nil {
 			slog.Error("cron: send failed", "job", job.ID, "bot", job.BotID, "err", err)
-			// Restore next_run_at so it retries on next tick.
-			retryAt := now.Unix()
+			// Retry on the next minute tick.
+			retryAt := now.Truncate(time.Minute).Add(time.Minute).Unix()
 			m.store.SetCronJobNextRun(job.ID, &retryAt)
 			continue
 		}
@@ -289,25 +291,17 @@ func (m *Manager) fireCronJobs() {
 
 // recoverStuckCronJobs fixes enabled jobs with NULL next_run_at (e.g. after a crash mid-claim).
 func (m *Manager) recoverStuckCronJobs() {
-	// Query all bots' cron jobs and fix any with NULL next_run_at that are enabled.
-	bots, err := m.store.GetAllBots()
+	jobs, err := m.store.ListStuckCronJobs()
 	if err != nil {
+		slog.Error("cron: list stuck jobs failed", "err", err)
 		return
 	}
 	now := time.Now()
-	for _, bot := range bots {
-		jobs, err := m.store.ListCronJobsByBot(bot.ID)
-		if err != nil {
-			continue
-		}
-		for _, job := range jobs {
-			if job.Enabled && job.NextRunAt == nil {
-				if next, err := cron.NextAfter(job.CronExpr, now); err == nil {
-					v := next.Unix()
-					m.store.SetCronJobNextRun(job.ID, &v)
-					slog.Info("cron: recovered stuck job", "job", job.ID, "next", next)
-				}
-			}
+	for _, job := range jobs {
+		if next, err := cron.NextAfter(job.CronExpr, now); err == nil {
+			v := next.Unix()
+			m.store.SetCronJobNextRun(job.ID, &v)
+			slog.Info("cron: recovered stuck job", "job", job.ID, "next", next)
 		}
 	}
 }

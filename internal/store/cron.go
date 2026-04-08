@@ -29,4 +29,6 @@ type CronStore interface {
 	MarkCronJobRun(id string, lastRunAt int64, nextRunAt *int64) error
 	// SetCronJobNextRun updates only next_run_at without touching other fields.
 	SetCronJobNextRun(id string, nextRunAt *int64) error
+	// ListStuckCronJobs returns enabled jobs with NULL next_run_at (e.g. after a crash mid-claim).
+	ListStuckCronJobs() ([]CronJob, error)
 }

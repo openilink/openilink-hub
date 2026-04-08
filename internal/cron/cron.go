@@ -12,7 +12,7 @@ import (
 )
 
 // NextAfter returns the next time after t that matches the cron expression.
-// Returns zero time if no match is found within 366 days.
+// Returns zero time if no match is found within 4 years (to cover leap cycles).
 func NextAfter(expr string, t time.Time) (time.Time, error) {
 	fields, err := parse(expr)
 	if err != nil {

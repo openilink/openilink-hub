@@ -85,3 +85,21 @@ func (db *DB) SetCronJobNextRun(id string, nextRunAt *int64) error {
 	_, err := db.Exec(`UPDATE cron_jobs SET next_run_at = $1 WHERE id = $2`, nextRunAt, id)
 	return err
 }
+
+func (db *DB) ListStuckCronJobs() ([]store.CronJob, error) {
+	rows, err := db.Query(`SELECT id, bot_id, user_id, name, cron_expr, message, recipient, enabled, last_run_at, next_run_at, created_at
+		FROM cron_jobs WHERE enabled = TRUE AND next_run_at IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var jobs []store.CronJob
+	for rows.Next() {
+		var j store.CronJob
+		if err := rows.Scan(&j.ID, &j.BotID, &j.UserID, &j.Name, &j.CronExpr, &j.Message, &j.Recipient, &j.Enabled, &j.LastRunAt, &j.NextRunAt, &j.CreatedAt); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}

@@ -236,15 +236,16 @@ export function BotCronTab({ botId }: { botId: string }) {
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label>任务名称</Label>
+              <Label htmlFor="cron-name">任务名称</Label>
               <Input
+                id="cron-name"
                 placeholder="如：每日早报"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label>执行时间</Label>
+              <Label htmlFor="cron-expr">执行时间</Label>
               <Select
                 value={
                   PRESETS.find((p) => p.value === form.cron_expr) ? form.cron_expr : "__custom__"
@@ -266,6 +267,7 @@ export function BotCronTab({ botId }: { botId: string }) {
                 </SelectContent>
               </Select>
               <Input
+                id="cron-expr"
                 placeholder="cron 表达式，如 0 9 * * *"
                 value={form.cron_expr}
                 onChange={(e) => setForm({ ...form, cron_expr: e.target.value })}
@@ -276,8 +278,9 @@ export function BotCronTab({ botId }: { botId: string }) {
               </p>
             </div>
             <div className="space-y-2">
-              <Label>消息内容</Label>
+              <Label htmlFor="cron-message">消息内容</Label>
               <Textarea
+                id="cron-message"
                 placeholder="Bot 将发送的消息内容"
                 value={form.message}
                 onChange={(e) => setForm({ ...form, message: e.target.value })}
@@ -285,8 +288,9 @@ export function BotCronTab({ botId }: { botId: string }) {
               />
             </div>
             <div className="space-y-2">
-              <Label>接收人 (可选)</Label>
+              <Label htmlFor="cron-recipient">接收人 (可选)</Label>
               <Input
+                id="cron-recipient"
                 placeholder="留空则发送到默认对话"
                 value={form.recipient}
                 onChange={(e) => setForm({ ...form, recipient: e.target.value })}
