@@ -34,6 +34,7 @@ import (
 	// Register builtin apps
 	_ "github.com/openilink/openilink-hub/internal/builtin/bridge"
 	_ "github.com/openilink/openilink-hub/internal/builtin/github"
+	_ "github.com/openilink/openilink-hub/internal/builtin/hermes"
 	_ "github.com/openilink/openilink-hub/internal/builtin/mcpserver"
 	_ "github.com/openilink/openilink-hub/internal/builtin/openclaw"
 	_ "github.com/openilink/openilink-hub/internal/builtin/runner"
