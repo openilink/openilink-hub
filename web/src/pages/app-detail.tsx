@@ -888,6 +888,7 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
   const [importing, setImporting] = useState(false);
   const [showMcpImport, setShowMcpImport] = useState(false);
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   function addTool() {
     setTools([...tools, { name: "", description: "", command: "", parameters: "" }]);
@@ -915,6 +916,14 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
       if (result.tools.length === 0) {
         toast({ variant: "destructive", title: "未发现工具", description: "MCP 服务器未返回任何工具定义" });
       } else {
+        if (tools.length > 0) {
+          const ok = await confirm({
+            title: "替换现有工具",
+            description: `将从 MCP 服务器导入 ${result.tools.length} 个工具，替换当前全部 ${tools.length} 个工具。确定继续？`,
+            confirmText: "替换",
+          });
+          if (!ok) { setImporting(false); return; }
+        }
         const imported = result.tools.map((t) => ({
           name: t.name,
           description: t.description || "",
@@ -926,7 +935,9 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
         const serverInfo = result.server_name
           ? `${result.server_name}${result.server_version ? ` v${result.server_version}` : ""}`
           : "MCP 服务器";
-        toast({ title: `已导入 ${result.tools.length} 个工具`, description: `来自 ${serverInfo}` });
+        let desc = `来自 ${serverInfo}`;
+        if (result.truncated) desc += "（工具数量超限，已截断）";
+        toast({ title: `已导入 ${result.tools.length} 个工具`, description: desc });
       }
     } catch (e: any) {
       toast({ variant: "destructive", title: "导入失败", description: e.message });
@@ -951,6 +962,7 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
 
   return (
     <div className="space-y-6">
+      {ConfirmDialog}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold">命令 / 工具</h2>
@@ -987,13 +999,15 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
               value={mcpUrl}
               onChange={(e) => setMcpUrl(e.target.value)}
               className="h-8 text-xs font-mono"
+              aria-label="MCP 服务器地址"
             />
             <textarea
-              placeholder={"自定义请求头（可选，每行一个，格式 Key: Value）\n如 Authorization: Bearer token123"}
+              placeholder="自定义请求头（可选，每行一个，格式 Key: Value）"
               value={mcpHeaders}
               onChange={(e) => setMcpHeaders(e.target.value)}
               rows={2}
               className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 resize-none"
+              aria-label="自定义请求头"
             />
             <div className="flex gap-2">
               <Button
