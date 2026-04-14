@@ -883,6 +883,11 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
     })),
   );
   const [saving, setSaving] = useState(false);
+  const [mcpUrl, setMcpUrl] = useState("");
+  const [mcpHeaders, setMcpHeaders] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [showMcpImport, setShowMcpImport] = useState(false);
+  const { toast } = useToast();
 
   function addTool() {
     setTools([...tools, { name: "", description: "", command: "", parameters: "" }]);
@@ -892,6 +897,41 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
   }
   function updateTool(index: number, field: string, value: string) {
     setTools(tools.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
+  }
+
+  async function handleImportMCP() {
+    if (!mcpUrl.trim()) return;
+    setImporting(true);
+    try {
+      let headers: Record<string, string> | undefined;
+      if (mcpHeaders.trim()) {
+        headers = {};
+        for (const line of mcpHeaders.split("\n")) {
+          const idx = line.indexOf(":");
+          if (idx > 0) headers[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+        }
+      }
+      const result = await api.importMCP({ url: mcpUrl.trim(), headers });
+      if (result.tools.length === 0) {
+        toast({ variant: "destructive", title: "未发现工具", description: "MCP 服务器未返回任何工具定义" });
+      } else {
+        const imported = result.tools.map((t) => ({
+          name: t.name,
+          description: t.description || "",
+          command: "",
+          parameters: t.parameters ? JSON.stringify(t.parameters, null, 2) : "",
+        }));
+        setTools(imported);
+        setShowMcpImport(false);
+        const serverInfo = result.server_name
+          ? `${result.server_name}${result.server_version ? ` v${result.server_version}` : ""}`
+          : "MCP 服务器";
+        toast({ title: `已导入 ${result.tools.length} 个工具`, description: `来自 ${serverInfo}` });
+      }
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "导入失败", description: e.message });
+    }
+    setImporting(false);
   }
 
   async function handleSave() {
@@ -918,10 +958,65 @@ function ToolsEditor({ app, onUpdate }: { app: any; onUpdate: () => void }) {
             定义应用的工具和命令，用户通过 /command 触发。
           </p>
         </div>
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addTool}>
-          <Plus className="w-3 h-3 mr-1" /> 添加
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setShowMcpImport(!showMcpImport)}
+          >
+            <Download className="w-3 h-3 mr-1" /> 从 MCP 导入
+          </Button>
+          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addTool}>
+            <Plus className="w-3 h-3 mr-1" /> 添加
+          </Button>
+        </div>
       </div>
+
+      {showMcpImport && (
+        <Card>
+          <CardHeader>
+            <CardTitle>从 MCP 服务器导入</CardTitle>
+            <CardDescription>
+              输入 MCP 服务器的 Streamable HTTP 地址，自动发现并导入工具定义。导入会替换当前所有工具。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input
+              placeholder="https://your-mcp-server.example.com/mcp"
+              value={mcpUrl}
+              onChange={(e) => setMcpUrl(e.target.value)}
+              className="h-8 text-xs font-mono"
+            />
+            <textarea
+              placeholder={"自定义请求头（可选，每行一个，格式 Key: Value）\n如 Authorization: Bearer token123"}
+              value={mcpHeaders}
+              onChange={(e) => setMcpHeaders(e.target.value)}
+              rows={2}
+              className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 resize-none"
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleImportMCP}
+                disabled={importing || !mcpUrl.trim()}
+                className="h-7 text-xs"
+              >
+                {importing && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                {importing ? "正在发现..." : "发现工具"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowMcpImport(false)}
+                className="h-7 text-xs"
+              >
+                取消
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {tools.length === 0 ? (
         <p className="text-xs text-muted-foreground">暂无工具。点击右上角添加。</p>

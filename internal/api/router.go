@@ -174,6 +174,7 @@ func (s *Server) Handler() http.Handler {
 	protected.HandleFunc("DELETE /api/admin/users/{id}", s.requireAdmin(s.handleDeleteUser))
 
 	// --- Apps ---
+	protected.HandleFunc("POST /api/apps/import-mcp", s.handleImportMCP)
 	protected.HandleFunc("POST /api/apps", s.handleCreateApp)
 	protected.HandleFunc("GET /api/apps", s.handleListApps)
 	protected.HandleFunc("GET /api/apps/{id}", s.handleGetApp)
