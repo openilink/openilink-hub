@@ -18,6 +18,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/storage"
 	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/supamemory"
 )
 
 const typingTimeout = 30 * time.Second
@@ -36,6 +37,7 @@ type AI struct {
 	AppDisp    *appdelivery.Dispatcher
 	Storage    storage.Store
 	BotManager BotModelSyncer
+	SupaMemory *supamemory.Client
 }
 
 type runtimePromptMeta struct {
@@ -43,6 +45,8 @@ type runtimePromptMeta struct {
 	Version   int64
 	FullHash  string
 	Truncated bool
+	RoleID    string
+	UserID    string
 }
 
 func (s *AI) Name() string { return "ai" }
@@ -168,7 +172,8 @@ func (s *AI) reply(d Delivery) {
 
 	ctx := context.Background()
 	sender := d.Message.Sender
-	cfg, promptMeta := s.resolveRuntimePrompt(cfg, d.BotDBID, sender)
+	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, sender)
+	memQuery := strings.TrimSpace(d.Content)
 
 	// Typing indicator
 	var typingTicket string
@@ -227,6 +232,8 @@ func (s *AI) reply(d Delivery) {
 		}
 	}
 
+	memories := s.resolveMemories(ctx, cfg, promptMeta, memQuery)
+
 	// Create media resolver for history images
 	var resolver ai.MediaResolver
 	if s.Storage != nil {
@@ -237,6 +244,19 @@ func (s *AI) reply(d Delivery) {
 
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+	if len(memories) > 0 {
+		memPrompt := buildMemoryPrompt(memories)
+		if memPrompt != "" {
+			for i := range messages {
+				if messages[i].Role == "system" {
+					if content, ok := messages[i].Content.(string); ok {
+						messages[i].Content = strings.TrimSpace(content + "\n\n" + memPrompt)
+					}
+					break
+				}
+			}
+		}
+	}
 	if span != nil {
 		span.SetAttr("prompt.source", promptMeta.Source)
 		span.SetAttr("prompt.version", promptMeta.Version)
@@ -244,6 +264,13 @@ func (s *AI) reply(d Delivery) {
 			span.SetAttr("prompt.full_hash", promptMeta.FullHash)
 		}
 		span.SetAttr("prompt.truncated", promptMeta.Truncated)
+		span.SetAttr("memory.hit_count", len(memories))
+		if promptMeta.RoleID != "" {
+			span.SetAttr("memory.role_id", promptMeta.RoleID)
+		}
+		if promptMeta.UserID != "" {
+			span.SetAttr("memory.user_id", promptMeta.UserID)
+		}
 	}
 	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
@@ -434,6 +461,29 @@ func (s *AI) reply(d Delivery) {
 			MessageType: 2,
 			ItemList:    itemList,
 		})
+	}
+	if s.SupaMemory != nil && promptMeta.RoleID != "" && promptMeta.UserID != "" {
+		inboundText := strings.TrimSpace(text)
+		replyText := strings.TrimSpace(result.Content)
+		go func() {
+			bg := context.Background()
+			if inboundText != "" {
+				_ = s.SupaMemory.RecordMemory(bg, supamemory.RecordInput{
+					UserID:  promptMeta.UserID,
+					RoleID:  promptMeta.RoleID,
+					Content: inboundText,
+					Source:  "openilink_user",
+				})
+			}
+			if replyText != "" {
+				_ = s.SupaMemory.RecordMemory(bg, supamemory.RecordInput{
+					UserID:  promptMeta.UserID,
+					RoleID:  promptMeta.RoleID,
+					Content: replyText,
+					Source:  "openilink_assistant",
+				})
+			}
+		}()
 	}
 }
 
@@ -827,23 +877,79 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	return cfg
 }
 
-func (s *AI) resolveRuntimePrompt(cfg store.AIConfig, botID, sender string) (store.AIConfig, runtimePromptMeta) {
+func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, sender string) (store.AIConfig, runtimePromptMeta) {
 	meta := runtimePromptMeta{Source: "global_fallback"}
+	globalPrompt := cfg.SystemPrompt
 	if s.Store == nil || botID == "" || sender == "" {
 		return cfg, meta
 	}
 	p, err := s.Store.GetActivePromptProfile(botID, sender)
-	if err != nil || p == nil {
-		return cfg, meta
+	localHit := false
+	if err == nil && p != nil && !store.IsBlankPrompt(p.FullPrompt) {
+		cfg.SystemPrompt = p.FullPrompt
+		meta.Source = "local_full_prompt"
+		meta.Version = p.PromptVersion
+		meta.FullHash = store.HashPrefix(p.FullPromptHash, 12)
+		localHit = true
 	}
-	if store.IsBlankPrompt(p.FullPrompt) {
-		return cfg, meta
+	if s.SupaMemory != nil {
+		bctx, berr := s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
+		if berr == nil && bctx != nil {
+			meta.RoleID = strings.TrimSpace(bctx.RoleID)
+			meta.UserID = strings.TrimSpace(bctx.UserID)
+			if bctx.Prompt != nil && !localHit && !store.IsBlankPrompt(bctx.Prompt.FullPrompt) {
+				cfg.SystemPrompt = bctx.Prompt.FullPrompt
+				meta.Source = "supabase_full_prompt"
+				meta.Version = bctx.Prompt.PromptVersion
+				meta.FullHash = store.HashPrefix(store.HashPrompt(bctx.Prompt.FullPrompt), 12)
+			}
+		}
 	}
-	cfg.SystemPrompt = p.FullPrompt
-	meta.Source = "local_full_prompt"
-	meta.Version = p.PromptVersion
-	meta.FullHash = store.HashPrefix(p.FullPromptHash, 12)
+	if meta.Source == "global_fallback" {
+		cfg.SystemPrompt = globalPrompt
+	}
 	return cfg, meta
+}
+
+func (s *AI) resolveMemories(ctx context.Context, cfg store.AIConfig, meta runtimePromptMeta, currentText string) []supamemory.MemoryRow {
+	if s.SupaMemory == nil {
+		return nil
+	}
+	if strings.TrimSpace(meta.RoleID) == "" || strings.TrimSpace(meta.UserID) == "" {
+		return nil
+	}
+	rows, err := s.SupaMemory.SearchMemories(ctx, meta.UserID, meta.RoleID, currentText, supamemory.SearchOptions{
+		EmbeddingBase:  cfg.BaseURL,
+		EmbeddingKey:   cfg.APIKey,
+		EmbeddingModel: "",
+		CustomHeaders:  cfg.CustomHeaders,
+	})
+	if err != nil {
+		return nil
+	}
+	return rows
+}
+
+func buildMemoryPrompt(rows []supamemory.MemoryRow) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	var lines []string
+	lines = append(lines, "以下是与当前用户相关的历史记忆（仅作参考，若与当前事实冲突以当前对话为准）：")
+	for _, row := range rows {
+		content := strings.TrimSpace(row.Content)
+		if content == "" {
+			continue
+		}
+		if len([]rune(content)) > 140 {
+			content = string([]rune(content)[:140])
+		}
+		lines = append(lines, "- "+content)
+	}
+	if len(lines) == 1 {
+		return ""
+	}
+	return strings.Join(lines, "\n")
 }
 
 // parseCustomHeaders parses custom headers from JSON. Supports both array

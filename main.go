@@ -27,6 +27,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/store/postgres"
 	"github.com/openilink/openilink-hub/internal/store/sqlite"
+	"github.com/openilink/openilink-hub/internal/supamemory"
 	syncworker "github.com/openilink/openilink-hub/internal/sync"
 
 	// Register providers
@@ -143,6 +144,28 @@ func main() {
 		Version:      version,
 	}
 
+	var runtimeSupa *supamemory.Client
+	if cfg.SupabaseURL != "" && cfg.SupabaseServiceRoleKey != "" && cfg.SupabaseMemoryEnabled {
+		runtimeSupa, err = supamemory.NewClient(supamemory.Config{
+			BaseURL:        cfg.SupabaseURL,
+			ServiceRoleKey: cfg.SupabaseServiceRoleKey,
+			Schema:         cfg.SupabaseSchema,
+			MemoryEnabled:  cfg.SupabaseMemoryEnabled,
+			MemoryTopK:     cfg.SupabaseMemoryTopK,
+			MemoryTable:    cfg.SupabaseMemoryTable,
+			MemoryMatchRPC: cfg.SupabaseMemoryMatchRPC,
+			BindingsTable:  cfg.SupabaseBindingsTable,
+			RoutesTable:    cfg.SupabaseRoutesTable,
+			BotsTable:      cfg.SupabaseBotsTable,
+			ProfilesTable:  cfg.SupabaseProfilesTable,
+			EmbeddingModel: cfg.SupabaseEmbeddingModel,
+		})
+		if err != nil {
+			slog.Warn("runtime supabase memory disabled", "err", err)
+		}
+	}
+	srv.SupaMemory = runtimeSupa
+
 	// Storage (optional): S3 > local FS > proxy fallback
 	var objStore storage.Store
 	if cfg.StorageEndpoint != "" {
@@ -181,7 +204,7 @@ func main() {
 
 	hub := relay.NewHub(srv.SetupUpstreamHandler())
 	appDisp := appdelivery.NewDispatcher(s)
-	aiSink := &sink.AI{Store: s, AppDisp: appDisp, Storage: objStore}
+	aiSink := &sink.AI{Store: s, AppDisp: appDisp, Storage: objStore, SupaMemory: runtimeSupa}
 	mgr := bot.NewManager(s, hub, aiSink, objStore, cfg.RPOrigin)
 	aiSink.BotManager = mgr
 	srv.BotManager = mgr

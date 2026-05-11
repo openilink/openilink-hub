@@ -13,6 +13,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/storage"
 	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/supamemory"
 	"github.com/openilink/openilink-hub/internal/web"
 )
 
@@ -28,6 +29,7 @@ type Server struct {
 	Registry     *registry.Client
 	AppWSHub     *app.WSHub
 	PushHub      *push.Hub
+	SupaMemory   *supamemory.Client
 	Version      string
 }
 
