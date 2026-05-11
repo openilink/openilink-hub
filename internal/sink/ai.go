@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -891,24 +892,37 @@ func (s *AI) sendErrorNotice(d Delivery, recipient string) {
 
 func (s *AI) resolveGlobalConfig() store.AIConfig {
 	global, _ := s.Store.ListConfigByPrefix("ai.")
-	if global["ai.api_key"] == "" {
-		return store.AIConfig{}
-	}
+
 	var cfg store.AIConfig
 	cfg.Source = "builtin"
-	cfg.BaseURL = global["ai.base_url"]
-	cfg.APIKey = global["ai.api_key"]
-	cfg.Model = global["ai.model"]
-	cfg.SystemPrompt = global["ai.system_prompt"]
-	cfg.HideThinking = global["ai.hide_thinking"] == "true"
-	cfg.StripMarkdown = global["ai.strip_markdown"] == "true"
-	if v := global["ai.max_history"]; v != "" {
+	cfg.BaseURL = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_BASE_URL")), global["ai.base_url"])
+	cfg.APIKey = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_API_KEY")), global["ai.api_key"])
+	cfg.Model = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MODEL")), global["ai.model"])
+	cfg.SystemPrompt = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_SYSTEM_PROMPT")), global["ai.system_prompt"])
+	if cfg.APIKey == "" {
+		return store.AIConfig{}
+	}
+
+	hideThinkingRaw := strings.ToLower(firstNonEmpty(strings.TrimSpace(os.Getenv("AI_HIDE_THINKING")), global["ai.hide_thinking"]))
+	cfg.HideThinking = hideThinkingRaw == "true" || hideThinkingRaw == "1"
+	stripMarkdownRaw := strings.ToLower(firstNonEmpty(strings.TrimSpace(os.Getenv("AI_STRIP_MARKDOWN")), global["ai.strip_markdown"]))
+	cfg.StripMarkdown = stripMarkdownRaw == "true" || stripMarkdownRaw == "1"
+	if v := firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MAX_HISTORY")), global["ai.max_history"]); v != "" {
 		fmt.Sscanf(v, "%d", &cfg.MaxHistory)
 	}
-	if v := global["ai.custom_headers"]; v != "" {
+	if v := firstNonEmpty(strings.TrimSpace(os.Getenv("AI_CUSTOM_HEADERS")), global["ai.custom_headers"]); v != "" {
 		cfg.CustomHeaders = parseCustomHeaders(v)
 	}
 	return cfg
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, sender string) (store.AIConfig, runtimePromptMeta) {
