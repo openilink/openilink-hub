@@ -158,6 +158,7 @@ func main() {
 			RoutesTable:    cfg.SupabaseRoutesTable,
 			BotsTable:      cfg.SupabaseBotsTable,
 			ProfilesTable:  cfg.SupabaseProfilesTable,
+			AuditLogsTable: cfg.SupabaseAuditLogsTable,
 			EmbeddingModel: cfg.SupabaseEmbeddingModel,
 		})
 		if err != nil {

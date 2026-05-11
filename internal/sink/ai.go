@@ -50,6 +50,28 @@ type runtimePromptMeta struct {
 	UserID    string
 }
 
+func (s *AI) writeRuntimeAudit(d Delivery, eventType string, detail map[string]any) {
+	if s.SupaMemory == nil || strings.TrimSpace(eventType) == "" {
+		return
+	}
+	traceID := ""
+	if d.Tracer != nil {
+		traceID = d.Tracer.TraceID()
+	}
+	sessionID := d.Message.ContextToken
+	if strings.TrimSpace(sessionID) == "" {
+		sessionID = d.Message.Sender
+	}
+	go func() {
+		_ = s.SupaMemory.WriteAuditLog(context.Background(), supamemory.AuditLogInput{
+			EventType: eventType,
+			SessionID: sessionID,
+			TraceID:   traceID,
+			Detail:    detail,
+		})
+	}()
+}
+
 func (s *AI) Name() string { return "ai" }
 
 func (s *AI) Handle(d Delivery) {
@@ -158,6 +180,9 @@ func (s *AI) reply(d Delivery) {
 	cfg := s.resolveConfig(d.AIModel)
 	if cfg.APIKey == "" {
 		slog.Warn("ai reply skipped: no api key", "bot", d.BotDBID)
+		s.writeRuntimeAudit(d, "openilink_hub_ai_skipped_no_api_key", map[string]any{
+			"bot_id": d.BotDBID,
+		})
 		return
 	}
 
@@ -174,11 +199,27 @@ func (s *AI) reply(d Delivery) {
 	ctx := context.Background()
 	sender := d.Message.Sender
 	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, sender)
+	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_start", map[string]any{
+		"bot_id":        d.BotDBID,
+		"sender":        sender,
+		"model":         cfg.Model,
+		"prompt_source": promptMeta.Source,
+		"user_id":       promptMeta.UserID,
+		"role_id":       promptMeta.RoleID,
+	})
 	memQuery := strings.TrimSpace(d.Content)
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
 		quota, err := s.SupaMemory.CheckMonthlyQuota(ctx, promptMeta.UserID)
 		if err != nil {
 			slog.Warn("ai quota check failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", err)
+			s.writeRuntimeAudit(d, "openilink_hub_ai_quota_check_failed", map[string]any{
+				"bot_id":  d.BotDBID,
+				"user_id": promptMeta.UserID,
+				"role_id": promptMeta.RoleID,
+				"error":   err.Error(),
+				"sender":  sender,
+				"model":   cfg.Model,
+			})
 		} else if quota != nil && !quota.Allowed {
 			if span != nil {
 				span.SetAttr("quota.blocked", true)
@@ -196,7 +237,28 @@ func (s *AI) reply(d Delivery) {
 				Text:      notice,
 			}); sendErr != nil {
 				slog.Warn("quota notice send failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", sendErr)
+				s.writeRuntimeAudit(d, "openilink_hub_ai_quota_notice_send_failed", map[string]any{
+					"bot_id":    d.BotDBID,
+					"user_id":   promptMeta.UserID,
+					"role_id":   promptMeta.RoleID,
+					"sender":    sender,
+					"plan_code": quota.PlanCode,
+					"used":      quota.Used,
+					"limit":     quota.MonthlyLimit,
+					"period":    quota.PeriodMonth,
+					"error":     sendErr.Error(),
+				})
 			}
+			s.writeRuntimeAudit(d, "openilink_hub_ai_quota_blocked", map[string]any{
+				"bot_id":    d.BotDBID,
+				"user_id":   promptMeta.UserID,
+				"role_id":   promptMeta.RoleID,
+				"sender":    sender,
+				"plan_code": quota.PlanCode,
+				"used":      quota.Used,
+				"limit":     quota.MonthlyLimit,
+				"period":    quota.PeriodMonth,
+			})
 			if span != nil {
 				span.End()
 			}
@@ -304,6 +366,15 @@ func (s *AI) reply(d Delivery) {
 	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
+		s.writeRuntimeAudit(d, "openilink_hub_ai_completion_failed", map[string]any{
+			"bot_id":      d.BotDBID,
+			"user_id":     promptMeta.UserID,
+			"role_id":     promptMeta.RoleID,
+			"sender":      sender,
+			"model":       cfg.Model,
+			"memory_hits": len(memories),
+			"error":       err.Error(),
+		})
 		if span != nil {
 			span.SetStatus(store.StatusError, err.Error())
 			span.End()
@@ -402,6 +473,15 @@ func (s *AI) reply(d Delivery) {
 		result, messages, nextErr = ai.ContinueWithToolResults(ctx, cfg, messages, llmResults, tools)
 		if nextErr != nil {
 			slog.Error("ai continuation failed", "bot", d.BotDBID, "round", round+1, "err", nextErr)
+			s.writeRuntimeAudit(d, "openilink_hub_ai_continuation_failed", map[string]any{
+				"bot_id":  d.BotDBID,
+				"user_id": promptMeta.UserID,
+				"role_id": promptMeta.RoleID,
+				"sender":  sender,
+				"model":   cfg.Model,
+				"round":   round + 1,
+				"error":   nextErr.Error(),
+			})
 			if span != nil {
 				span.SetStatus(store.StatusError, nextErr.Error())
 				span.End()
@@ -445,6 +525,13 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	if reply == "" {
+		s.writeRuntimeAudit(d, "openilink_hub_ai_reply_empty", map[string]any{
+			"bot_id":  d.BotDBID,
+			"user_id": promptMeta.UserID,
+			"role_id": promptMeta.RoleID,
+			"sender":  sender,
+			"model":   cfg.Model,
+		})
 		if span != nil {
 			span.SetAttr("reply.content", "(empty)")
 			span.End()
@@ -462,12 +549,36 @@ func (s *AI) reply(d Delivery) {
 	})
 	if err != nil {
 		slog.Error("ai reply send failed", "bot", d.BotDBID, "err", err)
+		s.writeRuntimeAudit(d, "openilink_hub_ai_reply_send_failed", map[string]any{
+			"bot_id":      d.BotDBID,
+			"user_id":     promptMeta.UserID,
+			"role_id":     promptMeta.RoleID,
+			"sender":      sender,
+			"model":       cfg.Model,
+			"reply_chars": len([]rune(reply)),
+			"error":       err.Error(),
+		})
 		if span != nil {
 			span.SetStatus(store.StatusError, "send failed: "+err.Error())
 			span.End()
 		}
 		return
 	}
+
+	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_sent", map[string]any{
+		"bot_id":            d.BotDBID,
+		"user_id":           promptMeta.UserID,
+		"role_id":           promptMeta.RoleID,
+		"sender":            sender,
+		"model":             cfg.Model,
+		"reply_chars":       len([]rune(reply)),
+		"prompt_tokens":     totalPrompt,
+		"completion_tokens": totalCompletion,
+		"total_tokens":      totalTokens,
+		"cached_tokens":     totalCached,
+		"reasoning_tokens":  totalReasoning,
+		"memory_hits":       len(memories),
+	})
 
 	if span != nil {
 		span.End()
@@ -476,6 +587,13 @@ func (s *AI) reply(d Delivery) {
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
 		if err := s.SupaMemory.BumpMonthlyUsage(ctx, promptMeta.UserID, 1); err != nil {
 			slog.Warn("ai usage bump failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", err)
+			s.writeRuntimeAudit(d, "openilink_hub_ai_usage_bump_failed", map[string]any{
+				"bot_id":  d.BotDBID,
+				"user_id": promptMeta.UserID,
+				"role_id": promptMeta.RoleID,
+				"sender":  sender,
+				"error":   err.Error(),
+			})
 		}
 	}
 

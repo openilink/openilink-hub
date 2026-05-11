@@ -29,6 +29,7 @@ type Config struct {
 	RoutesTable        string
 	BotsTable          string
 	ProfilesTable      string
+	AuditLogsTable     string
 	SubscriptionsTable string
 	PlanLimitsTable    string
 	UsageCountersTable string
@@ -51,6 +52,7 @@ type Client struct {
 	routesTable        string
 	botsTable          string
 	profilesTable      string
+	auditLogsTable     string
 	subscriptionsTable string
 	planLimitsTable    string
 	usageCountersTable string
@@ -100,6 +102,13 @@ type RecordInput struct {
 	Source  string
 }
 
+type AuditLogInput struct {
+	EventType string
+	SessionID string
+	TraceID   string
+	Detail    map[string]any
+}
+
 type QuotaStatus struct {
 	Allowed      bool
 	PlanCode     string
@@ -146,6 +155,10 @@ func NewClient(cfg Config) (*Client, error) {
 	if profiles == "" {
 		profiles = "bl_user_role_profiles"
 	}
+	auditLogs := strings.TrimSpace(cfg.AuditLogsTable)
+	if auditLogs == "" {
+		auditLogs = "bl_platform_audit_logs"
+	}
 	subscriptions := strings.TrimSpace(cfg.SubscriptionsTable)
 	if subscriptions == "" {
 		subscriptions = "bl_subscriptions"
@@ -175,6 +188,7 @@ func NewClient(cfg Config) (*Client, error) {
 		routesTable:        routes,
 		botsTable:          bots,
 		profilesTable:      profiles,
+		auditLogsTable:     auditLogs,
 		subscriptionsTable: subscriptions,
 		planLimitsTable:    planLimits,
 		usageCountersTable: usageCounters,
@@ -263,6 +277,28 @@ func (c *Client) RecordMemory(ctx context.Context, in RecordInput) error {
 	}
 	body, _ := json.Marshal(payload)
 	path := "/rest/v1/" + url.PathEscape(c.memoryTable) + "?select=id"
+	_, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
+		"Prefer": "return=minimal",
+	})
+	return err
+}
+
+func (c *Client) WriteAuditLog(ctx context.Context, in AuditLogInput) error {
+	if c == nil {
+		return nil
+	}
+	eventType := strings.TrimSpace(in.EventType)
+	if eventType == "" {
+		return nil
+	}
+	payload := map[string]any{
+		"event_type":  eventType,
+		"session_id":  strings.TrimSpace(in.SessionID),
+		"trace_id":    strings.TrimSpace(in.TraceID),
+		"detail_json": in.Detail,
+	}
+	body, _ := json.Marshal(payload)
+	path := "/rest/v1/" + url.PathEscape(c.auditLogsTable) + "?select=id"
 	_, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
 		"Prefer": "return=minimal",
 	})
