@@ -12,21 +12,22 @@ import (
 	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
-	appdelivery "github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/api"
+	appdelivery "github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/builtin"
 	"github.com/openilink/openilink-hub/internal/config"
 	"github.com/openilink/openilink-hub/internal/daemon"
 	"github.com/openilink/openilink-hub/internal/push"
+	"github.com/openilink/openilink-hub/internal/registry"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
+	"github.com/openilink/openilink-hub/internal/storage"
 	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/store/postgres"
 	"github.com/openilink/openilink-hub/internal/store/sqlite"
-	"github.com/openilink/openilink-hub/internal/registry"
-	"github.com/openilink/openilink-hub/internal/storage"
+	syncworker "github.com/openilink/openilink-hub/internal/sync"
 
 	// Register providers
 	_ "github.com/openilink/openilink-hub/internal/provider/ilink"
@@ -190,10 +191,27 @@ func main() {
 	mgr.SetAppWSHub(srv.AppWSHub)
 	mgr.SetPushHub(srv.PushHub)
 
+	var outboxWorker *syncworker.OutboxWorker
+	if cfg.SupabaseURL != "" && cfg.SupabaseServiceRoleKey != "" {
+		supabaseClient, err := syncworker.NewHTTPSupabaseClient(cfg.SupabaseURL, cfg.SupabaseServiceRoleKey, cfg.SupabaseSchema)
+		if err != nil {
+			slog.Error("supabase client init failed", "err", err)
+		} else {
+			wcfg := syncworker.ParseOutboxConfig(cfg.OutboxBatchSize, cfg.OutboxPollIntervalMS, cfg.OutboxMaxRetries)
+			outboxWorker = syncworker.NewOutboxWorker(s, supabaseClient, wcfg)
+			slog.Info("outbox worker configured", "batch_size", wcfg.BatchSize, "poll_interval", wcfg.PollInterval, "max_retries", wcfg.MaxRetries)
+		}
+	} else {
+		slog.Info("outbox worker disabled: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+	}
+
 	// Start all saved bots
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	mgr.StartAll(ctx)
+	if outboxWorker != nil {
+		go outboxWorker.Run(ctx)
+	}
 
 	// Periodic cleanup
 	go func() {

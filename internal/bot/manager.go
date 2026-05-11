@@ -27,10 +27,10 @@ type Manager struct {
 	instances map[string]*Instance
 	store     store.Store
 	hub       *relay.Hub
-	aiSink    *sink.AI            // AI sink (bot-level)
-	storage   storage.Store       // optional, for media files
-	baseURL   string              // Hub origin for proxy URLs
-	dlSem     chan struct{}        // semaphore for concurrent media downloads
+	aiSink    *sink.AI                // AI sink (bot-level)
+	storage   storage.Store           // optional, for media files
+	baseURL   string                  // Hub origin for proxy URLs
+	dlSem     chan struct{}           // semaphore for concurrent media downloads
 	appDisp   *appdelivery.Dispatcher // app event delivery
 	appWSHub  *appdelivery.WSHub      // app WebSocket connections
 	pushHub   *push.Hub               // browser push WebSocket
@@ -457,7 +457,7 @@ func (m *Manager) buildDBMessage(botDBID string, channelID *string, msg provider
 		ToUserID:     msg.Recipient,
 		CreateTimeMs: &msg.Timestamp,
 		SessionID:    msg.SessionID,
-		GroupID:       msg.GroupID,
+		GroupID:      msg.GroupID,
 		MessageState: msg.MessageState,
 		ItemList:     itemList,
 		ContextToken: msg.ContextToken,
@@ -475,8 +475,36 @@ func (m *Manager) storeMessage(inst *Instance, msg provider.InboundMessage, p pa
 		if err := m.store.IncrBotMsgCount(inst.DBID); err != nil {
 			slog.Error("incr msg count failed", "bot", inst.DBID, "err", err)
 		}
+		m.enqueueMessageOutbox(inst.DBID, result.ID, store.OutboxEventMessageInbound, dbMsg)
 	}
 	return result
+}
+
+func (m *Manager) enqueueMessageOutbox(botID string, msgID int64, eventType string, msg *store.Message) {
+	if m.store == nil || msg == nil || msgID <= 0 {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"message_db_id":  msgID,
+		"bot_id":         botID,
+		"direction":      msg.Direction,
+		"from_user_id":   msg.FromUserID,
+		"to_user_id":     msg.ToUserID,
+		"message_id":     msg.MessageID,
+		"client_id":      msg.ClientID,
+		"create_time_ms": msg.CreateTimeMs,
+		"item_list":      msg.ItemList,
+		"created_at":     msg.CreatedAt,
+	})
+	eventID := fmt.Sprintf("msg:%s:%s:%d", eventType, botID, msgID)
+	if _, _, err := m.store.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
+		EventID:      eventID,
+		EventType:    eventType,
+		PartitionKey: botID,
+		Payload:      payload,
+	}); err != nil {
+		slog.Warn("enqueue outbox failed", "event_type", eventType, "event_id", eventID, "bot", botID, "err", err)
+	}
 }
 
 // broadcastStateUpdate pushes a message state update to all connected WebSocket
@@ -647,7 +675,6 @@ func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msg
 	slog.Info("media download done", "bot", inst.DBID, "msg", msg.ExternalID, "status", status)
 }
 
-
 // deliverToAI runs the AI sink at bot level, independent of channel matching.
 func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p parsedMessage, msgID int64, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
 	if m.aiSink == nil || !inst.AIEnabled {
@@ -810,7 +837,6 @@ func mediaContentType(itemType string) string {
 		return "application/octet-stream"
 	}
 }
-
 
 func convertRelayItem(item provider.MessageItem) relay.MessageItem {
 	ri := relay.MessageItem{

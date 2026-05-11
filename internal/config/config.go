@@ -3,6 +3,8 @@ package config
 import (
 	"flag"
 	"os"
+	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -23,10 +25,20 @@ type Config struct {
 	StoragePath      string // local filesystem path (used when S3 is not configured)
 
 	// OAuth providers
-	GitHubClientID     string
-	GitHubClientSecret string
+	GitHubClientID      string
+	GitHubClientSecret  string
 	LinuxDoClientID     string
 	LinuxDoClientSecret string
+
+	AdminSyncSharedSecret  string
+	AdminSyncAllowlist     string
+	SupabaseURL            string
+	SupabaseServiceRoleKey string
+	SupabaseSchema         string
+	OutboxBatchSize        int
+	OutboxPollIntervalMS   int
+	OutboxMaxRetries       int
+	AIFullPromptMaxBytes   int
 }
 
 func Parse() *Config {
@@ -50,6 +62,15 @@ func Parse() *Config {
 	cfg.GitHubClientSecret = envOr("GITHUB_CLIENT_SECRET", "")
 	cfg.LinuxDoClientID = envOr("LINUXDO_CLIENT_ID", "")
 	cfg.LinuxDoClientSecret = envOr("LINUXDO_CLIENT_SECRET", "")
+	cfg.AdminSyncSharedSecret = envOr("ADMIN_SYNC_SHARED_SECRET", "")
+	cfg.AdminSyncAllowlist = envOr("ADMIN_SYNC_ALLOWLIST", "")
+	cfg.SupabaseURL = envOr("SUPABASE_URL", "")
+	cfg.SupabaseServiceRoleKey = envOr("SUPABASE_SERVICE_ROLE_KEY", "")
+	cfg.SupabaseSchema = envOr("SUPABASE_SCHEMA", "public")
+	cfg.OutboxBatchSize = envOrInt("OUTBOX_BATCH_SIZE", 100)
+	cfg.OutboxPollIntervalMS = envOrInt("OUTBOX_POLL_INTERVAL_MS", 500)
+	cfg.OutboxMaxRetries = envOrInt("OUTBOX_MAX_RETRIES", 10)
+	cfg.AIFullPromptMaxBytes = envOrInt("AI_FULL_PROMPT_MAX_BYTES", 8192)
 	flag.Parse()
 	return cfg
 }
@@ -59,4 +80,16 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envOrInt(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }

@@ -291,9 +291,12 @@ func (m *Manager) sendAppText(ctx context.Context, inst *Instance, to, contextTo
 	slog.Info("app reply sent", "bot", inst.DBID, "to", to, "client_id", clientID)
 
 	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": text}})
-	m.store.SaveMessage(&store.Message{
+	dbMsg := &store.Message{
 		BotID: inst.DBID, Direction: "outbound", ToUserID: to, MessageType: 2, ItemList: itemList,
-	})
+	}
+	if res, err := m.store.SaveMessage(dbMsg); err == nil && res.Inserted {
+		m.enqueueMessageOutbox(inst.DBID, res.ID, store.OutboxEventMessageOutbound, dbMsg)
+	}
 }
 
 func (m *Manager) sendAppMedia(ctx context.Context, inst *Instance, to, contextToken string, result *appdelivery.DeliveryResult) string {
@@ -404,10 +407,13 @@ func (m *Manager) sendAppMedia(ctx context.Context, inst *Instance, to, contextT
 
 	itemType := result.ReplyType
 	itemList, _ := json.Marshal([]map[string]any{{"type": itemType, "file_name": fileName}})
-	m.store.SaveMessage(&store.Message{
+	dbMsg := &store.Message{
 		BotID: inst.DBID, Direction: "outbound", ToUserID: to, MessageType: 2, ItemList: itemList,
 		MediaStatus: mediaStatus, MediaKeys: mediaKeys,
-	})
+	}
+	if res, err := m.store.SaveMessage(dbMsg); err == nil && res.Inserted {
+		m.enqueueMessageOutbox(inst.DBID, res.ID, store.OutboxEventMessageOutbound, dbMsg)
+	}
 
 	return storageKey
 }
@@ -530,4 +536,3 @@ func resolveItemMedia(item *relay.MessageItem, baseURL, botDBID string) {
 	m.AESKey = ""
 	item.Media = &m
 }
-

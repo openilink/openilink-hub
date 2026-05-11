@@ -7,6 +7,9 @@ type Store interface {
 	UserStore
 	BotStore
 	MessageStore
+	PromptProfileStore
+	SyncOutboxStore
+	AdminSyncInboxStore
 	ChannelStore
 	AppStore
 	RegistryStore

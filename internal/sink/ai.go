@@ -38,6 +38,13 @@ type AI struct {
 	BotManager BotModelSyncer
 }
 
+type runtimePromptMeta struct {
+	Source    string
+	Version   int64
+	FullHash  string
+	Truncated bool
+}
+
 func (s *AI) Name() string { return "ai" }
 
 func (s *AI) Handle(d Delivery) {
@@ -161,6 +168,7 @@ func (s *AI) reply(d Delivery) {
 
 	ctx := context.Background()
 	sender := d.Message.Sender
+	cfg, promptMeta := s.resolveRuntimePrompt(cfg, d.BotDBID, sender)
 
 	// Typing indicator
 	var typingTicket string
@@ -229,6 +237,14 @@ func (s *AI) reply(d Delivery) {
 
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+	if span != nil {
+		span.SetAttr("prompt.source", promptMeta.Source)
+		span.SetAttr("prompt.version", promptMeta.Version)
+		if promptMeta.FullHash != "" {
+			span.SetAttr("prompt.full_hash", promptMeta.FullHash)
+		}
+		span.SetAttr("prompt.truncated", promptMeta.Truncated)
+	}
 	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
@@ -403,13 +419,22 @@ func (s *AI) reply(d Delivery) {
 
 	// Save only the content (not thinking) to message history to avoid polluting context
 	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": result.Content}})
-	s.Store.SaveMessage(&store.Message{
+	saveRes, _ := s.Store.SaveMessage(&store.Message{
 		BotID:       d.BotDBID,
 		Direction:   "outbound",
 		ToUserID:    sender,
 		MessageType: 2,
 		ItemList:    itemList,
 	})
+	if saveRes.Inserted {
+		s.enqueueOutboundOutbox(d.BotDBID, saveRes.ID, &store.Message{
+			BotID:       d.BotDBID,
+			Direction:   "outbound",
+			ToUserID:    sender,
+			MessageType: 2,
+			ItemList:    itemList,
+		})
+	}
 }
 
 // collectTools gathers all tools from enabled app installations on this bot.
@@ -667,10 +692,21 @@ func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageD
 				mediaKeys, _ = json.Marshal(map[string]string{"0": key})
 			}
 		}
-		s.Store.SaveMessage(&store.Message{
+		saveRes, _ := s.Store.SaveMessage(&store.Message{
 			BotID: d.BotDBID, Direction: "outbound", ToUserID: sender, MessageType: 2,
 			ItemList: itemList, MediaStatus: mediaStatus, MediaKeys: mediaKeys,
 		})
+		if saveRes.Inserted {
+			s.enqueueOutboundOutbox(d.BotDBID, saveRes.ID, &store.Message{
+				BotID:       d.BotDBID,
+				Direction:   "outbound",
+				ToUserID:    sender,
+				MessageType: 2,
+				ItemList:    itemList,
+				MediaStatus: mediaStatus,
+				MediaKeys:   mediaKeys,
+			})
+		}
 	}
 	return delivered
 }
@@ -791,6 +827,25 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	return cfg
 }
 
+func (s *AI) resolveRuntimePrompt(cfg store.AIConfig, botID, sender string) (store.AIConfig, runtimePromptMeta) {
+	meta := runtimePromptMeta{Source: "global_fallback"}
+	if s.Store == nil || botID == "" || sender == "" {
+		return cfg, meta
+	}
+	p, err := s.Store.GetActivePromptProfile(botID, sender)
+	if err != nil || p == nil {
+		return cfg, meta
+	}
+	if store.IsBlankPrompt(p.FullPrompt) {
+		return cfg, meta
+	}
+	cfg.SystemPrompt = p.FullPrompt
+	meta.Source = "local_full_prompt"
+	meta.Version = p.PromptVersion
+	meta.FullHash = store.HashPrefix(p.FullPromptHash, 12)
+	return cfg, meta
+}
+
 // parseCustomHeaders parses custom headers from JSON. Supports both array
 // format [["key","value"],...] (from frontend) and object format {"key":"value"}.
 func parseCustomHeaders(raw string) map[string]string {
@@ -858,6 +913,30 @@ func (s *AI) setTokenUsage(span, rootSpan *store.SpanBuilder, prompt, completion
 		if reasoning > 0 {
 			sp.SetAttr("ai.tokens.reasoning", reasoning)
 		}
+	}
+}
+
+func (s *AI) enqueueOutboundOutbox(botID string, msgID int64, msg *store.Message) {
+	if s.Store == nil || msgID <= 0 || msg == nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"message_db_id": msgID,
+		"bot_id":        botID,
+		"direction":     "outbound",
+		"to_user_id":    msg.ToUserID,
+		"item_list":     msg.ItemList,
+		"media_status":  msg.MediaStatus,
+		"media_keys":    msg.MediaKeys,
+	})
+	eventID := fmt.Sprintf("msg:%s:%s:%d", store.OutboxEventMessageOutbound, botID, msgID)
+	if _, _, err := s.Store.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
+		EventID:      eventID,
+		EventType:    store.OutboxEventMessageOutbound,
+		PartitionKey: botID,
+		Payload:      payload,
+	}); err != nil {
+		slog.Warn("enqueue outbox failed", "event_id", eventID, "bot", botID, "err", err)
 	}
 }
 

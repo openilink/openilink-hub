@@ -99,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 
 	// --- GitHub webhook (public, token-authenticated) ---
 	mux.HandleFunc("POST /api/hooks/github", s.handleGitHubWebhook)
+	mux.HandleFunc("POST /api/internal/admin/sync/binding", s.handleAdminBindingSync)
 
 	// --- Registry public endpoint ---
 	mux.HandleFunc("GET /api/registry/v1/apps.json", s.handleRegistryApps)
