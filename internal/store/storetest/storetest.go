@@ -30,6 +30,7 @@ func RunAll(t *testing.T, s store.Store) {
 	t.Run("Session", func(t *testing.T) { TestSessionCRUD(t, s) })
 	t.Run("AppLifecycle", func(t *testing.T) { TestAppLifecycle(t, s) })
 	t.Run("PromptProfile", func(t *testing.T) { TestPromptProfileLifecycle(t, s) })
+	t.Run("WechatPendingBinding", func(t *testing.T) { TestWechatPendingBindingLifecycle(t, s) })
 	t.Run("SyncOutbox", func(t *testing.T) { TestSyncOutbox(t, s) })
 }
 

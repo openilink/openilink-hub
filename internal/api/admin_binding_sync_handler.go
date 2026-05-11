@@ -43,6 +43,15 @@ type bindingInvalidatedPayload struct {
 	Reason       string `json:"reason"`
 }
 
+type bindingPrebindPayload struct {
+	EventID   string `json:"event_id"`
+	EventTime int64  `json:"event_time"`
+	BindingID string `json:"binding_id"`
+	RoleID    string `json:"role_id"`
+	BotID     string `json:"bot_id"`
+	SessionID string `json:"session_id"`
+}
+
 func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) {
 	secret := strings.TrimSpace(os.Getenv("ADMIN_SYNC_SHARED_SECRET"))
 	if secret == "" {
@@ -69,6 +78,50 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 	fullPromptMax := parseEnvInt("AI_FULL_PROMPT_MAX_BYTES", 8192)
 
 	switch env.Type {
+	case "binding_prebind":
+		var p bindingPrebindPayload
+		if err := json.Unmarshal(env.Data, &p); err != nil {
+			jsonError(w, "invalid prebind payload", http.StatusBadRequest)
+			return
+		}
+		if p.EventID == "" || p.BotID == "" || p.BindingID == "" || p.RoleID == "" || p.SessionID == "" {
+			jsonError(w, "missing required fields", http.StatusBadRequest)
+			return
+		}
+		created, err := s.Store.CreateAdminSyncInboxEvent(p.EventID)
+		if err != nil {
+			jsonError(w, "dedup failed", http.StatusInternalServerError)
+			return
+		}
+		if !created {
+			jsonOK(w)
+			return
+		}
+		bot, err := s.Store.FindBotByProviderID("ilink", p.BotID)
+		if err != nil {
+			jsonError(w, "resolve bot by provider id failed", http.StatusInternalServerError)
+			return
+		}
+		if bot == nil || bot.ID == "" {
+			jsonError(w, "bot not found for provider id", http.StatusNotFound)
+			return
+		}
+		expiresAt := time.Now().Add(10 * time.Minute)
+		_, _, err = s.Store.CreateWechatPendingBinding(store.WechatPendingBindingCreateInput{
+			EventID:       p.EventID,
+			ProviderBotID: p.BotID,
+			BotID:         bot.ID,
+			BindingID:     p.BindingID,
+			RoleID:        p.RoleID,
+			SessionID:     p.SessionID,
+			Status:        store.WechatPendingBindingStatusPending,
+			ExpiresAt:     expiresAt,
+		})
+		if err != nil {
+			jsonError(w, "create wechat pending binding failed", http.StatusInternalServerError)
+			return
+		}
+		jsonOK(w)
 	case "binding_profile_snapshot":
 		var p bindingProfileSnapshotPayload
 		if err := json.Unmarshal(env.Data, &p); err != nil {

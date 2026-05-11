@@ -8,6 +8,7 @@ type Store interface {
 	BotStore
 	MessageStore
 	PromptProfileStore
+	WechatPendingBindingStore
 	SyncOutboxStore
 	AdminSyncInboxStore
 	ChannelStore

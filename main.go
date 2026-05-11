@@ -207,6 +207,7 @@ func main() {
 	appDisp := appdelivery.NewDispatcher(s)
 	aiSink := &sink.AI{Store: s, AppDisp: appDisp, Storage: objStore, SupaMemory: runtimeSupa}
 	mgr := bot.NewManager(s, hub, aiSink, objStore, cfg.RPOrigin)
+	mgr.SetWechatFinalizeCallback(cfg.AdminFinalizeURL, cfg.AdminFinalizeSecret)
 	aiSink.BotManager = mgr
 	srv.BotManager = mgr
 	srv.Hub = hub

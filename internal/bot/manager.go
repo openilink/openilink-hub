@@ -2,11 +2,14 @@ package bot
 
 import (
 	"context"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/url"
+	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +37,9 @@ type Manager struct {
 	appDisp   *appdelivery.Dispatcher // app event delivery
 	appWSHub  *appdelivery.WSHub      // app WebSocket connections
 	pushHub   *push.Hub               // browser push WebSocket
+	wechatFinalizeURL    string
+	wechatFinalizeSecret string
+	httpClient           *http.Client
 }
 
 func NewManager(s store.Store, hub *relay.Hub, aiSink *sink.AI, st storage.Store, baseURL string) *Manager {
@@ -46,7 +52,17 @@ func NewManager(s store.Store, hub *relay.Hub, aiSink *sink.AI, st storage.Store
 		baseURL:   baseURL,
 		dlSem:     make(chan struct{}, maxConcurrentDownloads),
 		appDisp:   appdelivery.NewDispatcher(s),
+		httpClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
 	}
+}
+
+func (m *Manager) SetWechatFinalizeCallback(url, secret string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.wechatFinalizeURL = url
+	m.wechatFinalizeSecret = secret
 }
 
 // SetPushHub sets the browser push WebSocket hub.
@@ -315,6 +331,7 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 		return
 	}
 	msgID := result.ID
+	go m.tryFinalizeWechatPrebind(inst, msg)
 
 	// Create OTel-style tracer for this message
 	tracer := store.NewTracer(m.store, inst.DBID)
@@ -698,6 +715,66 @@ func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p par
 		}
 	}()
 	m.aiSink.Handle(d)
+}
+
+func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundMessage) {
+	if m == nil || m.store == nil || inst == nil {
+		return
+	}
+	if strings.TrimSpace(msg.Sender) == "" && strings.TrimSpace(msg.ContextToken) == "" {
+		return
+	}
+	m.mu.RLock()
+	finalizeURL := strings.TrimSpace(m.wechatFinalizeURL)
+	finalizeSecret := strings.TrimSpace(m.wechatFinalizeSecret)
+	client := m.httpClient
+	m.mu.RUnlock()
+	if finalizeURL == "" || finalizeSecret == "" || client == nil {
+		return
+	}
+
+	botMeta, err := m.store.GetBot(inst.DBID)
+	if err != nil || botMeta == nil {
+		return
+	}
+	providerBotID := strings.TrimSpace(botMeta.ProviderID)
+	if providerBotID == "" {
+		return
+	}
+	pending, err := m.store.GetLatestPendingWechatBinding(inst.DBID, providerBotID, time.Now())
+	if err != nil || pending == nil {
+		return
+	}
+
+	finalizeEventID := fmt.Sprintf("finalize_%d_%s", msg.Timestamp, msg.ExternalID)
+	body := map[string]any{
+		"event_id":     finalizeEventID,
+		"event_time":   msg.Timestamp,
+		"bot_id":       providerBotID,
+		"from_user_id": strings.TrimSpace(msg.Sender),
+	}
+	if token := strings.TrimSpace(msg.ContextToken); token != "" {
+		body["context_token"] = token
+	}
+	raw, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, finalizeURL, bytes.NewReader(raw))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+finalizeSecret)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		_ = m.store.MarkWechatPendingBindingRetry(pending.ID, finalizeEventID, "FINALIZE_HTTP_FAILED:"+err.Error(), time.Now())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		_, _ = m.store.FinalizeWechatPendingBinding(pending.ID, strings.TrimSpace(msg.ContextToken), finalizeEventID, time.Now())
+		return
+	}
+	_ = m.store.MarkWechatPendingBindingRetry(pending.ID, finalizeEventID, fmt.Sprintf("FINALIZE_HTTP_%d", resp.StatusCode), time.Now())
 }
 
 // processMedia handles media items:

@@ -11,10 +11,27 @@
 
 ```json
 {
-  "type": "binding_profile_snapshot | binding_invalidated",
+  "type": "binding_prebind | binding_profile_snapshot | binding_invalidated",
   "data": {"...": "..."}
 }
 ```
+
+## Event: `binding_prebind`
+
+Required fields:
+
+- `event_id`
+- `binding_id`
+- `role_id`
+- `bot_id` (provider bot id)
+- `session_id`
+
+Behavior:
+
+1. `event_id` is persisted in `admin_sync_inbox` for idempotency.
+2. Resolve local bot by `FindBotByProviderID("ilink", bot_id)`.
+3. Create local pending row in `wechat_pending_bindings` (`pending_finalize`, 10 min TTL).
+4. First inbound message triggers callback to Admin finalize endpoint (configured by env).
 
 ## Event: `binding_profile_snapshot`
 
@@ -62,3 +79,6 @@ Behavior:
 
 - Missing `ADMIN_SYNC_SHARED_SECRET` disables this endpoint (returns 404 style error payload).
 - Endpoint is intentionally internal and should only be exposed behind trusted network boundaries.
+- Finalize callback envs:
+  - `ADMIN_FINALIZE_URL` (e.g. `https://admin-worker.../api/account/platforms/wechat/inbound-finalize`)
+  - `ADMIN_FINALIZE_SECRET` (Bearer token; defaults to `ADMIN_SYNC_SHARED_SECRET`)

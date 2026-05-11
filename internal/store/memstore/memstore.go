@@ -645,6 +645,21 @@ func (s *Store) GetPromptProfile(string, string, string) (*store.PromptProfile, 
 	return nil, errNotImplemented
 }
 
+// --- WechatPendingBindingStore (stub) ---
+
+func (s *Store) CreateWechatPendingBinding(store.WechatPendingBindingCreateInput) (*store.WechatPendingBinding, bool, error) {
+	return nil, false, errNotImplemented
+}
+func (s *Store) GetLatestPendingWechatBinding(string, string, time.Time) (*store.WechatPendingBinding, error) {
+	return nil, errNotImplemented
+}
+func (s *Store) FinalizeWechatPendingBinding(int64, string, string, time.Time) (bool, error) {
+	return false, errNotImplemented
+}
+func (s *Store) MarkWechatPendingBindingRetry(int64, string, string, time.Time) error {
+	return errNotImplemented
+}
+
 // --- SyncOutboxStore (stub) ---
 
 func (s *Store) EnqueueSyncOutboxEvent(store.EnqueueOutboxInput) (*store.SyncOutboxEvent, bool, error) {

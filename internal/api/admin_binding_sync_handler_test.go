@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/openilink/openilink-hub/internal/store"
 )
@@ -113,6 +114,67 @@ func TestAdminBindingSync_SnapshotAndDedupAndInvalidate(t *testing.T) {
 	}
 	if len(claimed) < 2 {
 		t.Fatalf("expected >=2 outbox events, got %d", len(claimed))
+	}
+}
+
+func TestAdminBindingSync_PrebindAndDedup(t *testing.T) {
+	env := setupTestEnv(t)
+	secret := "test-secret"
+	t.Setenv("ADMIN_SYNC_SHARED_SECRET", secret)
+
+	bot, err := env.store.CreateBot(env.user.ID, "prebind-bot", "ilink", "provider-bot-1", json.RawMessage(`{"bot_id":"provider-bot-1","bot_token":"t"}`))
+	if err != nil {
+		t.Fatalf("CreateBot: %v", err)
+	}
+	if bot == nil || bot.ID == "" {
+		t.Fatalf("CreateBot returned nil")
+	}
+
+	prebind := map[string]any{
+		"type": "binding_prebind",
+		"data": map[string]any{
+			"event_id":   "evt-prebind-1",
+			"event_time": 1715400002,
+			"binding_id": "pb-1",
+			"role_id":    "101",
+			"bot_id":     "provider-bot-1",
+			"session_id": "session-1",
+		},
+	}
+	body, _ := json.Marshal(prebind)
+	req, _ := http.NewRequest(http.MethodPost, env.ts.URL+"/api/internal/admin/sync/binding", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Signature", signAdmin(secret, body))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("prebind request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("prebind status=%d", resp.StatusCode)
+	}
+
+	row, err := env.store.GetLatestPendingWechatBinding(bot.ID, "provider-bot-1", time.Now())
+	if err != nil {
+		t.Fatalf("GetLatestPendingWechatBinding: %v", err)
+	}
+	if row == nil {
+		t.Fatalf("expected pending binding row")
+	}
+	if row.BindingID != "pb-1" {
+		t.Fatalf("binding id mismatch: %s", row.BindingID)
+	}
+
+	req2, _ := http.NewRequest(http.MethodPost, env.ts.URL+"/api/internal/admin/sync/binding", bytes.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("X-Admin-Signature", signAdmin(secret, body))
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("prebind dedup request: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("prebind dedup status=%d", resp2.StatusCode)
 	}
 }
 

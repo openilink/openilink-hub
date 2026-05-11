@@ -32,6 +32,8 @@ type Config struct {
 
 	AdminSyncSharedSecret  string
 	AdminSyncAllowlist     string
+	AdminFinalizeURL       string
+	AdminFinalizeSecret    string
 	SupabaseURL            string
 	SupabaseServiceRoleKey string
 	SupabaseSchema         string
@@ -74,6 +76,8 @@ func Parse() *Config {
 	cfg.LinuxDoClientSecret = envOr("LINUXDO_CLIENT_SECRET", "")
 	cfg.AdminSyncSharedSecret = envOr("ADMIN_SYNC_SHARED_SECRET", "")
 	cfg.AdminSyncAllowlist = envOr("ADMIN_SYNC_ALLOWLIST", "")
+	cfg.AdminFinalizeURL = envOr("ADMIN_FINALIZE_URL", "")
+	cfg.AdminFinalizeSecret = envOr("ADMIN_FINALIZE_SECRET", cfg.AdminSyncSharedSecret)
 	cfg.SupabaseURL = envOr("SUPABASE_URL", "")
 	cfg.SupabaseServiceRoleKey = envOr("SUPABASE_SERVICE_ROLE_KEY", "")
 	cfg.SupabaseSchema = envOr("SUPABASE_SCHEMA", "public")
