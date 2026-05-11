@@ -25,10 +25,13 @@ type Config struct {
 	MemoryTable    string
 	MemoryMatchRPC string
 
-	BindingsTable string
-	RoutesTable   string
-	BotsTable     string
-	ProfilesTable string
+	BindingsTable      string
+	RoutesTable        string
+	BotsTable          string
+	ProfilesTable      string
+	SubscriptionsTable string
+	PlanLimitsTable    string
+	UsageCountersTable string
 
 	EmbeddingModel string
 }
@@ -42,13 +45,16 @@ type Client struct {
 	memoryEnabled bool
 	memoryTopK    int
 
-	memoryTable    string
-	memoryMatchRPC string
-	bindingsTable  string
-	routesTable    string
-	botsTable      string
-	profilesTable  string
-	embeddingModel string
+	memoryTable        string
+	memoryMatchRPC     string
+	bindingsTable      string
+	routesTable        string
+	botsTable          string
+	profilesTable      string
+	subscriptionsTable string
+	planLimitsTable    string
+	usageCountersTable string
+	embeddingModel     string
 }
 
 type BindingContext struct {
@@ -94,6 +100,14 @@ type RecordInput struct {
 	Source  string
 }
 
+type QuotaStatus struct {
+	Allowed      bool
+	PlanCode     string
+	PeriodMonth  string
+	MonthlyLimit int
+	Used         int
+}
+
 func NewClient(cfg Config) (*Client, error) {
 	base := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	key := strings.TrimSpace(cfg.ServiceRoleKey)
@@ -132,24 +146,39 @@ func NewClient(cfg Config) (*Client, error) {
 	if profiles == "" {
 		profiles = "bl_user_role_profiles"
 	}
+	subscriptions := strings.TrimSpace(cfg.SubscriptionsTable)
+	if subscriptions == "" {
+		subscriptions = "bl_subscriptions"
+	}
+	planLimits := strings.TrimSpace(cfg.PlanLimitsTable)
+	if planLimits == "" {
+		planLimits = "bl_plan_limits"
+	}
+	usageCounters := strings.TrimSpace(cfg.UsageCountersTable)
+	if usageCounters == "" {
+		usageCounters = "bl_usage_counters"
+	}
 	embeddingModel := strings.TrimSpace(cfg.EmbeddingModel)
 	if embeddingModel == "" {
 		embeddingModel = "text-embedding-3-small"
 	}
 	return &Client{
-		baseURL:        base,
-		apiKey:         key,
-		schema:         schema,
-		http:           &http.Client{Timeout: 10 * time.Second},
-		memoryEnabled:  cfg.MemoryEnabled,
-		memoryTopK:     topK,
-		memoryTable:    memoryTable,
-		memoryMatchRPC: matchRPC,
-		bindingsTable:  bindings,
-		routesTable:    routes,
-		botsTable:      bots,
-		profilesTable:  profiles,
-		embeddingModel: embeddingModel,
+		baseURL:            base,
+		apiKey:             key,
+		schema:             schema,
+		http:               &http.Client{Timeout: 10 * time.Second},
+		memoryEnabled:      cfg.MemoryEnabled,
+		memoryTopK:         topK,
+		memoryTable:        memoryTable,
+		memoryMatchRPC:     matchRPC,
+		bindingsTable:      bindings,
+		routesTable:        routes,
+		botsTable:          bots,
+		profilesTable:      profiles,
+		subscriptionsTable: subscriptions,
+		planLimitsTable:    planLimits,
+		usageCountersTable: usageCounters,
+		embeddingModel:     embeddingModel,
 	}, nil
 }
 
@@ -237,6 +266,88 @@ func (c *Client) RecordMemory(ctx context.Context, in RecordInput) error {
 	_, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
 		"Prefer": "return=minimal",
 	})
+	return err
+}
+
+type subscriptionRow struct {
+	PlanCode string `json:"plan_code"`
+}
+
+type planLimitRow struct {
+	MonthlyMessageLimit int `json:"monthly_message_limit"`
+}
+
+type usageCounterRow struct {
+	MessageUsed int `json:"message_used"`
+}
+
+func (c *Client) CheckMonthlyQuota(ctx context.Context, userID string) (*QuotaStatus, error) {
+	if c == nil {
+		return nil, nil
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil, nil
+	}
+
+	planCode := "free"
+	subscription, err := c.getSubscription(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if subscription != nil {
+		if normalized := normalizePlanCode(subscription.PlanCode); normalized != "" {
+			planCode = normalized
+		}
+	}
+
+	limitRow, err := c.getPlanLimit(ctx, planCode)
+	if err != nil {
+		return nil, err
+	}
+	periodMonth := time.Now().UTC().Format("2006-01")
+	usageRow, err := c.getUsageByMonth(ctx, userID, periodMonth)
+	if err != nil {
+		return nil, err
+	}
+	used := 0
+	if usageRow != nil && usageRow.MessageUsed > 0 {
+		used = usageRow.MessageUsed
+	}
+
+	limit := 0
+	if limitRow != nil && limitRow.MonthlyMessageLimit > 0 {
+		limit = limitRow.MonthlyMessageLimit
+	}
+	allowed := true
+	if limit > 0 && used >= limit {
+		allowed = false
+	}
+	return &QuotaStatus{
+		Allowed:      allowed,
+		PlanCode:     planCode,
+		PeriodMonth:  periodMonth,
+		MonthlyLimit: limit,
+		Used:         used,
+	}, nil
+}
+
+func (c *Client) BumpMonthlyUsage(ctx context.Context, userID string, delta int) error {
+	if c == nil {
+		return nil
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil
+	}
+	if delta <= 0 {
+		delta = 1
+	}
+	body, _ := json.Marshal(map[string]any{
+		"p_user_id": anyID(userID),
+		"p_delta":   delta,
+	})
+	_, err := c.do(ctx, http.MethodPost, "/rest/v1/rpc/bump_usage_counter", body, nil)
 	return err
 }
 
@@ -386,6 +497,76 @@ func (c *Client) buildPromptSnapshot(ctx context.Context, bindingID, userID, rol
 		PromptVersion:   sourceUpdatedAt,
 		SourceUpdatedAt: sourceUpdatedAt,
 	}, nil
+}
+
+func (c *Client) getSubscription(ctx context.Context, userID string) (*subscriptionRow, error) {
+	q := url.Values{}
+	q.Set("user_id", "eq."+userID)
+	q.Set("select", "plan_code")
+	q.Set("order", "updated_at.desc")
+	q.Set("limit", "1")
+	path := "/rest/v1/" + url.PathEscape(c.subscriptionsTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []subscriptionRow
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
+}
+
+func (c *Client) getPlanLimit(ctx context.Context, planCode string) (*planLimitRow, error) {
+	planCode = normalizePlanCode(planCode)
+	if planCode == "" {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("plan_code", "eq."+planCode)
+	q.Set("is_active", "eq.true")
+	q.Set("select", "monthly_message_limit")
+	q.Set("limit", "1")
+	path := "/rest/v1/" + url.PathEscape(c.planLimitsTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []planLimitRow
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
+}
+
+func (c *Client) getUsageByMonth(ctx context.Context, userID, periodMonth string) (*usageCounterRow, error) {
+	if userID == "" || periodMonth == "" {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("user_id", "eq."+userID)
+	q.Set("period_month", "eq."+periodMonth)
+	q.Set("select", "message_used")
+	q.Set("limit", "1")
+	path := "/rest/v1/" + url.PathEscape(c.usageCountersTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []usageCounterRow
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
 }
 
 func (c *Client) getRoleBot(ctx context.Context, roleID string) (*botPromptRow, error) {
@@ -658,4 +839,17 @@ func parseUnixSeconds(ts string) int64 {
 		return t.Unix()
 	}
 	return 0
+}
+
+func normalizePlanCode(raw string) string {
+	code := strings.ToLower(strings.TrimSpace(raw))
+	if code == "" {
+		return ""
+	}
+	switch code {
+	case "free", "pro", "ultra":
+		return code
+	default:
+		return "free"
+	}
 }

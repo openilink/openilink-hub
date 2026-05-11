@@ -174,6 +174,34 @@ func (s *AI) reply(d Delivery) {
 	sender := d.Message.Sender
 	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, sender)
 	memQuery := strings.TrimSpace(d.Content)
+	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
+		quota, err := s.SupaMemory.CheckMonthlyQuota(ctx, promptMeta.UserID)
+		if err != nil {
+			slog.Warn("ai quota check failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", err)
+		} else if quota != nil && !quota.Allowed {
+			if span != nil {
+				span.SetAttr("quota.blocked", true)
+				span.SetAttr("quota.plan_code", quota.PlanCode)
+				span.SetAttr("quota.period_month", quota.PeriodMonth)
+				span.SetAttr("quota.used", quota.Used)
+				span.SetAttr("quota.limit", quota.MonthlyLimit)
+			}
+			notice := "本月聊天额度已用完，请升级订阅或下月再试。"
+			if quota.MonthlyLimit > 0 {
+				notice = fmt.Sprintf("本月聊天额度已用完（%d/%d），请升级订阅或下月再试。", quota.Used, quota.MonthlyLimit)
+			}
+			if _, sendErr := d.Provider.Send(ctx, provider.OutboundMessage{
+				Recipient: sender,
+				Text:      notice,
+			}); sendErr != nil {
+				slog.Warn("quota notice send failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", sendErr)
+			}
+			if span != nil {
+				span.End()
+			}
+			return
+		}
+	}
 
 	// Typing indicator
 	var typingTicket string
@@ -442,6 +470,12 @@ func (s *AI) reply(d Delivery) {
 
 	if span != nil {
 		span.End()
+	}
+
+	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
+		if err := s.SupaMemory.BumpMonthlyUsage(ctx, promptMeta.UserID, 1); err != nil {
+			slog.Warn("ai usage bump failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", err)
+		}
 	}
 
 	// Save only the content (not thinking) to message history to avoid polluting context
