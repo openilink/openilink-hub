@@ -25,13 +25,17 @@ func TestAdminBindingSync_SnapshotAndDedupAndInvalidate(t *testing.T) {
 	secret := "test-secret"
 	t.Setenv("ADMIN_SYNC_SHARED_SECRET", secret)
 	t.Setenv("AI_FULL_PROMPT_MAX_BYTES", "16")
+	bot, err := env.store.CreateBot(env.user.ID, "snapshot-bot", "ilink", "provider-bot-1", json.RawMessage(`{"bot_id":"provider-bot-1","bot_token":"t"}`))
+	if err != nil {
+		t.Fatalf("CreateBot: %v", err)
+	}
 
 	snapshot := map[string]any{
 		"type": "binding_profile_snapshot",
 		"data": map[string]any{
 			"event_id":          "evt-snap-1",
 			"event_time":        1715400000,
-			"bot_id":            "bot-1",
+			"bot_id":            "provider-bot-1",
 			"sender_user_id":    "wx-1",
 			"binding_id":        "bind-1",
 			"system_prompt":     "sys",
@@ -54,7 +58,7 @@ func TestAdminBindingSync_SnapshotAndDedupAndInvalidate(t *testing.T) {
 		t.Fatalf("snapshot status=%d", resp.StatusCode)
 	}
 
-	p, err := env.store.GetActivePromptProfile("bot-1", "wx-1")
+	p, err := env.store.GetActivePromptProfile(bot.ID, "wx-1")
 	if err != nil || p == nil {
 		t.Fatalf("GetActivePromptProfile err=%v profile=%v", err, p)
 	}
@@ -80,7 +84,7 @@ func TestAdminBindingSync_SnapshotAndDedupAndInvalidate(t *testing.T) {
 		"data": map[string]any{
 			"event_id":       "evt-inv-1",
 			"event_time":     1715400001,
-			"bot_id":         "bot-1",
+			"bot_id":         "provider-bot-1",
 			"sender_user_id": "wx-1",
 			"binding_id":     "bind-1",
 			"reason":         "rebind",
@@ -99,7 +103,7 @@ func TestAdminBindingSync_SnapshotAndDedupAndInvalidate(t *testing.T) {
 		t.Fatalf("invalidate status=%d", resp3.StatusCode)
 	}
 
-	active, err := env.store.GetActivePromptProfile("bot-1", "wx-1")
+	active, err := env.store.GetActivePromptProfile(bot.ID, "wx-1")
 	if err != nil {
 		t.Fatalf("GetActivePromptProfile after invalidate: %v", err)
 	}
@@ -232,12 +236,16 @@ func TestAdminBindingSync_SignatureAndBlankPrompt(t *testing.T) {
 	secret := "test-secret"
 	t.Setenv("ADMIN_SYNC_SHARED_SECRET", secret)
 	os.Unsetenv("AI_FULL_PROMPT_MAX_BYTES")
+	bot, err := env.store.CreateBot(env.user.ID, "blank-bot", "ilink", "provider-bot-blank", json.RawMessage(`{"bot_id":"provider-bot-blank","bot_token":"t"}`))
+	if err != nil {
+		t.Fatalf("CreateBot: %v", err)
+	}
 
 	payload := map[string]any{
 		"type": "binding_profile_snapshot",
 		"data": map[string]any{
 			"event_id":          "evt-blank",
-			"bot_id":            "bot-1",
+			"bot_id":            bot.ID,
 			"sender_user_id":    "wx-1",
 			"binding_id":        "bind-1",
 			"full_prompt":       "   ",

@@ -55,6 +55,21 @@ type bindingPrebindPayload struct {
 	SessionID string `json:"session_id"`
 }
 
+func (s *Server) resolveBotByIDOrProviderID(rawBotID string) (*store.Bot, error) {
+	botID := strings.TrimSpace(rawBotID)
+	if botID == "" {
+		return nil, sql.ErrNoRows
+	}
+	bot, err := s.Store.GetBot(botID)
+	if err == nil && bot != nil {
+		return bot, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	return s.Store.FindBotByProviderID("ilink", botID)
+}
+
 func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) {
 	secret := strings.TrimSpace(os.Getenv("ADMIN_SYNC_SHARED_SECRET"))
 	if secret == "" {
@@ -101,24 +116,15 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			jsonOK(w)
 			return
 		}
-		bot, err := s.Store.GetBot(p.BotID)
+		bot, err := s.resolveBotByIDOrProviderID(p.BotID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				bot, err = s.Store.FindBotByProviderID("ilink", p.BotID)
-					if err != nil {
-						if errors.Is(err, sql.ErrNoRows) {
-							jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
-							return
-						}
-						slog.Error("admin sync prebind resolve bot by provider id failed", "event_id", p.EventID, "bot_id", p.BotID, "session_id", p.SessionID, "err", err)
-						jsonError(w, "resolve bot by provider id failed", http.StatusInternalServerError)
-						return
-					}
-				} else {
-					slog.Error("admin sync prebind resolve bot by id failed", "event_id", p.EventID, "bot_id", p.BotID, "session_id", p.SessionID, "err", err)
-					jsonError(w, "resolve bot by id failed", http.StatusInternalServerError)
-					return
-				}
+				jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
+				return
+			}
+			slog.Error("admin sync prebind resolve bot failed", "event_id", p.EventID, "bot_id", p.BotID, "session_id", p.SessionID, "err", err)
+			jsonError(w, "resolve bot failed", http.StatusInternalServerError)
+			return
 		}
 		if bot == nil || bot.ID == "" {
 			jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
@@ -164,6 +170,20 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			jsonOK(w)
 			return
 		}
+		bot, err := s.resolveBotByIDOrProviderID(p.BotID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
+				return
+			}
+			jsonError(w, "resolve bot failed", http.StatusInternalServerError)
+			return
+		}
+		if bot == nil || strings.TrimSpace(bot.ID) == "" {
+			jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
+			return
+		}
+		localBotID := strings.TrimSpace(bot.ID)
 
 		prompt := store.NormalizePromptByMaxBytes(p.FullPrompt, fullPromptMax)
 		if store.IsBlankPrompt(prompt.Value) {
@@ -172,7 +192,7 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 		}
 
 		profile, changed, err := s.Store.UpsertPromptProfile(store.PromptProfileUpsertInput{
-			BotID:           p.BotID,
+			BotID:           localBotID,
 			SenderUserID:    p.SenderUserID,
 			BindingID:       p.BindingID,
 			SystemPrompt:    p.SystemPrompt,
@@ -190,7 +210,8 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			payload, _ := json.Marshal(map[string]any{
 				"event_id":          p.EventID,
 				"event_type":        "binding_profile_snapshot",
-				"bot_id":            p.BotID,
+				"bot_id":            localBotID,
+				"provider_bot_id":   strings.TrimSpace(p.BotID),
 				"sender_user_id":    p.SenderUserID,
 				"binding_id":        p.BindingID,
 				"prompt_version":    profile.PromptVersion,
@@ -201,7 +222,7 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			_, _, _ = s.Store.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
 				EventID:      p.EventID + ":prompt_profile_changed",
 				EventType:    store.OutboxEventPromptProfileChange,
-				PartitionKey: p.BotID,
+				PartitionKey: localBotID,
 				Payload:      payload,
 			})
 		}
@@ -225,7 +246,21 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			jsonOK(w)
 			return
 		}
-		changed, err := s.Store.InvalidatePromptProfile(p.BotID, p.SenderUserID, p.BindingID)
+		bot, err := s.resolveBotByIDOrProviderID(p.BotID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
+				return
+			}
+			jsonError(w, "resolve bot failed", http.StatusInternalServerError)
+			return
+		}
+		if bot == nil || strings.TrimSpace(bot.ID) == "" {
+			jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
+			return
+		}
+		localBotID := strings.TrimSpace(bot.ID)
+		changed, err := s.Store.InvalidatePromptProfile(localBotID, p.SenderUserID, p.BindingID)
 		if err != nil {
 			jsonError(w, "invalidate prompt profile failed", http.StatusInternalServerError)
 			return
@@ -234,7 +269,8 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			payload, _ := json.Marshal(map[string]any{
 				"event_id":        p.EventID,
 				"event_type":      "binding_invalidated",
-				"bot_id":          p.BotID,
+				"bot_id":          localBotID,
+				"provider_bot_id": strings.TrimSpace(p.BotID),
 				"sender_user_id":  p.SenderUserID,
 				"binding_id":      p.BindingID,
 				"reason":          p.Reason,
@@ -243,7 +279,7 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			_, _, _ = s.Store.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
 				EventID:      p.EventID + ":binding_invalidated",
 				EventType:    store.OutboxEventBindingInvalidated,
-				PartitionKey: p.BotID,
+				PartitionKey: localBotID,
 				Payload:      payload,
 			})
 		}
