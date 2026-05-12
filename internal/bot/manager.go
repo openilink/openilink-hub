@@ -747,11 +747,14 @@ func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundM
 	}
 
 	finalizeEventID := fmt.Sprintf("finalize_%d_%s", msg.Timestamp, msg.ExternalID)
+	pendingBindingID := strings.TrimSpace(pending.BindingID)
 	body := map[string]any{
-		"event_id":     finalizeEventID,
-		"event_time":   msg.Timestamp,
-		"bot_id":       providerBotID,
-		"from_user_id": strings.TrimSpace(msg.Sender),
+		"event_id":           finalizeEventID,
+		"event_time":         msg.Timestamp,
+		"pending_binding_id": pendingBindingID,
+		"binding_id":         pendingBindingID,
+		"bot_id":             providerBotID,
+		"from_user_id":       strings.TrimSpace(msg.Sender),
 	}
 	if token := strings.TrimSpace(msg.ContextToken); token != "" {
 		body["context_token"] = token
