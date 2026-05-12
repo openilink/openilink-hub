@@ -99,25 +99,35 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			jsonOK(w)
 			return
 		}
-		// binding_prebind strictly uses hub bot ID (gateway_instance_id).
-		// provider bot ID is not accepted to avoid ambiguous routing.
 		bot, err := s.Store.GetBot(p.BotID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				jsonError(w, "bot not found for id", http.StatusNotFound)
+				bot, err = s.Store.FindBotByProviderID("ilink", p.BotID)
+				if err != nil {
+					if errors.Is(err, sql.ErrNoRows) {
+						jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
+						return
+					}
+					jsonError(w, "resolve bot by provider id failed", http.StatusInternalServerError)
+					return
+				}
+			} else {
+				jsonError(w, "resolve bot by id failed", http.StatusInternalServerError)
 				return
 			}
-			jsonError(w, "resolve bot by id failed", http.StatusInternalServerError)
-			return
 		}
 		if bot == nil || bot.ID == "" {
-			jsonError(w, "bot not found for id", http.StatusNotFound)
+			jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
 			return
+		}
+		providerBotID := strings.TrimSpace(bot.ProviderID)
+		if providerBotID == "" {
+			providerBotID = p.BotID
 		}
 		expiresAt := time.Now().Add(10 * time.Minute)
 		_, _, err = s.Store.CreateWechatPendingBinding(store.WechatPendingBindingCreateInput{
 			EventID:       p.EventID,
-			ProviderBotID: p.BotID,
+			ProviderBotID: providerBotID,
 			BotID:         bot.ID,
 			BindingID:     p.BindingID,
 			RoleID:        p.RoleID,

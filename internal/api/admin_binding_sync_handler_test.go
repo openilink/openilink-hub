@@ -154,7 +154,7 @@ func TestAdminBindingSync_PrebindAndDedup(t *testing.T) {
 		t.Fatalf("prebind status=%d", resp.StatusCode)
 	}
 
-	row, err := env.store.GetLatestPendingWechatBinding(bot.ID, bot.ID, time.Now())
+	row, err := env.store.GetLatestPendingWechatBinding(bot.ID, "provider-bot-1", time.Now())
 	if err != nil {
 		t.Fatalf("GetLatestPendingWechatBinding: %v", err)
 	}
@@ -178,12 +178,12 @@ func TestAdminBindingSync_PrebindAndDedup(t *testing.T) {
 	}
 }
 
-func TestAdminBindingSync_PrebindRejectsProviderBotID(t *testing.T) {
+func TestAdminBindingSync_PrebindAcceptsProviderBotID(t *testing.T) {
 	env := setupTestEnv(t)
 	secret := "test-secret"
 	t.Setenv("ADMIN_SYNC_SHARED_SECRET", secret)
 
-	_, err := env.store.CreateBot(env.user.ID, "prebind-bot", "ilink", "provider-bot-1", json.RawMessage(`{"bot_id":"provider-bot-1","bot_token":"t"}`))
+	bot, err := env.store.CreateBot(env.user.ID, "prebind-bot", "ilink", "provider-bot-1", json.RawMessage(`{"bot_id":"provider-bot-1","bot_token":"t"}`))
 	if err != nil {
 		t.Fatalf("CreateBot: %v", err)
 	}
@@ -208,8 +208,22 @@ func TestAdminBindingSync_PrebindRejectsProviderBotID(t *testing.T) {
 		t.Fatalf("prebind request: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("prebind with provider bot id should be rejected, status=%d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("prebind with provider bot id should be accepted, status=%d", resp.StatusCode)
+	}
+
+	row, err := env.store.GetLatestPendingWechatBinding(bot.ID, "provider-bot-1", time.Now())
+	if err != nil {
+		t.Fatalf("GetLatestPendingWechatBinding: %v", err)
+	}
+	if row == nil {
+		t.Fatalf("expected pending binding row")
+	}
+	if row.BotID != bot.ID {
+		t.Fatalf("bot id mismatch: %s", row.BotID)
+	}
+	if row.ProviderBotID != "provider-bot-1" {
+		t.Fatalf("provider bot id mismatch: %s", row.ProviderBotID)
 	}
 }
 
