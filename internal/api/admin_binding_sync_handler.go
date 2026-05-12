@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -92,6 +93,7 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 		}
 		created, err := s.Store.CreateAdminSyncInboxEvent(p.EventID)
 		if err != nil {
+			slog.Error("admin sync prebind dedup failed", "event_id", p.EventID, "bot_id", p.BotID, "session_id", p.SessionID, "err", err)
 			jsonError(w, "dedup failed", http.StatusInternalServerError)
 			return
 		}
@@ -103,18 +105,20 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				bot, err = s.Store.FindBotByProviderID("ilink", p.BotID)
-				if err != nil {
-					if errors.Is(err, sql.ErrNoRows) {
-						jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
+					if err != nil {
+						if errors.Is(err, sql.ErrNoRows) {
+							jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
+							return
+						}
+						slog.Error("admin sync prebind resolve bot by provider id failed", "event_id", p.EventID, "bot_id", p.BotID, "session_id", p.SessionID, "err", err)
+						jsonError(w, "resolve bot by provider id failed", http.StatusInternalServerError)
 						return
 					}
-					jsonError(w, "resolve bot by provider id failed", http.StatusInternalServerError)
+				} else {
+					slog.Error("admin sync prebind resolve bot by id failed", "event_id", p.EventID, "bot_id", p.BotID, "session_id", p.SessionID, "err", err)
+					jsonError(w, "resolve bot by id failed", http.StatusInternalServerError)
 					return
 				}
-			} else {
-				jsonError(w, "resolve bot by id failed", http.StatusInternalServerError)
-				return
-			}
 		}
 		if bot == nil || bot.ID == "" {
 			jsonError(w, "bot not found for id/provider id", http.StatusNotFound)
@@ -136,6 +140,7 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			ExpiresAt:     expiresAt,
 		})
 		if err != nil {
+			slog.Error("admin sync prebind create pending binding failed", "event_id", p.EventID, "bot_id", bot.ID, "provider_bot_id", providerBotID, "session_id", p.SessionID, "binding_id", p.BindingID, "role_id", p.RoleID, "err", err)
 			jsonError(w, "create wechat pending binding failed", http.StatusInternalServerError)
 			return
 		}
