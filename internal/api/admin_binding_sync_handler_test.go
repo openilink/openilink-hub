@@ -137,7 +137,7 @@ func TestAdminBindingSync_PrebindAndDedup(t *testing.T) {
 			"event_time": 1715400002,
 			"binding_id": "pb-1",
 			"role_id":    "101",
-			"bot_id":     "provider-bot-1",
+			"bot_id":     bot.ID,
 			"session_id": "session-1",
 		},
 	}
@@ -154,7 +154,7 @@ func TestAdminBindingSync_PrebindAndDedup(t *testing.T) {
 		t.Fatalf("prebind status=%d", resp.StatusCode)
 	}
 
-	row, err := env.store.GetLatestPendingWechatBinding(bot.ID, "provider-bot-1", time.Now())
+	row, err := env.store.GetLatestPendingWechatBinding(bot.ID, bot.ID, time.Now())
 	if err != nil {
 		t.Fatalf("GetLatestPendingWechatBinding: %v", err)
 	}
@@ -175,6 +175,41 @@ func TestAdminBindingSync_PrebindAndDedup(t *testing.T) {
 	defer resp2.Body.Close()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("prebind dedup status=%d", resp2.StatusCode)
+	}
+}
+
+func TestAdminBindingSync_PrebindRejectsProviderBotID(t *testing.T) {
+	env := setupTestEnv(t)
+	secret := "test-secret"
+	t.Setenv("ADMIN_SYNC_SHARED_SECRET", secret)
+
+	_, err := env.store.CreateBot(env.user.ID, "prebind-bot", "ilink", "provider-bot-1", json.RawMessage(`{"bot_id":"provider-bot-1","bot_token":"t"}`))
+	if err != nil {
+		t.Fatalf("CreateBot: %v", err)
+	}
+
+	prebind := map[string]any{
+		"type": "binding_prebind",
+		"data": map[string]any{
+			"event_id":   "evt-prebind-provider-id",
+			"event_time": 1715400002,
+			"binding_id": "pb-provider-id",
+			"role_id":    "101",
+			"bot_id":     "provider-bot-1",
+			"session_id": "session-1",
+		},
+	}
+	body, _ := json.Marshal(prebind)
+	req, _ := http.NewRequest(http.MethodPost, env.ts.URL+"/api/internal/admin/sync/binding", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Signature", signAdmin(secret, body))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("prebind request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("prebind with provider bot id should be rejected, status=%d", resp.StatusCode)
 	}
 }
 

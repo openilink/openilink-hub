@@ -1,10 +1,12 @@
 package api
 
 import (
+	"database/sql"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -97,13 +99,19 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			jsonOK(w)
 			return
 		}
-		bot, err := s.Store.FindBotByProviderID("ilink", p.BotID)
+		// binding_prebind strictly uses hub bot ID (gateway_instance_id).
+		// provider bot ID is not accepted to avoid ambiguous routing.
+		bot, err := s.Store.GetBot(p.BotID)
 		if err != nil {
-			jsonError(w, "resolve bot by provider id failed", http.StatusInternalServerError)
+			if errors.Is(err, sql.ErrNoRows) {
+				jsonError(w, "bot not found for id", http.StatusNotFound)
+				return
+			}
+			jsonError(w, "resolve bot by id failed", http.StatusInternalServerError)
 			return
 		}
 		if bot == nil || bot.ID == "" {
-			jsonError(w, "bot not found for provider id", http.StatusNotFound)
+			jsonError(w, "bot not found for id", http.StatusNotFound)
 			return
 		}
 		expiresAt := time.Now().Add(10 * time.Minute)
