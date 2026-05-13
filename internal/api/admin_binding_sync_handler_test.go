@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 
@@ -20,13 +19,11 @@ func signAdmin(secret string, body []byte) string {
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
-func TestAdminBindingSync_SnapshotAndDedupAndInvalidate(t *testing.T) {
+func TestAdminBindingSync_UnsupportedSnapshotAndInvalidate(t *testing.T) {
 	env := setupTestEnv(t)
 	secret := "test-secret"
 	t.Setenv("ADMIN_SYNC_SHARED_SECRET", secret)
-	t.Setenv("AI_FULL_PROMPT_MAX_BYTES", "16")
-	bot, err := env.store.CreateBot(env.user.ID, "snapshot-bot", "ilink", "provider-bot-1", json.RawMessage(`{"bot_id":"provider-bot-1","bot_token":"t"}`))
-	if err != nil {
+	if _, err := env.store.CreateBot(env.user.ID, "snapshot-bot", "ilink", "provider-bot-1", json.RawMessage(`{"bot_id":"provider-bot-1","bot_token":"t"}`)); err != nil {
 		t.Fatalf("CreateBot: %v", err)
 	}
 
@@ -54,29 +51,8 @@ func TestAdminBindingSync_SnapshotAndDedupAndInvalidate(t *testing.T) {
 		t.Fatalf("snapshot request: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("snapshot status=%d", resp.StatusCode)
-	}
-
-	p, err := env.store.GetActivePromptProfile(bot.ID, "wx-1")
-	if err != nil || p == nil {
-		t.Fatalf("GetActivePromptProfile err=%v profile=%v", err, p)
-	}
-	if len(p.FullPrompt) != 16 {
-		t.Fatalf("expected truncated full_prompt length=16, got %d", len(p.FullPrompt))
-	}
-
-	// Dedup same event id
-	req2, _ := http.NewRequest(http.MethodPost, env.ts.URL+"/api/internal/admin/sync/binding", bytes.NewReader(body))
-	req2.Header.Set("Content-Type", "application/json")
-	req2.Header.Set("X-Admin-Signature", signAdmin(secret, body))
-	resp2, err := http.DefaultClient.Do(req2)
-	if err != nil {
-		t.Fatalf("snapshot dedup request: %v", err)
-	}
-	defer resp2.Body.Close()
-	if resp2.StatusCode != http.StatusOK {
-		t.Fatalf("snapshot dedup status=%d", resp2.StatusCode)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("snapshot should be unsupported, got status=%d", resp.StatusCode)
 	}
 
 	inv := map[string]any{
@@ -103,21 +79,13 @@ func TestAdminBindingSync_SnapshotAndDedupAndInvalidate(t *testing.T) {
 		t.Fatalf("invalidate status=%d", resp3.StatusCode)
 	}
 
-	active, err := env.store.GetActivePromptProfile(bot.ID, "wx-1")
-	if err != nil {
-		t.Fatalf("GetActivePromptProfile after invalidate: %v", err)
-	}
-	if active != nil {
-		t.Fatalf("expected no active profile after invalidate, got %#v", active)
-	}
-
-	// Ensure outbox receives mirror events
+	// Ensure invalidated event still mirrored to outbox
 	claimed, err := env.store.ClaimPendingSyncOutboxEvents(store.ClaimOutboxOptions{Limit: 20})
 	if err != nil {
 		t.Fatalf("ClaimPendingSyncOutboxEvents: %v", err)
 	}
-	if len(claimed) < 2 {
-		t.Fatalf("expected >=2 outbox events, got %d", len(claimed))
+	if len(claimed) < 1 {
+		t.Fatalf("expected >=1 outbox event, got %d", len(claimed))
 	}
 }
 
@@ -235,17 +203,12 @@ func TestAdminBindingSync_SignatureAndBlankPrompt(t *testing.T) {
 	env := setupTestEnv(t)
 	secret := "test-secret"
 	t.Setenv("ADMIN_SYNC_SHARED_SECRET", secret)
-	os.Unsetenv("AI_FULL_PROMPT_MAX_BYTES")
-	bot, err := env.store.CreateBot(env.user.ID, "blank-bot", "ilink", "provider-bot-blank", json.RawMessage(`{"bot_id":"provider-bot-blank","bot_token":"t"}`))
-	if err != nil {
-		t.Fatalf("CreateBot: %v", err)
-	}
 
 	payload := map[string]any{
 		"type": "binding_profile_snapshot",
 		"data": map[string]any{
 			"event_id":          "evt-blank",
-			"bot_id":            bot.ID,
+			"bot_id":            "provider-bot-blank",
 			"sender_user_id":    "wx-1",
 			"binding_id":        "bind-1",
 			"full_prompt":       "   ",
@@ -271,10 +234,10 @@ func TestAdminBindingSync_SignatureAndBlankPrompt(t *testing.T) {
 	req2.Header.Set("X-Admin-Signature", signAdmin(secret, body))
 	resp2, err := http.DefaultClient.Do(req2)
 	if err != nil {
-		t.Fatalf("request blank prompt: %v", err)
+		t.Fatalf("request snapshot unsupported: %v", err)
 	}
 	defer resp2.Body.Close()
 	if resp2.StatusCode != http.StatusBadRequest {
-		t.Fatalf("want 400 blank prompt, got %d", resp2.StatusCode)
+		t.Fatalf("want 400 unsupported event, got %d", resp2.StatusCode)
 	}
 }

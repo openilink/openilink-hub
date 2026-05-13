@@ -34,11 +34,12 @@ type BotModelSyncer interface {
 // AI calls an OpenAI-compatible chat completion API and sends the reply
 // back through the bot. Supports tool calling via installed App tools.
 type AI struct {
-	Store      store.Store
-	AppDisp    *appdelivery.Dispatcher
-	Storage    storage.Store
-	BotManager BotModelSyncer
-	SupaMemory *supamemory.Client
+	Store       store.Store
+	AppDisp     *appdelivery.Dispatcher
+	Storage     storage.Store
+	BotManager  BotModelSyncer
+	SupaMemory  *supamemory.Client
+	promptCache map[string]cachedRuntimePrompt
 }
 
 type runtimePromptMeta struct {
@@ -49,6 +50,14 @@ type runtimePromptMeta struct {
 	RoleID    string
 	UserID    string
 }
+
+type cachedRuntimePrompt struct {
+	FullPrompt    string
+	PromptVersion int64
+	CachedAt      time.Time
+}
+
+const runtimePromptCacheTTL = 120 * time.Second
 
 func (s *AI) writeRuntimeAudit(d Delivery, eventType string, detail map[string]any) {
 	if s.SupaMemory == nil || strings.TrimSpace(eventType) == "" {
@@ -1046,35 +1055,67 @@ func firstNonEmpty(values ...string) string {
 func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, sender string) (store.AIConfig, runtimePromptMeta) {
 	meta := runtimePromptMeta{Source: "global_fallback"}
 	globalPrompt := cfg.SystemPrompt
-	if s.Store == nil || botID == "" || sender == "" {
+	if sender == "" || s.SupaMemory == nil {
 		return cfg, meta
 	}
-	p, err := s.Store.GetActivePromptProfile(botID, sender)
-	localHit := false
-	if err == nil && p != nil && !store.IsBlankPrompt(p.FullPrompt) {
-		cfg.SystemPrompt = p.FullPrompt
-		meta.Source = "local_full_prompt"
-		meta.Version = p.PromptVersion
-		meta.FullHash = store.HashPrefix(p.FullPromptHash, 12)
-		localHit = true
-	}
-	if s.SupaMemory != nil {
-		bctx, berr := s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
-		if berr == nil && bctx != nil {
-			meta.RoleID = strings.TrimSpace(bctx.RoleID)
-			meta.UserID = strings.TrimSpace(bctx.UserID)
-			if bctx.Prompt != nil && !localHit && !store.IsBlankPrompt(bctx.Prompt.FullPrompt) {
-				cfg.SystemPrompt = bctx.Prompt.FullPrompt
-				meta.Source = "supabase_full_prompt"
-				meta.Version = bctx.Prompt.PromptVersion
-				meta.FullHash = store.HashPrefix(store.HashPrompt(bctx.Prompt.FullPrompt), 12)
-			}
-		}
-	}
-	if meta.Source == "global_fallback" {
+	bctx, berr := s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
+	if berr != nil || bctx == nil {
 		cfg.SystemPrompt = globalPrompt
+		return cfg, meta
 	}
+	meta.RoleID = strings.TrimSpace(bctx.RoleID)
+	meta.UserID = strings.TrimSpace(bctx.UserID)
+	if meta.UserID == "" || meta.RoleID == "" {
+		cfg.SystemPrompt = globalPrompt
+		return cfg, meta
+	}
+
+	cacheKey := meta.UserID + ":" + meta.RoleID
+	if hit, ok := s.getRuntimePromptCache(cacheKey, time.Now()); ok && !store.IsBlankPrompt(hit.FullPrompt) {
+		cfg.SystemPrompt = hit.FullPrompt
+		meta.Source = "cache"
+		meta.Version = hit.PromptVersion
+		meta.FullHash = store.HashPrefix(store.HashPrompt(hit.FullPrompt), 12)
+		return cfg, meta
+	}
+
+	prompt, err := s.SupaMemory.GetEffectiveFullPrompt(ctx, meta.UserID, meta.RoleID)
+	if err != nil || prompt == nil || store.IsBlankPrompt(prompt.FullPrompt) {
+		cfg.SystemPrompt = globalPrompt
+		return cfg, meta
+	}
+
+	cfg.SystemPrompt = prompt.FullPrompt
+	meta.Source = "supabase_rpc"
+	meta.Version = prompt.PromptVersion
+	meta.FullHash = store.HashPrefix(store.HashPrompt(prompt.FullPrompt), 12)
+	s.setRuntimePromptCache(cacheKey, cachedRuntimePrompt{
+		FullPrompt:    prompt.FullPrompt,
+		PromptVersion: prompt.PromptVersion,
+		CachedAt:      time.Now(),
+	})
 	return cfg, meta
+}
+
+func (s *AI) getRuntimePromptCache(key string, now time.Time) (cachedRuntimePrompt, bool) {
+	if s == nil || key == "" || s.promptCache == nil {
+		return cachedRuntimePrompt{}, false
+	}
+	row, ok := s.promptCache[key]
+	if !ok || now.Sub(row.CachedAt) > runtimePromptCacheTTL {
+		return cachedRuntimePrompt{}, false
+	}
+	return row, true
+}
+
+func (s *AI) setRuntimePromptCache(key string, row cachedRuntimePrompt) {
+	if s == nil || key == "" {
+		return
+	}
+	if s.promptCache == nil {
+		s.promptCache = make(map[string]cachedRuntimePrompt)
+	}
+	s.promptCache[key] = row
 }
 
 func (s *AI) resolveMemories(ctx context.Context, cfg store.AIConfig, meta runtimePromptMeta, currentText string) []supamemory.MemoryRow {
