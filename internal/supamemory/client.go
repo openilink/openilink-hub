@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-const defaultSystemPrompt = "你是一个温柔、真诚、尊重边界的 AI 伴侣，回答自然简洁，并保持积极支持。"
-
 type Config struct {
 	BaseURL        string
 	ServiceRoleKey string
@@ -219,19 +217,56 @@ func (c *Client) ResolveBindingContext(ctx context.Context, botProviderID, sende
 		return &BindingContext{BindingID: binding.ID, UserID: binding.UserID}, err
 	}
 
-	prompt, err := c.buildPromptSnapshot(ctx, binding.ID, binding.UserID, route.RoleID)
-	if err != nil {
-		return &BindingContext{
-			BindingID: binding.ID,
-			UserID:    binding.UserID,
-			RoleID:    route.RoleID,
-		}, err
-	}
 	return &BindingContext{
 		BindingID: binding.ID,
 		UserID:    binding.UserID,
 		RoleID:    route.RoleID,
-		Prompt:    prompt,
+	}, nil
+}
+
+type effectivePromptRow struct {
+	FullPrompt    string `json:"full_prompt"`
+	SystemPrompt  string `json:"system_prompt"`
+	UserPrompt    string `json:"user_prompt"`
+	PromptVersion int64  `json:"prompt_version"`
+}
+
+func (c *Client) GetEffectiveFullPrompt(ctx context.Context, userID, roleID string) (*PromptSnapshot, error) {
+	if c == nil {
+		return nil, nil
+	}
+	userID = strings.TrimSpace(userID)
+	roleID = strings.TrimSpace(roleID)
+	if userID == "" || roleID == "" {
+		return nil, nil
+	}
+	body, _ := json.Marshal(map[string]any{
+		"p_user_id": userID,
+		"p_role_id": anyID(roleID),
+	})
+	respBody, err := c.do(ctx, http.MethodPost, "/rest/v1/rpc/get_effective_full_prompt", body, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []effectivePromptRow
+	if err := json.Unmarshal(respBody, &rows); err != nil {
+		var single effectivePromptRow
+		if errSingle := json.Unmarshal(respBody, &single); errSingle != nil {
+			return nil, err
+		}
+		rows = []effectivePromptRow{single}
+	}
+	if len(rows) == 0 || strings.TrimSpace(rows[0].FullPrompt) == "" {
+		return nil, nil
+	}
+	return &PromptSnapshot{
+		UserID:        userID,
+		RoleID:        roleID,
+		SystemPrompt:  rows[0].SystemPrompt,
+		UserPrompt:    rows[0].UserPrompt,
+		FullPrompt:    rows[0].FullPrompt,
+		PromptVersion: rows[0].PromptVersion,
 	}, nil
 }
 
@@ -478,63 +513,6 @@ func (c *Client) findRoute(ctx context.Context, userID, bindingID string) (*rout
 	return &rows[0], nil
 }
 
-type botPromptRow struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	SystemPrompt string `json:"system_prompt"`
-}
-
-type profileRow struct {
-	Nickname      string `json:"nickname"`
-	Persona       string `json:"persona"`
-	Background    string `json:"background"`
-	SpeakingStyle string `json:"speaking_style"`
-	ReplyLanguage string `json:"reply_language"`
-	Tone          string `json:"tone"`
-	ResponseLen   string `json:"response_length"`
-	UpdatedAt     string `json:"updated_at"`
-}
-
-func (c *Client) buildPromptSnapshot(ctx context.Context, bindingID, userID, roleID string) (*PromptSnapshot, error) {
-	if userID == "" || roleID == "" {
-		return nil, nil
-	}
-	bot, err := c.getRoleBot(ctx, roleID)
-	if err != nil {
-		return nil, err
-	}
-	profile, err := c.getRoleProfile(ctx, userID, roleID)
-	if err != nil {
-		return nil, err
-	}
-
-	roleNameRule := buildRoleNameRule(bot.Name)
-	baseSystem := ensureSystemPrompt(bot.SystemPrompt)
-	systemPrompt := baseSystem
-	if roleNameRule != "" {
-		systemPrompt = baseSystem + "\n\n" + roleNameRule
-	}
-	userPrompt := buildUserPrompt(profile)
-	fullPrompt := systemPrompt
-	if strings.TrimSpace(userPrompt) != "" {
-		fullPrompt = systemPrompt + "\n\n" + userPrompt
-	}
-	sourceUpdatedAt := parseUnixSeconds(profile.UpdatedAt)
-	if sourceUpdatedAt <= 0 {
-		sourceUpdatedAt = time.Now().Unix()
-	}
-	return &PromptSnapshot{
-		BindingID:       bindingID,
-		UserID:          userID,
-		RoleID:          roleID,
-		SystemPrompt:    systemPrompt,
-		UserPrompt:      userPrompt,
-		FullPrompt:      fullPrompt,
-		PromptVersion:   sourceUpdatedAt,
-		SourceUpdatedAt: sourceUpdatedAt,
-	}, nil
-}
-
 func (c *Client) getSubscription(ctx context.Context, userID string) (*subscriptionRow, error) {
 	q := url.Values{}
 	q.Set("user_id", "eq."+userID)
@@ -601,47 +579,6 @@ func (c *Client) getUsageByMonth(ctx context.Context, userID, periodMonth string
 	}
 	if len(rows) == 0 {
 		return nil, nil
-	}
-	return &rows[0], nil
-}
-
-func (c *Client) getRoleBot(ctx context.Context, roleID string) (*botPromptRow, error) {
-	q := url.Values{}
-	q.Set("id", "eq."+roleID)
-	q.Set("select", "id,name,system_prompt")
-	q.Set("limit", "1")
-	path := "/rest/v1/" + url.PathEscape(c.botsTable) + "?" + q.Encode()
-	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	var rows []botPromptRow
-	if err := json.Unmarshal(body, &rows); err != nil {
-		return nil, err
-	}
-	if len(rows) == 0 {
-		return &botPromptRow{}, nil
-	}
-	return &rows[0], nil
-}
-
-func (c *Client) getRoleProfile(ctx context.Context, userID, roleID string) (*profileRow, error) {
-	q := url.Values{}
-	q.Set("user_id", "eq."+userID)
-	q.Set("role_id", "eq."+roleID)
-	q.Set("select", "nickname,persona,background,speaking_style,reply_language,tone,response_length,updated_at")
-	q.Set("limit", "1")
-	path := "/rest/v1/" + url.PathEscape(c.profilesTable) + "?" + q.Encode()
-	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	var rows []profileRow
-	if err := json.Unmarshal(body, &rows); err != nil {
-		return nil, err
-	}
-	if len(rows) == 0 {
-		return &profileRow{}, nil
 	}
 	return &rows[0], nil
 }
@@ -805,76 +742,6 @@ func fallbackStr(v, def string) string {
 		return def
 	}
 	return v
-}
-
-func asLine(label, value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	return label + "：" + value
-}
-
-func buildUserPrompt(profile *profileRow) string {
-	if profile == nil {
-		return ""
-	}
-	lines := make([]string, 0, 7)
-	if v := asLine("角色昵称", profile.Nickname); v != "" {
-		lines = append(lines, v)
-	}
-	if v := asLine("角色人设", profile.Persona); v != "" {
-		lines = append(lines, v)
-	}
-	if v := asLine("角色背景", profile.Background); v != "" {
-		lines = append(lines, v)
-	}
-	if v := asLine("说话风格", profile.SpeakingStyle); v != "" {
-		lines = append(lines, v)
-	}
-	if v := asLine("语气偏好", profile.Tone); v != "" {
-		lines = append(lines, v)
-	}
-	if v := asLine("回复语言", profile.ReplyLanguage); v != "" {
-		lines = append(lines, v)
-	}
-	if v := asLine("回复长度", profile.ResponseLen); v != "" {
-		lines = append(lines, v)
-	}
-	if len(lines) == 0 {
-		return ""
-	}
-	return "用户角色配置（强约束，必须遵守）：\n" + strings.Join(lines, "\n") + "\n如果与普通聊天习惯冲突，以本配置优先。"
-}
-
-func ensureSystemPrompt(prompt string) string {
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return defaultSystemPrompt
-	}
-	return prompt
-}
-
-func buildRoleNameRule(roleName string) string {
-	roleName = strings.TrimSpace(roleName)
-	if roleName == "" {
-		return ""
-	}
-	return "角色身份约束：你的名字是「" + roleName + "」。当用户询问你叫什么名字时，直接回答「" + roleName + "」，不要回避。"
-}
-
-func parseUnixSeconds(ts string) int64 {
-	ts = strings.TrimSpace(ts)
-	if ts == "" {
-		return 0
-	}
-	if v, err := strconv.ParseInt(ts, 10, 64); err == nil && v > 0 {
-		return v
-	}
-	if t, err := time.Parse(time.RFC3339, ts); err == nil {
-		return t.Unix()
-	}
-	return 0
 }
 
 func normalizePlanCode(raw string) string {
