@@ -207,14 +207,16 @@ func (s *AI) reply(d Delivery) {
 
 	ctx := context.Background()
 	sender := d.Message.Sender
-	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, sender)
+	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_start", map[string]any{
-		"bot_id":        d.BotDBID,
-		"sender":        sender,
-		"model":         cfg.Model,
-		"prompt_source": promptMeta.Source,
-		"user_id":       promptMeta.UserID,
-		"role_id":       promptMeta.RoleID,
+		"bot_id":          d.BotDBID,
+		"provider_bot_id": d.Message.Recipient,
+		"context_token":   d.Message.ContextToken,
+		"sender":          sender,
+		"model":           cfg.Model,
+		"prompt_source":   promptMeta.Source,
+		"user_id":         promptMeta.UserID,
+		"role_id":         promptMeta.RoleID,
 	})
 	memQuery := strings.TrimSpace(d.Content)
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
@@ -1025,6 +1027,7 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	cfg.BaseURL = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_BASE_URL")), global["ai.base_url"])
 	cfg.APIKey = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_API_KEY")), global["ai.api_key"])
 	cfg.Model = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MODEL")), global["ai.model"])
+	cfg.FallbackModel = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_FALLBACK_MODEL")), global["ai.fallback_model"])
 	cfg.SystemPrompt = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_SYSTEM_PROMPT")), global["ai.system_prompt"])
 	if cfg.APIKey == "" {
 		return store.AIConfig{}
@@ -1052,13 +1055,50 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, sender string) (store.AIConfig, runtimePromptMeta) {
+func composePromptSnapshot(prompt *supamemory.PromptSnapshot) string {
+	if prompt == nil {
+		return ""
+	}
+	full := strings.TrimSpace(prompt.FullPrompt)
+	if full != "" {
+		return full
+	}
+	sys := strings.TrimSpace(prompt.SystemPrompt)
+	usr := strings.TrimSpace(prompt.UserPrompt)
+	switch {
+	case sys != "" && usr != "":
+		return sys + "\n\n" + usr
+	case sys != "":
+		return sys
+	case usr != "":
+		return usr
+	default:
+		return ""
+	}
+}
+
+func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, contextToken, sender string) (store.AIConfig, runtimePromptMeta) {
 	meta := runtimePromptMeta{Source: "global_fallback"}
 	globalPrompt := cfg.SystemPrompt
-	if sender == "" || s.SupaMemory == nil {
+	if s.SupaMemory == nil {
 		return cfg, meta
 	}
-	bctx, berr := s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
+	contextToken = strings.TrimSpace(contextToken)
+	sender = strings.TrimSpace(sender)
+	if contextToken == "" && sender == "" {
+		return cfg, meta
+	}
+
+	var (
+		bctx *supamemory.BindingContext
+		berr error
+	)
+	if contextToken != "" {
+		bctx, berr = s.SupaMemory.ResolveBindingContext(ctx, providerBotID, contextToken)
+	}
+	if (berr != nil || bctx == nil) && sender != "" && sender != contextToken {
+		bctx, berr = s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
+	}
 	if berr != nil || bctx == nil {
 		cfg.SystemPrompt = globalPrompt
 		return cfg, meta
@@ -1080,17 +1120,18 @@ func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID
 	}
 
 	prompt, err := s.SupaMemory.GetEffectiveFullPrompt(ctx, meta.UserID, meta.RoleID)
-	if err != nil || prompt == nil || store.IsBlankPrompt(prompt.FullPrompt) {
+	resolvedPrompt := composePromptSnapshot(prompt)
+	if err != nil || prompt == nil || store.IsBlankPrompt(resolvedPrompt) {
 		cfg.SystemPrompt = globalPrompt
 		return cfg, meta
 	}
 
-	cfg.SystemPrompt = prompt.FullPrompt
+	cfg.SystemPrompt = resolvedPrompt
 	meta.Source = "supabase_rpc"
 	meta.Version = prompt.PromptVersion
-	meta.FullHash = store.HashPrefix(store.HashPrompt(prompt.FullPrompt), 12)
+	meta.FullHash = store.HashPrefix(store.HashPrompt(resolvedPrompt), 12)
 	s.setRuntimePromptCache(cacheKey, cachedRuntimePrompt{
-		FullPrompt:    prompt.FullPrompt,
+		FullPrompt:    resolvedPrompt,
 		PromptVersion: prompt.PromptVersion,
 		CachedAt:      time.Now(),
 	})

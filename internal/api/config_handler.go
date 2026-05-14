@@ -136,6 +136,7 @@ func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 		"base_url":         dbConf["ai.base_url"],
 		"api_key":          maskSecret(dbConf["ai.api_key"]),
 		"model":            dbConf["ai.model"],
+		"fallback_model":   dbConf["ai.fallback_model"],
 		"system_prompt":    dbConf["ai.system_prompt"],
 		"max_history":      dbConf["ai.max_history"],
 		"hide_thinking":    dbConf["ai.hide_thinking"],
@@ -153,14 +154,15 @@ func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 // PUT /api/admin/config/ai — set global AI config
 func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BaseURL         string `json:"base_url"`
-		APIKey          string `json:"api_key"`
-		Model           string `json:"model"`
-		SystemPrompt    string `json:"system_prompt"`
-		MaxHistory      string `json:"max_history"`
-		HideThinking    string `json:"hide_thinking"`
-		StripMarkdown   string `json:"strip_markdown"`
-		AvailableModels string `json:"available_models"`
+		BaseURL         string  `json:"base_url"`
+		APIKey          string  `json:"api_key"`
+		Model           string  `json:"model"`
+		FallbackModel   string  `json:"fallback_model"`
+		SystemPrompt    string  `json:"system_prompt"`
+		MaxHistory      string  `json:"max_history"`
+		HideThinking    string  `json:"hide_thinking"`
+		StripMarkdown   string  `json:"strip_markdown"`
+		AvailableModels string  `json:"available_models"`
 		CustomHeaders   *string `json:"custom_headers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -179,6 +181,9 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Model != "" {
 		s.Store.SetConfig("ai.model", req.Model)
+	}
+	if req.FallbackModel != "" {
+		s.Store.SetConfig("ai.fallback_model", req.FallbackModel)
 	}
 	// These can be set to empty to clear
 	s.Store.SetConfig("ai.system_prompt", req.SystemPrompt)
@@ -212,6 +217,7 @@ func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 	s.Store.DeleteConfig("ai.base_url")
 	s.Store.DeleteConfig("ai.api_key")
 	s.Store.DeleteConfig("ai.model")
+	s.Store.DeleteConfig("ai.fallback_model")
 	s.Store.DeleteConfig("ai.system_prompt")
 	s.Store.DeleteConfig("ai.max_history")
 	s.Store.DeleteConfig("ai.hide_thinking")

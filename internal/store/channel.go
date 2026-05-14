@@ -12,6 +12,7 @@ type AIConfig struct {
 	BaseURL       string            `json:"base_url,omitempty"`
 	APIKey        string            `json:"api_key,omitempty"`
 	Model         string            `json:"model,omitempty"`
+	FallbackModel string            `json:"fallback_model,omitempty"`
 	SystemPrompt  string            `json:"system_prompt,omitempty"`
 	MaxHistory    int               `json:"max_history,omitempty"`
 	HideThinking  bool              `json:"hide_thinking,omitempty"`
