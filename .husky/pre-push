@@ -1,0 +1,26 @@
+# 默认只允许推送到 product 分支，避免误推到其他分支
+# 如需临时绕过（极少数场景）：ALLOW_NON_PRODUCT_PUSH=1 git push ...
+
+if [ "${ALLOW_NON_PRODUCT_PUSH:-}" = "1" ]; then
+  exit 0
+fi
+
+target_branch="refs/heads/product"
+
+while read -r local_ref local_sha remote_ref remote_sha
+do
+  # 仅限制分支推送；tag 或其他 ref 不拦截
+  case "$remote_ref" in
+    refs/heads/*)
+      if [ "$remote_ref" != "$target_branch" ]; then
+        echo "❌ Push blocked: openilink-hub 默认只允许推送到 product 分支。" >&2
+        echo "当前目标: ${remote_ref}" >&2
+        echo "请使用: git push origin HEAD:product" >&2
+        echo "或先切到 product 分支后再 push。" >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+exit 0
