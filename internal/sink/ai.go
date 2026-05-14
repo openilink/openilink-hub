@@ -1052,6 +1052,28 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+func composePromptSnapshot(prompt *supamemory.PromptSnapshot) string {
+	if prompt == nil {
+		return ""
+	}
+	full := strings.TrimSpace(prompt.FullPrompt)
+	if full != "" {
+		return full
+	}
+	sys := strings.TrimSpace(prompt.SystemPrompt)
+	usr := strings.TrimSpace(prompt.UserPrompt)
+	switch {
+	case sys != "" && usr != "":
+		return sys + "\n\n" + usr
+	case sys != "":
+		return sys
+	case usr != "":
+		return usr
+	default:
+		return ""
+	}
+}
+
 func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, contextToken, sender string) (store.AIConfig, runtimePromptMeta) {
 	meta := runtimePromptMeta{Source: "global_fallback"}
 	globalPrompt := cfg.SystemPrompt
@@ -1095,17 +1117,18 @@ func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID
 	}
 
 	prompt, err := s.SupaMemory.GetEffectiveFullPrompt(ctx, meta.UserID, meta.RoleID)
-	if err != nil || prompt == nil || store.IsBlankPrompt(prompt.FullPrompt) {
+	resolvedPrompt := composePromptSnapshot(prompt)
+	if err != nil || prompt == nil || store.IsBlankPrompt(resolvedPrompt) {
 		cfg.SystemPrompt = globalPrompt
 		return cfg, meta
 	}
 
-	cfg.SystemPrompt = prompt.FullPrompt
+	cfg.SystemPrompt = resolvedPrompt
 	meta.Source = "supabase_rpc"
 	meta.Version = prompt.PromptVersion
-	meta.FullHash = store.HashPrefix(store.HashPrompt(prompt.FullPrompt), 12)
+	meta.FullHash = store.HashPrefix(store.HashPrompt(resolvedPrompt), 12)
 	s.setRuntimePromptCache(cacheKey, cachedRuntimePrompt{
-		FullPrompt:    prompt.FullPrompt,
+		FullPrompt:    resolvedPrompt,
 		PromptVersion: prompt.PromptVersion,
 		CachedAt:      time.Now(),
 	})

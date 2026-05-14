@@ -217,3 +217,42 @@ func TestResolveRuntimePrompt_ContextTokenPriority(t *testing.T) {
 		t.Fatalf("prompt rpc should be called once, got %d", promptRPCCount)
 	}
 }
+
+func TestResolveRuntimePrompt_ComposeWhenFullPromptMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_tool_bindings"):
+			_, _ = w.Write([]byte(`[{"id":"bind-1","user_id":"1001","external_account_id":"provider-bot-1","external_chat_id":"ctx-1","binding_status":"active"}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_role_tool_routes"):
+			_, _ = w.Write([]byte(`[{"id":"route-1","user_id":"1001","role_id":"2002","tool_binding_id":"bind-1"}]`))
+		case r.URL.Path == "/rest/v1/rpc/get_effective_full_prompt":
+			_, _ = w.Write([]byte(`[{"full_prompt":"","system_prompt":"sys-only","user_prompt":"usr-only","prompt_version":3001}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := supamemory.NewClient(supamemory.Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	aiSink := &AI{SupaMemory: client}
+	base := store.AIConfig{SystemPrompt: "global-system-prompt"}
+
+	cfg, meta := aiSink.resolveRuntimePrompt(context.Background(), base, "bot-local-1", "provider-bot-1", "ctx-1", "wx-1")
+	if cfg.SystemPrompt != "sys-only\n\nusr-only" {
+		t.Fatalf("prompt=%q", cfg.SystemPrompt)
+	}
+	if meta.Source != "supabase_rpc" {
+		t.Fatalf("source=%q", meta.Source)
+	}
+	if meta.Version != 3001 {
+		t.Fatalf("version=%d", meta.Version)
+	}
+}

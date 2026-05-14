@@ -257,7 +257,7 @@ func (c *Client) GetEffectiveFullPrompt(ctx context.Context, userID, roleID stri
 		}
 		rows = []effectivePromptRow{single}
 	}
-	if len(rows) == 0 || strings.TrimSpace(rows[0].FullPrompt) == "" {
+	if len(rows) == 0 {
 		return nil, nil
 	}
 	return &PromptSnapshot{
