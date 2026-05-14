@@ -209,14 +209,14 @@ func (s *AI) reply(d Delivery) {
 	sender := d.Message.Sender
 	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_start", map[string]any{
-		"bot_id":           d.BotDBID,
-		"provider_bot_id":  d.Message.Recipient,
-		"context_token":    d.Message.ContextToken,
-		"sender":           sender,
-		"model":            cfg.Model,
-		"prompt_source":    promptMeta.Source,
-		"user_id":          promptMeta.UserID,
-		"role_id":          promptMeta.RoleID,
+		"bot_id":          d.BotDBID,
+		"provider_bot_id": d.Message.Recipient,
+		"context_token":   d.Message.ContextToken,
+		"sender":          sender,
+		"model":           cfg.Model,
+		"prompt_source":   promptMeta.Source,
+		"user_id":         promptMeta.UserID,
+		"role_id":         promptMeta.RoleID,
 	})
 	memQuery := strings.TrimSpace(d.Content)
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
@@ -1027,6 +1027,7 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	cfg.BaseURL = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_BASE_URL")), global["ai.base_url"])
 	cfg.APIKey = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_API_KEY")), global["ai.api_key"])
 	cfg.Model = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MODEL")), global["ai.model"])
+	cfg.FallbackModel = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_FALLBACK_MODEL")), global["ai.fallback_model"])
 	cfg.SystemPrompt = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_SYSTEM_PROMPT")), global["ai.system_prompt"])
 	if cfg.APIKey == "" {
 		return store.AIConfig{}
