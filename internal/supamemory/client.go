@@ -220,7 +220,7 @@ func (c *Client) ResolveBindingContext(ctx context.Context, botProviderID, sende
 	return &BindingContext{
 		BindingID: binding.ID,
 		UserID:    binding.UserID,
-		RoleID:    route.RoleID,
+		RoleID:    string(route.RoleID),
 	}, nil
 }
 
@@ -483,7 +483,7 @@ func (c *Client) findBinding(ctx context.Context, botProviderID, senderUserID st
 type routeRow struct {
 	ID         string `json:"id"`
 	UserID     string `json:"user_id"`
-	RoleID     string `json:"role_id"`
+	RoleID     flexID `json:"role_id"`
 	ToolBindID string `json:"tool_binding_id"`
 }
 
@@ -510,7 +510,37 @@ func (c *Client) findRoute(ctx context.Context, userID, bindingID string) (*rout
 	if len(rows) == 0 {
 		return nil, nil
 	}
+	if strings.TrimSpace(string(rows[0].RoleID)) == "" {
+		return nil, nil
+	}
 	return &rows[0], nil
+}
+
+// flexID accepts either JSON string IDs ("2002") or numeric IDs (2002).
+type flexID string
+
+func (id *flexID) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		*id = ""
+		return nil
+	}
+	if strings.HasPrefix(raw, "\"") {
+		var text string
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		*id = flexID(strings.TrimSpace(text))
+		return nil
+	}
+	var num json.Number
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	if err := dec.Decode(&num); err != nil {
+		return err
+	}
+	*id = flexID(num.String())
+	return nil
 }
 
 func (c *Client) getSubscription(ctx context.Context, userID string) (*subscriptionRow, error) {
