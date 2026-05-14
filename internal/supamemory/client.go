@@ -455,8 +455,19 @@ func (c *Client) findBinding(ctx context.Context, botProviderID, senderUserID st
 				"external_account_id": "eq." + botProviderID,
 				"external_chat_id":    "eq." + senderUserID,
 			}),
+			// Fallback for environments where bindings were written with sender as external_account_id.
+			buildPath(map[string]string{
+				"external_account_id": "eq." + senderUserID,
+			}),
 			buildPath(map[string]string{
 				"external_account_id": "eq." + botProviderID,
+			}),
+		}, paths...)
+	} else {
+		// Same fallback even when provider bot id is unavailable.
+		paths = append([]string{
+			buildPath(map[string]string{
+				"external_account_id": "eq." + senderUserID,
 			}),
 		}, paths...)
 	}
