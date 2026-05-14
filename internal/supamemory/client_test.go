@@ -88,3 +88,42 @@ func TestResolveBindingContext_FallbackBySenderAsExternalAccount(t *testing.T) {
 		t.Fatalf("role_id=%q", got.RoleID)
 	}
 }
+
+func TestWriteAuditLog_DefaultTable(t *testing.T) {
+	var gotPath string
+	var gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	err = client.WriteAuditLog(context.Background(), AuditLogInput{
+		EventType: "unit.audit.default_table",
+		SessionID: "sess-1",
+		TraceID:   "trace-1",
+		Detail: map[string]any{
+			"hello": "world",
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteAuditLog: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method=%q", gotMethod)
+	}
+	if gotPath != "/rest/v1/bl_platform_audit_logs" {
+		t.Fatalf("path=%q", gotPath)
+	}
+}
