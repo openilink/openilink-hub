@@ -207,7 +207,7 @@ func (s *AI) reply(d Delivery) {
 
 	ctx := context.Background()
 	sender := d.Message.Sender
-	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, sender)
+	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_start", map[string]any{
 		"bot_id":        d.BotDBID,
 		"sender":        sender,
@@ -1052,13 +1052,28 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, sender string) (store.AIConfig, runtimePromptMeta) {
+func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, contextToken, sender string) (store.AIConfig, runtimePromptMeta) {
 	meta := runtimePromptMeta{Source: "global_fallback"}
 	globalPrompt := cfg.SystemPrompt
-	if sender == "" || s.SupaMemory == nil {
+	if s.SupaMemory == nil {
 		return cfg, meta
 	}
-	bctx, berr := s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
+	contextToken = strings.TrimSpace(contextToken)
+	sender = strings.TrimSpace(sender)
+	if contextToken == "" && sender == "" {
+		return cfg, meta
+	}
+
+	var (
+		bctx *supamemory.BindingContext
+		berr error
+	)
+	if contextToken != "" {
+		bctx, berr = s.SupaMemory.ResolveBindingContext(ctx, providerBotID, contextToken)
+	}
+	if (berr != nil || bctx == nil) && sender != "" && sender != contextToken {
+		bctx, berr = s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
+	}
 	if berr != nil || bctx == nil {
 		cfg.SystemPrompt = globalPrompt
 		return cfg, meta
