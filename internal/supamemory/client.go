@@ -121,6 +121,16 @@ type UsageEventInput struct {
 	Detail      map[string]any
 }
 
+type UsageLedgerInput struct {
+	UserID      string
+	Delta       int
+	Source      string
+	SessionID   string
+	TraceID     string
+	Detail      map[string]any
+	WriteEvent  bool
+}
+
 type UsageBillingConfig struct {
 	Enabled          bool
 	TextCharsPerUnit int
@@ -448,6 +458,31 @@ func (c *Client) BumpMonthlyUsage(ctx context.Context, userID string, delta int)
 		"p_delta":   delta,
 	})
 	_, err := c.do(ctx, http.MethodPost, "/rest/v1/rpc/bump_usage_counter", body, nil)
+	return err
+}
+
+func (c *Client) BumpUsageLedger(ctx context.Context, in UsageLedgerInput) error {
+	if c == nil {
+		return nil
+	}
+	userID := strings.TrimSpace(in.UserID)
+	if userID == "" {
+		return nil
+	}
+	delta := in.Delta
+	if delta <= 0 {
+		delta = 1
+	}
+	body, _ := json.Marshal(map[string]any{
+		"p_user_id":    anyID(userID),
+		"p_delta":      delta,
+		"p_source":     strings.TrimSpace(in.Source),
+		"p_session_id": strings.TrimSpace(in.SessionID),
+		"p_trace_id":   strings.TrimSpace(in.TraceID),
+		"p_detail":     in.Detail,
+		"p_write_event": in.WriteEvent,
+	})
+	_, err := c.do(ctx, http.MethodPost, "/rest/v1/rpc/bump_usage_ledger", body, nil)
 	return err
 }
 

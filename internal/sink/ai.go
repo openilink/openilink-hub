@@ -656,7 +656,30 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
-		if err := s.SupaMemory.BumpMonthlyUsage(ctx, promptMeta.UserID, usageUnits); err != nil {
+		traceID := ""
+		if d.Tracer != nil {
+			traceID = d.Tracer.TraceID()
+		}
+		sessionID := d.Message.ContextToken
+		if strings.TrimSpace(sessionID) == "" {
+			sessionID = d.Message.Sender
+		}
+		if err := s.SupaMemory.BumpUsageLedger(ctx, supamemory.UsageLedgerInput{
+			UserID:     promptMeta.UserID,
+			Delta:      usageUnits,
+			Source:     "openilink_hub_ai",
+			SessionID:  sessionID,
+			TraceID:    traceID,
+			WriteEvent: true,
+			Detail: map[string]any{
+				"bot_id":      d.BotDBID,
+				"role_id":     promptMeta.RoleID,
+				"sender":      sender,
+				"usage_units": usageUnits,
+				"msg_type":    d.MsgType,
+				"text_chars":  len([]rune(strings.Join(strings.Fields(text), " "))),
+			},
+		}); err != nil {
 			slog.Warn("ai usage bump failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", err)
 			s.writeRuntimeAudit(d, "openilink_hub_ai_usage_bump_failed", map[string]any{
 				"bot_id":      d.BotDBID,
@@ -666,41 +689,6 @@ func (s *AI) reply(d Delivery) {
 				"usage_units": usageUnits,
 				"error":       err.Error(),
 			})
-		} else {
-			traceID := ""
-			if d.Tracer != nil {
-				traceID = d.Tracer.TraceID()
-			}
-			sessionID := d.Message.ContextToken
-			if strings.TrimSpace(sessionID) == "" {
-				sessionID = d.Message.Sender
-			}
-			if eventErr := s.SupaMemory.WriteUsageEvent(ctx, supamemory.UsageEventInput{
-				UserID:      promptMeta.UserID,
-				PeriodMonth: time.Now().UTC().Format("2006-01"),
-				Delta:       usageUnits,
-				Source:      "openilink_hub_ai",
-				SessionID:   sessionID,
-				TraceID:     traceID,
-				Detail: map[string]any{
-					"bot_id":      d.BotDBID,
-					"role_id":     promptMeta.RoleID,
-					"sender":      sender,
-					"usage_units": usageUnits,
-					"msg_type":    d.MsgType,
-					"text_chars":  len([]rune(strings.Join(strings.Fields(text), " "))),
-				},
-			}); eventErr != nil {
-				slog.Warn("ai usage event write failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", eventErr)
-				s.writeRuntimeAudit(d, "openilink_hub_ai_usage_event_write_failed", map[string]any{
-					"bot_id":      d.BotDBID,
-					"user_id":     promptMeta.UserID,
-					"role_id":     promptMeta.RoleID,
-					"sender":      sender,
-					"usage_units": usageUnits,
-					"error":       eventErr.Error(),
-				})
-			}
 		}
 	}
 

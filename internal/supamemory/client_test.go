@@ -170,6 +170,47 @@ func TestWriteUsageEvent_DefaultTable(t *testing.T) {
 	}
 }
 
+func TestBumpUsageLedger_UsesUnifiedRPC(t *testing.T) {
+	var gotPath string
+	var gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"user_id":"00000000-0000-0000-0000-000000000001","period_month":"2026-05","message_used":3,"updated_at":"2026-05-15T00:00:00Z","event_id":9}]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	err = client.BumpUsageLedger(context.Background(), UsageLedgerInput{
+		UserID:     "1001",
+		Delta:      3,
+		Source:     "openilink_hub_ai",
+		SessionID:  "sess-1",
+		TraceID:    "trace-1",
+		WriteEvent: true,
+		Detail: map[string]any{
+			"usage_units": 3,
+		},
+	})
+	if err != nil {
+		t.Fatalf("BumpUsageLedger: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method=%q", gotMethod)
+	}
+	if gotPath != "/rest/v1/rpc/bump_usage_ledger" {
+		t.Fatalf("path=%q", gotPath)
+	}
+}
+
 func TestGetUsageBillingConfig_FromDictItems(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
