@@ -1,7 +1,7 @@
 -- +goose Up
 
 CREATE TABLE IF NOT EXISTS wechat_pending_bindings (
-    id                     BIGSERIAL PRIMARY KEY,
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id               TEXT NOT NULL UNIQUE,
     provider_bot_id        TEXT NOT NULL,
     bot_id                 TEXT NOT NULL,
@@ -12,10 +12,10 @@ CREATE TABLE IF NOT EXISTS wechat_pending_bindings (
     external_chat_id       TEXT NOT NULL DEFAULT '',
     last_finalize_event_id TEXT NOT NULL DEFAULT '',
     last_error             TEXT NOT NULL DEFAULT '',
-    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at             TIMESTAMPTZ NOT NULL,
-    finalized_at           TIMESTAMPTZ,
-    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at             INTEGER NOT NULL DEFAULT (unixepoch()),
+    expires_at             INTEGER NOT NULL,
+    finalized_at           INTEGER,
+    updated_at             INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 CREATE INDEX IF NOT EXISTS idx_wechat_pending_bindings_lookup
