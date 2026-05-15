@@ -49,10 +49,12 @@ type runtimePromptMeta struct {
 	Truncated bool
 	RoleID    string
 	UserID    string
+	UserPrompt string
 }
 
 type cachedRuntimePrompt struct {
-	FullPrompt    string
+	SystemPrompt  string
+	UserPrompt    string
 	PromptVersion int64
 	CachedAt      time.Time
 }
@@ -208,6 +210,9 @@ func (s *AI) reply(d Delivery) {
 	ctx := context.Background()
 	sender := d.Message.Sender
 	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
+	channelCode := normalizeChannelCode(d.Provider.Name())
+	channelPrompt := buildChannelPrompt(channelCode)
+	cfg.SystemPrompt = composeSystemWithChannelPrompt(cfg.SystemPrompt, channelPrompt)
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_start", map[string]any{
 		"bot_id":          d.BotDBID,
 		"provider_bot_id": d.Message.Recipient,
@@ -215,6 +220,7 @@ func (s *AI) reply(d Delivery) {
 		"sender":          sender,
 		"model":           cfg.Model,
 		"prompt_source":   promptMeta.Source,
+		"channel_code":    channelCode,
 		"user_id":         promptMeta.UserID,
 		"role_id":         promptMeta.RoleID,
 	})
@@ -346,6 +352,7 @@ func (s *AI) reply(d Delivery) {
 
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+	messages = injectUserPromptMessage(messages, promptMeta.UserPrompt)
 	if len(memories) > 0 {
 		memPrompt := buildMemoryPrompt(memories)
 		if memPrompt != "" {
@@ -1055,26 +1062,66 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func composePromptSnapshot(prompt *supamemory.PromptSnapshot) string {
-	if prompt == nil {
-		return ""
+func normalizeChannelCode(providerName string) string {
+	switch strings.ToLower(strings.TrimSpace(providerName)) {
+	case "ilink":
+		return "wechat"
+	case "wechat", "telegram", "discord":
+		return strings.ToLower(strings.TrimSpace(providerName))
+	default:
+		return "generic"
 	}
-	full := strings.TrimSpace(prompt.FullPrompt)
-	if full != "" {
-		return full
+}
+
+func buildChannelPrompt(channelCode string) string {
+	switch strings.ToLower(strings.TrimSpace(channelCode)) {
+	case "wechat":
+		return "渠道约束（WeChat）：移动端优先，短段落表达，避免超长单段与复杂排版。"
+	case "discord":
+		return "渠道约束（Discord）：可结构化表达，支持简洁列表与代码块，结论先行。"
+	case "telegram":
+		return "渠道约束（Telegram）：首屏先给结论，再给下一步，避免长段堆叠。"
+	default:
+		return "渠道约束：输出简洁、可执行、适配即时聊天阅读。"
 	}
-	sys := strings.TrimSpace(prompt.SystemPrompt)
-	usr := strings.TrimSpace(prompt.UserPrompt)
+}
+
+func composeSystemWithChannelPrompt(systemPrompt, channelPrompt string) string {
+	sys := strings.TrimSpace(systemPrompt)
+	ch := strings.TrimSpace(channelPrompt)
 	switch {
-	case sys != "" && usr != "":
-		return sys + "\n\n" + usr
+	case sys != "" && ch != "":
+		return sys + "\n\n" + ch
 	case sys != "":
 		return sys
-	case usr != "":
-		return usr
 	default:
-		return ""
+		return ch
 	}
+}
+
+func injectUserPromptMessage(messages []ai.Message, userPrompt string) []ai.Message {
+	up := strings.TrimSpace(userPrompt)
+	if up == "" {
+		return messages
+	}
+	injected := ai.Message{
+		Role: "user",
+		Content: strings.TrimSpace("用户长期偏好（系统注入）：\n" +
+			up + "\n请在后续回复中遵循这些偏好。"),
+	}
+	if len(messages) == 0 {
+		return []ai.Message{injected}
+	}
+	if messages[0].Role == "system" {
+		out := make([]ai.Message, 0, len(messages)+1)
+		out = append(out, messages[0], injected)
+		out = append(out, messages[1:]...)
+		return out
+	}
+	out := make([]ai.Message, 0, len(messages)+1)
+	out = append(out, injected)
+	out = append(out, messages...)
+	return out
 }
 
 func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, contextToken, sender string) (store.AIConfig, runtimePromptMeta) {
@@ -1111,27 +1158,38 @@ func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID
 	}
 
 	cacheKey := meta.UserID + ":" + meta.RoleID
-	if hit, ok := s.getRuntimePromptCache(cacheKey, time.Now()); ok && !store.IsBlankPrompt(hit.FullPrompt) {
-		cfg.SystemPrompt = hit.FullPrompt
+	if hit, ok := s.getRuntimePromptCache(cacheKey, time.Now()); ok && !store.IsBlankPrompt(hit.SystemPrompt) {
+		cfg.SystemPrompt = hit.SystemPrompt
+		meta.UserPrompt = hit.UserPrompt
 		meta.Source = "cache"
 		meta.Version = hit.PromptVersion
-		meta.FullHash = store.HashPrefix(store.HashPrompt(hit.FullPrompt), 12)
+		meta.FullHash = store.HashPrefix(store.HashPrompt(strings.TrimSpace(hit.SystemPrompt+"\n\n"+hit.UserPrompt)), 12)
 		return cfg, meta
 	}
 
 	prompt, err := s.SupaMemory.GetEffectiveFullPrompt(ctx, meta.UserID, meta.RoleID)
-	resolvedPrompt := composePromptSnapshot(prompt)
-	if err != nil || prompt == nil || store.IsBlankPrompt(resolvedPrompt) {
+	if err != nil || prompt == nil {
 		cfg.SystemPrompt = globalPrompt
 		return cfg, meta
 	}
+	resolvedSystemPrompt := strings.TrimSpace(prompt.SystemPrompt)
+	resolvedUserPrompt := strings.TrimSpace(prompt.UserPrompt)
+	if store.IsBlankPrompt(resolvedSystemPrompt) && store.IsBlankPrompt(resolvedUserPrompt) {
+		cfg.SystemPrompt = globalPrompt
+		return cfg, meta
+	}
+	if store.IsBlankPrompt(resolvedSystemPrompt) {
+		resolvedSystemPrompt = strings.TrimSpace(globalPrompt)
+	}
 
-	cfg.SystemPrompt = resolvedPrompt
+	cfg.SystemPrompt = resolvedSystemPrompt
+	meta.UserPrompt = resolvedUserPrompt
 	meta.Source = "supabase_rpc"
 	meta.Version = prompt.PromptVersion
-	meta.FullHash = store.HashPrefix(store.HashPrompt(resolvedPrompt), 12)
+	meta.FullHash = store.HashPrefix(store.HashPrompt(strings.TrimSpace(resolvedSystemPrompt+"\n\n"+resolvedUserPrompt)), 12)
 	s.setRuntimePromptCache(cacheKey, cachedRuntimePrompt{
-		FullPrompt:    resolvedPrompt,
+		SystemPrompt:  resolvedSystemPrompt,
+		UserPrompt:    resolvedUserPrompt,
 		PromptVersion: prompt.PromptVersion,
 		CachedAt:      time.Now(),
 	})

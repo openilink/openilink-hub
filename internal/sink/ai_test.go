@@ -93,16 +93,22 @@ func TestResolveRuntimePrompt_RPCAndCache(t *testing.T) {
 	base := store.AIConfig{SystemPrompt: "global-system-prompt"}
 
 	cfg1, meta1 := aiSink.resolveRuntimePrompt(context.Background(), base, "bot-local-1", "provider-bot-1", "", "wx-1")
-	if cfg1.SystemPrompt != "rpc-full-prompt" {
+	if cfg1.SystemPrompt != "sys" {
 		t.Fatalf("first call prompt=%q", cfg1.SystemPrompt)
+	}
+	if meta1.UserPrompt != "usr" {
+		t.Fatalf("first call user_prompt=%q", meta1.UserPrompt)
 	}
 	if meta1.Source != "supabase_rpc" {
 		t.Fatalf("first call source=%q", meta1.Source)
 	}
 
 	cfg2, meta2 := aiSink.resolveRuntimePrompt(context.Background(), base, "bot-local-1", "provider-bot-1", "", "wx-1")
-	if cfg2.SystemPrompt != "rpc-full-prompt" {
+	if cfg2.SystemPrompt != "sys" {
 		t.Fatalf("second call prompt=%q", cfg2.SystemPrompt)
+	}
+	if meta2.UserPrompt != "usr" {
+		t.Fatalf("second call user_prompt=%q", meta2.UserPrompt)
 	}
 	if meta2.Source != "cache" {
 		t.Fatalf("second call source=%q", meta2.Source)
@@ -201,8 +207,11 @@ func TestResolveRuntimePrompt_ContextTokenPriority(t *testing.T) {
 	base := store.AIConfig{SystemPrompt: "global-system-prompt"}
 
 	cfg, meta := aiSink.resolveRuntimePrompt(context.Background(), base, "bot-local-1", "provider-bot-1", "ctx-1", "wx-1")
-	if cfg.SystemPrompt != "rpc-from-context-token" {
+	if cfg.SystemPrompt != "sys" {
 		t.Fatalf("prompt=%q", cfg.SystemPrompt)
+	}
+	if meta.UserPrompt != "usr" {
+		t.Fatalf("user_prompt=%q", meta.UserPrompt)
 	}
 	if meta.Source != "supabase_rpc" {
 		t.Fatalf("source=%q", meta.Source)
@@ -246,8 +255,11 @@ func TestResolveRuntimePrompt_ComposeWhenFullPromptMissing(t *testing.T) {
 	base := store.AIConfig{SystemPrompt: "global-system-prompt"}
 
 	cfg, meta := aiSink.resolveRuntimePrompt(context.Background(), base, "bot-local-1", "provider-bot-1", "ctx-1", "wx-1")
-	if cfg.SystemPrompt != "sys-only\n\nusr-only" {
+	if cfg.SystemPrompt != "sys-only" {
 		t.Fatalf("prompt=%q", cfg.SystemPrompt)
+	}
+	if meta.UserPrompt != "usr-only" {
+		t.Fatalf("user_prompt=%q", meta.UserPrompt)
 	}
 	if meta.Source != "supabase_rpc" {
 		t.Fatalf("source=%q", meta.Source)
