@@ -2,14 +2,17 @@ package sink
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/store/sqlite"
 	"github.com/openilink/openilink-hub/internal/supamemory"
 )
 
@@ -345,5 +348,192 @@ func TestResolveRuntimePrompt_ComposeWhenFullPromptMissing(t *testing.T) {
 	}
 	if meta.Version != 3001 {
 		t.Fatalf("version=%d", meta.Version)
+	}
+}
+
+func TestResolveEmojiDecision(t *testing.T) {
+	now := time.Now().Unix()
+	base := struct {
+		EmojiEnabled             bool
+		Text                     string
+		LatestConversationEmojiS int64
+		UserEmojiCountInWindow   int
+		LatestUserEmojiURL       string
+		CandidateEmojiURL        string
+		NowSec                   int64
+	}{
+		EmojiEnabled:             true,
+		Text:                     "来个表情包",
+		LatestConversationEmojiS: 0,
+		UserEmojiCountInWindow:   0,
+		LatestUserEmojiURL:       "",
+		CandidateEmojiURL:        "https://cdn.example.com/a.webp",
+		NowSec:                   now,
+	}
+
+	decision := resolveEmojiDecision(base)
+	if !decision.IncludeEmoji || decision.Reason != "force_trigger" {
+		t.Fatalf("decision=%+v", decision)
+	}
+
+	suppressed := base
+	suppressed.Text = "我想退款订单，别发表情包"
+	decision = resolveEmojiDecision(suppressed)
+	if decision.Reason != "suppressed" || decision.IncludeEmoji {
+		t.Fatalf("suppressed decision=%+v", decision)
+	}
+
+	throttled := base
+	throttled.LatestConversationEmojiS = now - 60
+	decision = resolveEmojiDecision(throttled)
+	if decision.Reason != "throttled_conversation" || decision.IncludeEmoji {
+		t.Fatalf("throttled decision=%+v", decision)
+	}
+
+	dedup := base
+	dedup.LatestUserEmojiURL = "https://cdn.example.com/a.webp"
+	decision = resolveEmojiDecision(dedup)
+	if decision.Reason != "dedup_recent_asset" || decision.IncludeEmoji {
+		t.Fatalf("dedup decision=%+v", decision)
+	}
+}
+
+func TestResolveEmojiReply(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_bots"):
+			_, _ = w.Write([]byte(`[{"emoji_reply_enabled":true}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_dict_items"):
+			_, _ = w.Write([]byte(`[
+				{"item_name":"Happy","item_value":"https://cdn.example.com/happy.webp","ext":{"enabled":true,"lang":"zh-CN","desc":"开心图"}}
+			]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := supamemory.NewClient(supamemory.Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	db, err := sqlite.Open(":memory:")
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	defer db.Close()
+
+	aiSink := &AI{
+		Store:      db,
+		SupaMemory: client,
+	}
+	delivery := Delivery{
+		BotDBID: "bot-1",
+		Message: provider.InboundMessage{
+			Sender: "wx-user-1",
+		},
+	}
+	msgItem, _ := json.Marshal([]map[string]any{{
+		"type": "image",
+		"url":  "https://cdn.example.com/old.webp",
+	}})
+	_, _ = db.SaveMessage(&store.Message{
+		BotID:       "bot-1",
+		Direction:   "outbound",
+		ToUserID:    "wx-user-1",
+		MessageType: 2,
+		ItemList:    msgItem,
+		CreatedAt:   time.Now().Unix() - int64((emojiConversationCooldown/time.Second)+60),
+		CreateTimeMs: func() *int64 {
+			v := time.Now().Add(-(emojiConversationCooldown + time.Minute)).UnixMilli()
+			return &v
+		}(),
+	})
+
+	asset, info := aiSink.resolveEmojiReply(context.Background(), delivery, runtimePromptMeta{
+		UserID: "1001",
+		RoleID: "2002",
+	}, "来个表情包")
+	if asset == nil {
+		t.Fatalf("asset should not be nil, info=%+v", info)
+	}
+	if info.Reason != "force_trigger" {
+		t.Fatalf("reason=%s", info.Reason)
+	}
+	if asset.URL != "https://cdn.example.com/happy.webp" {
+		t.Fatalf("url=%s", asset.URL)
+	}
+}
+
+func TestResolveEmojiReply_DedupRecentAsset(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_bots"):
+			_, _ = w.Write([]byte(`[{"emoji_reply_enabled":true}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_dict_items"):
+			_, _ = w.Write([]byte(`[
+				{"item_name":"Happy","item_value":"https://cdn.example.com/happy.webp","ext":{"enabled":true,"lang":"zh-CN","desc":"开心图"}}
+			]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := supamemory.NewClient(supamemory.Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	db, err := sqlite.Open(":memory:")
+	if err != nil {
+		t.Fatalf("sqlite.Open: %v", err)
+	}
+	defer db.Close()
+
+	aiSink := &AI{
+		Store:      db,
+		SupaMemory: client,
+	}
+	delivery := Delivery{
+		BotDBID: "bot-1",
+		Message: provider.InboundMessage{
+			Sender: "wx-user-1",
+		},
+	}
+	msgItem, _ := json.Marshal([]map[string]any{{
+		"type": "image",
+		"url":  "https://cdn.example.com/happy.webp",
+	}})
+	_, _ = db.SaveMessage(&store.Message{
+		BotID:       "bot-1",
+		Direction:   "outbound",
+		ToUserID:    "wx-user-1",
+		MessageType: 2,
+		ItemList:    msgItem,
+		CreateTimeMs: func() *int64 {
+			v := time.Now().Add(-(emojiConversationCooldown + time.Minute)).UnixMilli()
+			return &v
+		}(),
+	})
+
+	asset, info := aiSink.resolveEmojiReply(context.Background(), delivery, runtimePromptMeta{
+		UserID: "1001",
+		RoleID: "2002",
+	}, "来个表情包")
+	if asset != nil {
+		t.Fatalf("asset should be nil, info=%+v", info)
+	}
+	if info.Reason != "dedup_recent_asset" {
+		t.Fatalf("reason=%s", info.Reason)
 	}
 }

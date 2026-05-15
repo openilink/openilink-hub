@@ -244,3 +244,64 @@ func TestGetUsageBillingConfig_FromDictItems(t *testing.T) {
 		t.Fatalf("chars_per_unit=%d", cfg.TextCharsPerUnit)
 	}
 }
+
+func TestIsEmojiReplyEnabled(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"emoji_reply_enabled":true}]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	enabled, err := client.IsEmojiReplyEnabled(context.Background(), "1001", "2002")
+	if err != nil {
+		t.Fatalf("IsEmojiReplyEnabled: %v", err)
+	}
+	if gotPath != "/rest/v1/bl_bots" {
+		t.Fatalf("path=%q", gotPath)
+	}
+	if !enabled {
+		t.Fatal("enabled should be true")
+	}
+}
+
+func TestListEmojiAssets(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"item_name":"Happy","item_value":"https://cdn.example.com/happy.webp","ext":{"enabled":true,"lang":"zh-CN","desc":"开心"}},
+			{"item_name":"Off","item_value":"https://cdn.example.com/off.webp","ext":{"enabled":false,"lang":"default","desc":"关闭"}},
+			{"item_name":"Default","item_value":"https://cdn.example.com/default.webp","ext":{"lang":"default","desc":"默认"}}
+		]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	assets, err := client.ListEmojiAssets(context.Background())
+	if err != nil {
+		t.Fatalf("ListEmojiAssets: %v", err)
+	}
+	if len(assets) != 2 {
+		t.Fatalf("assets len=%d", len(assets))
+	}
+	if assets[0].Lang != "zh-CN" || assets[0].Desc != "开心" {
+		t.Fatalf("first asset = %#v", assets[0])
+	}
+	if assets[1].Lang != "default" || assets[1].URL != "https://cdn.example.com/default.webp" {
+		t.Fatalf("second asset = %#v", assets[1])
+	}
+}

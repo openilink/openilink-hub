@@ -24,6 +24,9 @@ import (
 
 const typingTimeout = 30 * time.Second
 const maxImageBytes = 20 * 1024 * 1024 // 20MB
+const emojiConversationCooldown = 10 * time.Minute
+const emojiUserWindow = 24 * time.Hour
+const emojiUserWindowCap = 3
 
 // BotModelSyncer allows the AI sink to sync an in-memory bot's model after a
 // /model switch without importing the bot package (which would create a cycle).
@@ -59,6 +62,14 @@ type cachedRuntimePrompt struct {
 	UserPrompt    string
 	PromptVersion int64
 	CachedAt      time.Time
+}
+
+type emojiDecision struct {
+	Enabled         bool
+	Reason          string
+	TriggerMode     string
+	IncludeEmoji    bool
+	ThrottleSeconds int
 }
 
 const runtimePromptCacheTTL = 120 * time.Second
@@ -609,6 +620,8 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	emojiAsset, emojiInfo := s.resolveEmojiReply(ctx, d, promptMeta, text)
+
 	if span != nil {
 		span.SetAttr("reply.content", reply)
 	}
@@ -635,6 +648,16 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	if emojiAsset != nil {
+		_, emojiSendErr := d.Provider.Send(ctx, provider.OutboundMessage{
+			Recipient: sender,
+			Text:      emojiAsset.URL,
+		})
+		if emojiSendErr != nil {
+			slog.Warn("ai emoji send failed", "bot", d.BotDBID, "url", emojiAsset.URL, "err", emojiSendErr)
+		}
+	}
+
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_sent", map[string]any{
 		"bot_id":            d.BotDBID,
 		"user_id":           promptMeta.UserID,
@@ -649,6 +672,13 @@ func (s *AI) reply(d Delivery) {
 		"cached_tokens":     totalCached,
 		"reasoning_tokens":  totalReasoning,
 		"memory_hits":       len(memories),
+		"emoji_reply_enabled":                 emojiInfo.Enabled,
+		"emoji_trigger_reason":                emojiInfo.Reason,
+		"emoji_trigger_mode":                  emojiInfo.TriggerMode,
+		"emoji_lang_bucket":                   emojiInfo.LangBucket,
+		"emoji_url":                           emojiInfo.URL,
+		"emoji_user_window_count":             emojiInfo.UserWindowCount,
+		"emoji_conversation_throttle_seconds": emojiInfo.ThrottleSeconds,
 	})
 
 	if span != nil {
@@ -693,7 +723,18 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	// Save only the content (not thinking) to message history to avoid polluting context
-	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": result.Content}})
+	outboundItems := []map[string]any{
+		{"type": "text", "text": result.Content},
+	}
+	if emojiAsset != nil {
+		outboundItems = append(outboundItems, map[string]any{
+			"type": "image",
+			"url":  emojiAsset.URL,
+			"desc": emojiAsset.Desc,
+			"lang": emojiAsset.Lang,
+		})
+	}
+	itemList, _ := json.Marshal(outboundItems)
 	saveRes, _ := s.Store.SaveMessage(&store.Message{
 		BotID:       d.BotDBID,
 		Direction:   "outbound",
@@ -1510,4 +1551,270 @@ func estimateFileUnits(items []provider.MessageItem) int {
 		}
 	}
 	return maxUnits
+}
+
+type emojiReplyInfo struct {
+	Enabled         bool
+	Reason          string
+	TriggerMode     string
+	LangBucket      string
+	URL             string
+	UserWindowCount int
+	ThrottleSeconds int
+}
+
+func shouldForceEmojiReply(text string) bool {
+	t := strings.ToLower(strings.TrimSpace(text))
+	if t == "" {
+		return false
+	}
+	keywords := []string{"表情包", "斗图", "发图", "来个图", "emoji", "sticker"}
+	for _, k := range keywords {
+		if strings.Contains(t, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldSmartEmojiReply(text string) bool {
+	t := strings.ToLower(strings.TrimSpace(text))
+	if t == "" {
+		return false
+	}
+	keywords := []string{"哈哈", "笑死", "有趣", "可爱", "lol", "lmao", "meme"}
+	for _, k := range keywords {
+		if strings.Contains(t, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldSuppressEmojiReply(text string) bool {
+	t := strings.ToLower(strings.TrimSpace(text))
+	if t == "" {
+		return false
+	}
+	keywords := []string{"支付", "退款", "订单", "账号", "密码", "登录", "投诉", "举报", "安全", "风控", "盗号"}
+	for _, k := range keywords {
+		if strings.Contains(t, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func detectLanguageBucket(text string) string {
+	input := strings.TrimSpace(text)
+	if input == "" {
+		return "default"
+	}
+	zh := 0
+	ja := 0
+	for _, r := range input {
+		if (r >= 0x3400 && r <= 0x4DBF) || (r >= 0x4E00 && r <= 0x9FFF) {
+			zh++
+		}
+		if r >= 0x3040 && r <= 0x30FF {
+			ja++
+		}
+	}
+	if ja > zh && ja > 0 {
+		return "ja-JP"
+	}
+	if zh > 0 {
+		return "zh-CN"
+	}
+	return "default"
+}
+
+func extractFirstImageURL(itemList json.RawMessage) string {
+	if len(itemList) == 0 {
+		return ""
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal(itemList, &rows); err != nil {
+		return ""
+	}
+	for _, row := range rows {
+		kind, _ := row["type"].(string)
+		if strings.ToLower(strings.TrimSpace(kind)) != "image" {
+			continue
+		}
+		if v, ok := row["url"].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
+}
+
+func parseMessageCreatedAtSec(msg store.Message) int64 {
+	if msg.CreateTimeMs != nil && *msg.CreateTimeMs > 0 {
+		return *msg.CreateTimeMs / 1000
+	}
+	if msg.CreatedAt > 0 {
+		return msg.CreatedAt
+	}
+	return 0
+}
+
+func pickEmojiAssetByLang(assets []supamemory.EmojiAsset, lang string) *supamemory.EmojiAsset {
+	var fallback *supamemory.EmojiAsset
+	for i := range assets {
+		asset := assets[i]
+		if strings.TrimSpace(asset.URL) == "" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(asset.Lang), lang) {
+			return &asset
+		}
+		if fallback == nil && strings.EqualFold(strings.TrimSpace(asset.Lang), "default") {
+			fallback = &asset
+		}
+	}
+	return fallback
+}
+
+func resolveEmojiDecision(input struct {
+	EmojiEnabled             bool
+	Text                     string
+	LatestConversationEmojiS int64
+	UserEmojiCountInWindow   int
+	LatestUserEmojiURL       string
+	CandidateEmojiURL        string
+	NowSec                   int64
+}) emojiDecision {
+	if !input.EmojiEnabled {
+		return emojiDecision{Enabled: false, Reason: "role_disabled", TriggerMode: "none", IncludeEmoji: false}
+	}
+	if shouldSuppressEmojiReply(input.Text) {
+		return emojiDecision{Enabled: true, Reason: "suppressed", TriggerMode: "none", IncludeEmoji: false}
+	}
+	force := shouldForceEmojiReply(input.Text)
+	smart := !force && shouldSmartEmojiReply(input.Text)
+	if !force && !smart {
+		return emojiDecision{Enabled: true, Reason: "not_triggered", TriggerMode: "none", IncludeEmoji: false}
+	}
+	mode := "smart"
+	if force {
+		mode = "force"
+	}
+	if input.LatestConversationEmojiS > 0 && (input.NowSec-input.LatestConversationEmojiS) < int64(emojiConversationCooldown/time.Second) {
+		left := int(int64(emojiConversationCooldown/time.Second) - (input.NowSec - input.LatestConversationEmojiS))
+		if left < 0 {
+			left = 0
+		}
+		return emojiDecision{
+			Enabled:         true,
+			Reason:          "throttled_conversation",
+			TriggerMode:     mode,
+			IncludeEmoji:    false,
+			ThrottleSeconds: left,
+		}
+	}
+	if input.UserEmojiCountInWindow >= emojiUserWindowCap {
+		return emojiDecision{
+			Enabled:      true,
+			Reason:       "throttled_user_window",
+			TriggerMode:  mode,
+			IncludeEmoji: false,
+		}
+	}
+	if input.CandidateEmojiURL != "" && input.LatestUserEmojiURL != "" && input.CandidateEmojiURL == input.LatestUserEmojiURL {
+		return emojiDecision{
+			Enabled:      true,
+			Reason:       "dedup_recent_asset",
+			TriggerMode:  mode,
+			IncludeEmoji: false,
+		}
+	}
+	if force {
+		return emojiDecision{Enabled: true, Reason: "force_trigger", TriggerMode: "force", IncludeEmoji: true}
+	}
+	return emojiDecision{Enabled: true, Reason: "smart_trigger", TriggerMode: "smart", IncludeEmoji: true}
+}
+
+func (s *AI) resolveEmojiReply(ctx context.Context, d Delivery, promptMeta runtimePromptMeta, currentText string) (*supamemory.EmojiAsset, emojiReplyInfo) {
+	info := emojiReplyInfo{
+		Enabled:     false,
+		Reason:      "role_disabled",
+		TriggerMode: "none",
+		LangBucket:  detectLanguageBucket(currentText),
+	}
+	if s.SupaMemory == nil || strings.TrimSpace(promptMeta.UserID) == "" || strings.TrimSpace(promptMeta.RoleID) == "" {
+		return nil, info
+	}
+	enabled, err := s.SupaMemory.IsEmojiReplyEnabled(ctx, promptMeta.UserID, promptMeta.RoleID)
+	if err != nil || !enabled {
+		return nil, info
+	}
+	info.Enabled = true
+
+	assets, err := s.SupaMemory.ListEmojiAssets(ctx)
+	if err != nil || len(assets) == 0 {
+		info.Reason = "not_triggered"
+		return nil, info
+	}
+	candidate := pickEmojiAssetByLang(assets, info.LangBucket)
+	if candidate == nil {
+		info.Reason = "not_triggered"
+		return nil, info
+	}
+
+	history, err := s.Store.ListMessagesBySender(d.BotDBID, d.Message.Sender, 200)
+	if err != nil {
+		history = nil
+	}
+	nowSec := time.Now().Unix()
+	latestConversationEmojiSec := int64(0)
+	userEmojiCountInWindow := 0
+	latestUserEmojiURL := ""
+	for _, msg := range history {
+		if msg.Direction != "outbound" || strings.TrimSpace(msg.ToUserID) != strings.TrimSpace(d.Message.Sender) {
+			continue
+		}
+		urlValue := extractFirstImageURL(msg.ItemList)
+		if urlValue == "" {
+			continue
+		}
+		msgSec := parseMessageCreatedAtSec(msg)
+		if latestConversationEmojiSec == 0 {
+			latestConversationEmojiSec = msgSec
+		}
+		if latestUserEmojiURL == "" {
+			latestUserEmojiURL = urlValue
+		}
+		if msgSec > 0 && nowSec-msgSec <= int64(emojiUserWindow/time.Second) {
+			userEmojiCountInWindow++
+		}
+	}
+
+	decision := resolveEmojiDecision(struct {
+		EmojiEnabled             bool
+		Text                     string
+		LatestConversationEmojiS int64
+		UserEmojiCountInWindow   int
+		LatestUserEmojiURL       string
+		CandidateEmojiURL        string
+		NowSec                   int64
+	}{
+		EmojiEnabled:             enabled,
+		Text:                     currentText,
+		LatestConversationEmojiS: latestConversationEmojiSec,
+		UserEmojiCountInWindow:   userEmojiCountInWindow,
+		LatestUserEmojiURL:       latestUserEmojiURL,
+		CandidateEmojiURL:        candidate.URL,
+		NowSec:                   nowSec,
+	})
+
+	info.Reason = decision.Reason
+	info.TriggerMode = decision.TriggerMode
+	info.UserWindowCount = userEmojiCountInWindow
+	info.ThrottleSeconds = decision.ThrottleSeconds
+	if !decision.IncludeEmoji {
+		return nil, info
+	}
+	info.URL = candidate.URL
+	return candidate, info
 }

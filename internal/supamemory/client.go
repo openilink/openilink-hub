@@ -136,6 +136,12 @@ type UsageBillingConfig struct {
 	TextCharsPerUnit int
 }
 
+type EmojiAsset struct {
+	URL  string
+	Desc string
+	Lang string
+}
+
 type QuotaStatus struct {
 	Allowed      bool
 	PlanCode     string
@@ -564,6 +570,98 @@ func (c *Client) GetUsageBillingConfig(ctx context.Context) (*UsageBillingConfig
 		Enabled:          enabled,
 		TextCharsPerUnit: charsPerUnit,
 	}, nil
+}
+
+func (c *Client) IsEmojiReplyEnabled(ctx context.Context, userID, roleID string) (bool, error) {
+	if c == nil {
+		return false, nil
+	}
+	userID = strings.TrimSpace(userID)
+	roleID = strings.TrimSpace(roleID)
+	if userID == "" || roleID == "" {
+		return false, nil
+	}
+	q := url.Values{}
+	q.Set("id", "eq."+roleID)
+	q.Set("user_id", "eq."+userID)
+	q.Set("select", "emoji_reply_enabled")
+	q.Set("limit", "1")
+	path := "/rest/v1/" + url.PathEscape(c.botsTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return false, err
+	}
+	var rows []struct {
+		EmojiReplyEnabled bool `json:"emoji_reply_enabled"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return false, err
+	}
+	if len(rows) == 0 {
+		return false, nil
+	}
+	return rows[0].EmojiReplyEnabled, nil
+}
+
+func (c *Client) ListEmojiAssets(ctx context.Context) ([]EmojiAsset, error) {
+	if c == nil {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("dict_code", "eq.emoji_assets")
+	q.Set("is_active", "eq.true")
+	q.Set("select", "item_name,item_value,ext")
+	q.Set("order", "sort_order.asc,created_at.asc")
+	path := "/rest/v1/" + url.PathEscape(c.dictItemsTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ItemName  string         `json:"item_name"`
+		ItemValue string         `json:"item_value"`
+		Ext       map[string]any `json:"ext"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]EmojiAsset, 0, len(rows))
+	for _, row := range rows {
+		urlValue := strings.TrimSpace(row.ItemValue)
+		if urlValue == "" {
+			continue
+		}
+		enabled := true
+		if row.Ext != nil {
+			if v, ok := row.Ext["enabled"]; ok {
+				if b, okBool := v.(bool); okBool {
+					enabled = b
+				}
+			}
+		}
+		if !enabled {
+			continue
+		}
+		lang := "default"
+		desc := strings.TrimSpace(row.ItemName)
+		if row.Ext != nil {
+			if v, ok := row.Ext["lang"].(string); ok && strings.TrimSpace(v) != "" {
+				lang = strings.TrimSpace(v)
+			}
+			if v, ok := row.Ext["desc"].(string); ok && strings.TrimSpace(v) != "" {
+				desc = strings.TrimSpace(v)
+			}
+		}
+		if desc == "" {
+			desc = "表情包"
+		}
+		out = append(out, EmojiAsset{
+			URL:  urlValue,
+			Desc: desc,
+			Lang: lang,
+		})
+	}
+	return out, nil
 }
 
 type bindingRow struct {
