@@ -45,6 +45,8 @@
 - `OUTBOX_POLL_INTERVAL_MS`（默认 `500`）
 - `OUTBOX_MAX_RETRIES`（默认 `10`）
 - `AI_FULL_PROMPT_MAX_BYTES`（默认 `8192`）
+- `USAGE_BILLING_V2_ENABLED`（默认 `false`，仅开启后按“文本长度+文件类型”折算聊天扣费）
+- `USAGE_BILLING_TEXT_CHARS_PER_UNIT`（默认 `180`，仅在 `USAGE_BILLING_V2_ENABLED=true` 时生效）
 
 更多说明：
 

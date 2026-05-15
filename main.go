@@ -205,7 +205,14 @@ func main() {
 
 	hub := relay.NewHub(srv.SetupUpstreamHandler())
 	appDisp := appdelivery.NewDispatcher(s)
-	aiSink := &sink.AI{Store: s, AppDisp: appDisp, Storage: objStore, SupaMemory: runtimeSupa}
+	aiSink := &sink.AI{
+		Store:                    s,
+		AppDisp:                  appDisp,
+		Storage:                  objStore,
+		SupaMemory:               runtimeSupa,
+		UsageBillingV2Enabled:    cfg.UsageBillingV2Enabled,
+		UsageBillingCharsPerUnit: cfg.UsageBillingCharsPerUnit,
+	}
 	mgr := bot.NewManager(s, hub, aiSink, objStore, cfg.RPOrigin)
 	mgr.SetWechatFinalizeCallback(cfg.AdminFinalizeURL, cfg.AdminFinalizeSecret)
 	aiSink.BotManager = mgr

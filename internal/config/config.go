@@ -30,27 +30,29 @@ type Config struct {
 	LinuxDoClientID     string
 	LinuxDoClientSecret string
 
-	AdminSyncSharedSecret  string
-	AdminSyncAllowlist     string
-	AdminFinalizeURL       string
-	AdminFinalizeSecret    string
-	SupabaseURL            string
-	SupabaseServiceRoleKey string
-	SupabaseSchema         string
-	SupabaseMemoryEnabled  bool
-	SupabaseMemoryTopK     int
-	SupabaseMemoryTable    string
-	SupabaseMemoryMatchRPC string
-	SupabaseBindingsTable  string
-	SupabaseRoutesTable    string
-	SupabaseBotsTable      string
-	SupabaseProfilesTable  string
-	SupabaseAuditLogsTable string
-	SupabaseEmbeddingModel string
-	OutboxBatchSize        int
-	OutboxPollIntervalMS   int
-	OutboxMaxRetries       int
-	AIFullPromptMaxBytes   int
+	AdminSyncSharedSecret    string
+	AdminSyncAllowlist       string
+	AdminFinalizeURL         string
+	AdminFinalizeSecret      string
+	SupabaseURL              string
+	SupabaseServiceRoleKey   string
+	SupabaseSchema           string
+	SupabaseMemoryEnabled    bool
+	SupabaseMemoryTopK       int
+	SupabaseMemoryTable      string
+	SupabaseMemoryMatchRPC   string
+	SupabaseBindingsTable    string
+	SupabaseRoutesTable      string
+	SupabaseBotsTable        string
+	SupabaseProfilesTable    string
+	SupabaseAuditLogsTable   string
+	SupabaseEmbeddingModel   string
+	OutboxBatchSize          int
+	OutboxPollIntervalMS     int
+	OutboxMaxRetries         int
+	AIFullPromptMaxBytes     int
+	UsageBillingV2Enabled    bool
+	UsageBillingCharsPerUnit int
 }
 
 func Parse() *Config {
@@ -95,6 +97,11 @@ func Parse() *Config {
 	cfg.OutboxPollIntervalMS = envOrInt("OUTBOX_POLL_INTERVAL_MS", 500)
 	cfg.OutboxMaxRetries = envOrInt("OUTBOX_MAX_RETRIES", 10)
 	cfg.AIFullPromptMaxBytes = envOrInt("AI_FULL_PROMPT_MAX_BYTES", 8192)
+	cfg.UsageBillingV2Enabled = strings.ToLower(strings.TrimSpace(envOr("USAGE_BILLING_V2_ENABLED", "false"))) == "true"
+	cfg.UsageBillingCharsPerUnit = envOrInt("USAGE_BILLING_TEXT_CHARS_PER_UNIT", 180)
+	if cfg.UsageBillingCharsPerUnit <= 0 {
+		cfg.UsageBillingCharsPerUnit = 180
+	}
 	flag.Parse()
 	return cfg
 }

@@ -8,9 +8,34 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/supamemory"
 )
+
+func TestCalculateUsageUnitsV2(t *testing.T) {
+	t.Run("short text costs one", func(t *testing.T) {
+		units := calculateUsageUnitsV2("你好", []provider.MessageItem{{Type: "text", Text: "你好"}}, 180)
+		if units != 1 {
+			t.Fatalf("units=%d, want=1", units)
+		}
+	})
+
+	t.Run("long text scales by char length", func(t *testing.T) {
+		longText := strings.Repeat("a", 361)
+		units := calculateUsageUnitsV2(longText, []provider.MessageItem{{Type: "text", Text: longText}}, 180)
+		if units != 3 {
+			t.Fatalf("units=%d, want=3", units)
+		}
+	})
+
+	t.Run("file baseline overrides short text", func(t *testing.T) {
+		units := calculateUsageUnitsV2("ok", []provider.MessageItem{{Type: "video"}}, 180)
+		if units != 4 {
+			t.Fatalf("units=%d, want=4", units)
+		}
+	})
+}
 
 func TestParseCustomHeaders_ObjectFormat(t *testing.T) {
 	m := parseCustomHeaders(`{"HTTP-Referer":"https://openclaw.ai","X-Title":"OpenClaw"}`)

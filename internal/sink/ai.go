@@ -34,21 +34,23 @@ type BotModelSyncer interface {
 // AI calls an OpenAI-compatible chat completion API and sends the reply
 // back through the bot. Supports tool calling via installed App tools.
 type AI struct {
-	Store       store.Store
-	AppDisp     *appdelivery.Dispatcher
-	Storage     storage.Store
-	BotManager  BotModelSyncer
-	SupaMemory  *supamemory.Client
-	promptCache map[string]cachedRuntimePrompt
+	Store                    store.Store
+	AppDisp                  *appdelivery.Dispatcher
+	Storage                  storage.Store
+	BotManager               BotModelSyncer
+	SupaMemory               *supamemory.Client
+	promptCache              map[string]cachedRuntimePrompt
+	UsageBillingV2Enabled    bool
+	UsageBillingCharsPerUnit int
 }
 
 type runtimePromptMeta struct {
-	Source    string
-	Version   int64
-	FullHash  string
-	Truncated bool
-	RoleID    string
-	UserID    string
+	Source     string
+	Version    int64
+	FullHash   string
+	Truncated  bool
+	RoleID     string
+	UserID     string
 	UserPrompt string
 }
 
@@ -583,6 +585,11 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	usageUnits := 1
+	if s.UsageBillingV2Enabled {
+		usageUnits = calculateUsageUnitsV2(text, d.Message.Items, s.UsageBillingCharsPerUnit)
+	}
+
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_sent", map[string]any{
 		"bot_id":            d.BotDBID,
 		"user_id":           promptMeta.UserID,
@@ -590,6 +597,7 @@ func (s *AI) reply(d Delivery) {
 		"sender":            sender,
 		"model":             cfg.Model,
 		"reply_chars":       len([]rune(reply)),
+		"usage_units":       usageUnits,
 		"prompt_tokens":     totalPrompt,
 		"completion_tokens": totalCompletion,
 		"total_tokens":      totalTokens,
@@ -603,14 +611,15 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
-		if err := s.SupaMemory.BumpMonthlyUsage(ctx, promptMeta.UserID, 1); err != nil {
+		if err := s.SupaMemory.BumpMonthlyUsage(ctx, promptMeta.UserID, usageUnits); err != nil {
 			slog.Warn("ai usage bump failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", err)
 			s.writeRuntimeAudit(d, "openilink_hub_ai_usage_bump_failed", map[string]any{
-				"bot_id":  d.BotDBID,
-				"user_id": promptMeta.UserID,
-				"role_id": promptMeta.RoleID,
-				"sender":  sender,
-				"error":   err.Error(),
+				"bot_id":      d.BotDBID,
+				"user_id":     promptMeta.UserID,
+				"role_id":     promptMeta.RoleID,
+				"sender":      sender,
+				"usage_units": usageUnits,
+				"error":       err.Error(),
 			})
 		}
 	}
@@ -1357,4 +1366,62 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+func calculateUsageUnitsV2(text string, items []provider.MessageItem, charsPerUnit int) int {
+	if charsPerUnit <= 0 {
+		charsPerUnit = 180
+	}
+	textUnits := calculateTextUnits(text, charsPerUnit)
+	fileUnits := estimateFileUnits(items)
+	if textUnits < 1 {
+		textUnits = 1
+	}
+	if fileUnits > textUnits {
+		return fileUnits
+	}
+	return textUnits
+}
+
+func calculateTextUnits(text string, charsPerUnit int) int {
+	if charsPerUnit <= 0 {
+		charsPerUnit = 180
+	}
+	normalized := strings.Join(strings.Fields(text), " ")
+	chars := len([]rune(normalized))
+	if chars <= 0 {
+		return 1
+	}
+	units := (chars + charsPerUnit - 1) / charsPerUnit
+	if units <= 0 {
+		return 1
+	}
+	return units
+}
+
+func estimateFileUnits(items []provider.MessageItem) int {
+	maxUnits := 0
+	for _, item := range items {
+		itemType := strings.ToLower(strings.TrimSpace(item.Type))
+		if itemType == "" || itemType == "text" {
+			continue
+		}
+		units := 2
+		switch itemType {
+		case "image":
+			units = 2
+		case "voice", "audio":
+			units = 2
+		case "video":
+			units = 4
+		case "file", "document":
+			units = 3
+		default:
+			units = 2
+		}
+		if units > maxUnits {
+			maxUnits = units
+		}
+	}
+	return maxUnits
 }
