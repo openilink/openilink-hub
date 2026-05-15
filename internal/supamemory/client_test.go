@@ -169,3 +169,37 @@ func TestWriteUsageEvent_DefaultTable(t *testing.T) {
 		t.Fatalf("path=%q", gotPath)
 	}
 }
+
+func TestGetUsageBillingConfig_FromDictItems(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"item_value":"true","ext":{"text_chars_per_unit":220}}]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	cfg, err := client.GetUsageBillingConfig(context.Background())
+	if err != nil {
+		t.Fatalf("GetUsageBillingConfig: %v", err)
+	}
+	if gotPath != "/rest/v1/bl_dict_items" {
+		t.Fatalf("path=%q", gotPath)
+	}
+	if cfg == nil {
+		t.Fatal("config should not be nil")
+	}
+	if !cfg.Enabled {
+		t.Fatal("enabled should be true")
+	}
+	if cfg.TextCharsPerUnit != 220 {
+		t.Fatalf("chars_per_unit=%d", cfg.TextCharsPerUnit)
+	}
+}

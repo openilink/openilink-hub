@@ -211,9 +211,10 @@ func (s *AI) reply(d Delivery) {
 
 	ctx := context.Background()
 	sender := d.Message.Sender
+	billingEnabled, billingCharsPerUnit, billingSource := s.resolveUsageBillingConfig(ctx)
 	usageUnits := 1
-	if s.UsageBillingV2Enabled {
-		usageUnits = calculateUsageUnitsV2(d.Content, d.Message.Items, s.UsageBillingCharsPerUnit)
+	if billingEnabled {
+		usageUnits = calculateUsageUnitsV2(d.Content, d.Message.Items, billingCharsPerUnit)
 	}
 	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
 	channelCode := normalizeChannelCode(d.Provider.Name())
@@ -226,6 +227,8 @@ func (s *AI) reply(d Delivery) {
 		"sender":          sender,
 		"model":           cfg.Model,
 		"prompt_source":   promptMeta.Source,
+		"billing_source":  billingSource,
+		"billing_enabled": billingEnabled,
 		"channel_code":    channelCode,
 		"user_id":         promptMeta.UserID,
 		"role_id":         promptMeta.RoleID,
@@ -1443,6 +1446,24 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+func (s *AI) resolveUsageBillingConfig(ctx context.Context) (enabled bool, charsPerUnit int, source string) {
+	// 先读 Supabase 配置表，统一多实例配置源；失败时回退本地 env 注入值。
+	if s.SupaMemory != nil {
+		cfg, err := s.SupaMemory.GetUsageBillingConfig(ctx)
+		if err == nil && cfg != nil {
+			if cfg.TextCharsPerUnit <= 0 {
+				cfg.TextCharsPerUnit = 180
+			}
+			return cfg.Enabled, cfg.TextCharsPerUnit, "supabase_dict_items"
+		}
+	}
+	chars := s.UsageBillingCharsPerUnit
+	if chars <= 0 {
+		chars = 180
+	}
+	return s.UsageBillingV2Enabled, chars, "env_fallback"
 }
 
 func calculateUsageUnitsV2(text string, items []provider.MessageItem, charsPerUnit int) int {

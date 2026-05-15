@@ -37,6 +37,60 @@ func TestCalculateUsageUnitsV2(t *testing.T) {
 	})
 }
 
+func TestResolveUsageBillingConfig_FallbackEnv(t *testing.T) {
+	aiSink := &AI{
+		UsageBillingV2Enabled:    true,
+		UsageBillingCharsPerUnit: 200,
+	}
+	enabled, chars, source := aiSink.resolveUsageBillingConfig(context.Background())
+	if !enabled {
+		t.Fatal("enabled should be true")
+	}
+	if chars != 200 {
+		t.Fatalf("chars=%d", chars)
+	}
+	if source != "env_fallback" {
+		t.Fatalf("source=%q", source)
+	}
+}
+
+func TestResolveUsageBillingConfig_FromSupabase(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_dict_items"):
+			_, _ = w.Write([]byte(`[{"item_value":"true","ext":{"text_chars_per_unit":240}}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := supamemory.NewClient(supamemory.Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	aiSink := &AI{
+		SupaMemory:               client,
+		UsageBillingV2Enabled:    false,
+		UsageBillingCharsPerUnit: 180,
+	}
+	enabled, chars, source := aiSink.resolveUsageBillingConfig(context.Background())
+	if !enabled {
+		t.Fatal("enabled should be true")
+	}
+	if chars != 240 {
+		t.Fatalf("chars=%d", chars)
+	}
+	if source != "supabase_dict_items" {
+		t.Fatalf("source=%q", source)
+	}
+}
+
 func TestParseCustomHeaders_ObjectFormat(t *testing.T) {
 	m := parseCustomHeaders(`{"HTTP-Referer":"https://openclaw.ai","X-Title":"OpenClaw"}`)
 	if m == nil {

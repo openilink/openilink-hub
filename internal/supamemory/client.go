@@ -32,6 +32,7 @@ type Config struct {
 	PlanLimitsTable    string
 	UsageCountersTable string
 	UsageEventsTable   string
+	DictItemsTable     string
 
 	EmbeddingModel string
 }
@@ -56,6 +57,7 @@ type Client struct {
 	planLimitsTable    string
 	usageCountersTable string
 	usageEventsTable   string
+	dictItemsTable     string
 	embeddingModel     string
 }
 
@@ -117,6 +119,11 @@ type UsageEventInput struct {
 	SessionID   string
 	TraceID     string
 	Detail      map[string]any
+}
+
+type UsageBillingConfig struct {
+	Enabled          bool
+	TextCharsPerUnit int
 }
 
 type QuotaStatus struct {
@@ -185,6 +192,10 @@ func NewClient(cfg Config) (*Client, error) {
 	if usageEvents == "" {
 		usageEvents = "bl_usage_events"
 	}
+	dictItems := strings.TrimSpace(cfg.DictItemsTable)
+	if dictItems == "" {
+		dictItems = "bl_dict_items"
+	}
 	embeddingModel := strings.TrimSpace(cfg.EmbeddingModel)
 	if embeddingModel == "" {
 		embeddingModel = "text-embedding-3-small"
@@ -207,6 +218,7 @@ func NewClient(cfg Config) (*Client, error) {
 		planLimitsTable:    planLimits,
 		usageCountersTable: usageCounters,
 		usageEventsTable:   usageEvents,
+		dictItemsTable:     dictItems,
 		embeddingModel:     embeddingModel,
 	}, nil
 }
@@ -470,6 +482,53 @@ func (c *Client) WriteUsageEvent(ctx context.Context, in UsageEventInput) error 
 		"Prefer": "return=minimal",
 	})
 	return err
+}
+
+type dictItemRow struct {
+	ItemValue string         `json:"item_value"`
+	Ext       map[string]any `json:"ext"`
+}
+
+func (c *Client) GetUsageBillingConfig(ctx context.Context) (*UsageBillingConfig, error) {
+	if c == nil {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("dict_code", "eq.system_runtime_flags")
+	q.Set("item_code", "eq.usage_billing_v2")
+	q.Set("is_active", "eq.true")
+	q.Set("select", "item_value,ext")
+	q.Set("limit", "1")
+	path := "/rest/v1/" + url.PathEscape(c.dictItemsTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []dictItemRow
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	enabledRaw := strings.ToLower(strings.TrimSpace(rows[0].ItemValue))
+	enabled := enabledRaw == "true" || enabledRaw == "1" || enabledRaw == "yes" || enabledRaw == "on"
+	charsPerUnit := 180
+	if rows[0].Ext != nil {
+		if v, ok := rows[0].Ext["text_chars_per_unit"]; ok {
+			if n := parseAnyPositiveInt(v); n > 0 {
+				charsPerUnit = n
+			}
+		} else if v, ok := rows[0].Ext["chars_per_unit"]; ok {
+			if n := parseAnyPositiveInt(v); n > 0 {
+				charsPerUnit = n
+			}
+		}
+	}
+	return &UsageBillingConfig{
+		Enabled:          enabled,
+		TextCharsPerUnit: charsPerUnit,
+	}, nil
 }
 
 type bindingRow struct {
@@ -808,6 +867,29 @@ func parsePositiveInt(input string) (int64, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+func parseAnyPositiveInt(v any) int {
+	switch val := v.(type) {
+	case float64:
+		if val > 0 {
+			return int(val)
+		}
+	case int:
+		if val > 0 {
+			return val
+		}
+	case int64:
+		if val > 0 {
+			return int(val)
+		}
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(val))
+		if err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
 }
 
 func anyID(input string) any {
