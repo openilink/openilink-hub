@@ -127,3 +127,45 @@ func TestWriteAuditLog_DefaultTable(t *testing.T) {
 		t.Fatalf("path=%q", gotPath)
 	}
 }
+
+func TestWriteUsageEvent_DefaultTable(t *testing.T) {
+	var gotPath string
+	var gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	err = client.WriteUsageEvent(context.Background(), UsageEventInput{
+		UserID:      "1001",
+		PeriodMonth: "2026-05",
+		Delta:       3,
+		Source:      "openilink_hub_ai",
+		SessionID:   "sess-1",
+		TraceID:     "trace-1",
+		Detail: map[string]any{
+			"usage_units": 3,
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteUsageEvent: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method=%q", gotMethod)
+	}
+	if gotPath != "/rest/v1/bl_usage_events" {
+		t.Fatalf("path=%q", gotPath)
+	}
+}

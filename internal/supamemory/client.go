@@ -31,6 +31,7 @@ type Config struct {
 	SubscriptionsTable string
 	PlanLimitsTable    string
 	UsageCountersTable string
+	UsageEventsTable   string
 
 	EmbeddingModel string
 }
@@ -54,6 +55,7 @@ type Client struct {
 	subscriptionsTable string
 	planLimitsTable    string
 	usageCountersTable string
+	usageEventsTable   string
 	embeddingModel     string
 }
 
@@ -105,6 +107,16 @@ type AuditLogInput struct {
 	SessionID string
 	TraceID   string
 	Detail    map[string]any
+}
+
+type UsageEventInput struct {
+	UserID      string
+	PeriodMonth string
+	Delta       int
+	Source      string
+	SessionID   string
+	TraceID     string
+	Detail      map[string]any
 }
 
 type QuotaStatus struct {
@@ -169,6 +181,10 @@ func NewClient(cfg Config) (*Client, error) {
 	if usageCounters == "" {
 		usageCounters = "bl_usage_counters"
 	}
+	usageEvents := strings.TrimSpace(cfg.UsageEventsTable)
+	if usageEvents == "" {
+		usageEvents = "bl_usage_events"
+	}
 	embeddingModel := strings.TrimSpace(cfg.EmbeddingModel)
 	if embeddingModel == "" {
 		embeddingModel = "text-embedding-3-small"
@@ -190,6 +206,7 @@ func NewClient(cfg Config) (*Client, error) {
 		subscriptionsTable: subscriptions,
 		planLimitsTable:    planLimits,
 		usageCountersTable: usageCounters,
+		usageEventsTable:   usageEvents,
 		embeddingModel:     embeddingModel,
 	}, nil
 }
@@ -419,6 +436,39 @@ func (c *Client) BumpMonthlyUsage(ctx context.Context, userID string, delta int)
 		"p_delta":   delta,
 	})
 	_, err := c.do(ctx, http.MethodPost, "/rest/v1/rpc/bump_usage_counter", body, nil)
+	return err
+}
+
+func (c *Client) WriteUsageEvent(ctx context.Context, in UsageEventInput) error {
+	if c == nil {
+		return nil
+	}
+	userID := strings.TrimSpace(in.UserID)
+	if userID == "" {
+		return nil
+	}
+	periodMonth := strings.TrimSpace(in.PeriodMonth)
+	if periodMonth == "" {
+		periodMonth = time.Now().UTC().Format("2006-01")
+	}
+	delta := in.Delta
+	if delta <= 0 {
+		delta = 1
+	}
+	payload := map[string]any{
+		"user_id":      anyID(userID),
+		"period_month": periodMonth,
+		"delta":        delta,
+		"source":       fallbackStr(strings.TrimSpace(in.Source), "openilink_hub_ai"),
+		"session_id":   strings.TrimSpace(in.SessionID),
+		"trace_id":     strings.TrimSpace(in.TraceID),
+		"detail_json":  in.Detail,
+	}
+	body, _ := json.Marshal(payload)
+	path := "/rest/v1/" + url.PathEscape(c.usageEventsTable) + "?select=id"
+	_, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
+		"Prefer": "return=minimal",
+	})
 	return err
 }
 

@@ -211,6 +211,10 @@ func (s *AI) reply(d Delivery) {
 
 	ctx := context.Background()
 	sender := d.Message.Sender
+	usageUnits := 1
+	if s.UsageBillingV2Enabled {
+		usageUnits = calculateUsageUnitsV2(d.Content, d.Message.Items, s.UsageBillingCharsPerUnit)
+	}
 	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
 	channelCode := normalizeChannelCode(d.Provider.Name())
 	channelPrompt := buildChannelPrompt(channelCode)
@@ -277,6 +281,49 @@ func (s *AI) reply(d Delivery) {
 				"used":      quota.Used,
 				"limit":     quota.MonthlyLimit,
 				"period":    quota.PeriodMonth,
+			})
+			if span != nil {
+				span.End()
+			}
+			return
+		} else if quota != nil && quota.MonthlyLimit > 0 && (quota.Used+usageUnits) > quota.MonthlyLimit {
+			if span != nil {
+				span.SetAttr("quota.blocked", true)
+				span.SetAttr("quota.plan_code", quota.PlanCode)
+				span.SetAttr("quota.period_month", quota.PeriodMonth)
+				span.SetAttr("quota.used", quota.Used)
+				span.SetAttr("quota.limit", quota.MonthlyLimit)
+				span.SetAttr("quota.request_units", usageUnits)
+			}
+			notice := fmt.Sprintf("本次消息预计消耗 %d 次额度，当前剩余不足（已用 %d/%d），请升级订阅或下月再试。", usageUnits, quota.Used, quota.MonthlyLimit)
+			if _, sendErr := d.Provider.Send(ctx, provider.OutboundMessage{
+				Recipient: sender,
+				Text:      notice,
+			}); sendErr != nil {
+				slog.Warn("quota notice send failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", sendErr)
+				s.writeRuntimeAudit(d, "openilink_hub_ai_quota_notice_send_failed", map[string]any{
+					"bot_id":        d.BotDBID,
+					"user_id":       promptMeta.UserID,
+					"role_id":       promptMeta.RoleID,
+					"sender":        sender,
+					"plan_code":     quota.PlanCode,
+					"used":          quota.Used,
+					"limit":         quota.MonthlyLimit,
+					"period":        quota.PeriodMonth,
+					"request_units": usageUnits,
+					"error":         sendErr.Error(),
+				})
+			}
+			s.writeRuntimeAudit(d, "openilink_hub_ai_quota_blocked_by_units", map[string]any{
+				"bot_id":        d.BotDBID,
+				"user_id":       promptMeta.UserID,
+				"role_id":       promptMeta.RoleID,
+				"sender":        sender,
+				"plan_code":     quota.PlanCode,
+				"used":          quota.Used,
+				"limit":         quota.MonthlyLimit,
+				"period":        quota.PeriodMonth,
+				"request_units": usageUnits,
 			})
 			if span != nil {
 				span.End()
@@ -585,11 +632,6 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
-	usageUnits := 1
-	if s.UsageBillingV2Enabled {
-		usageUnits = calculateUsageUnitsV2(text, d.Message.Items, s.UsageBillingCharsPerUnit)
-	}
-
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_sent", map[string]any{
 		"bot_id":            d.BotDBID,
 		"user_id":           promptMeta.UserID,
@@ -621,6 +663,41 @@ func (s *AI) reply(d Delivery) {
 				"usage_units": usageUnits,
 				"error":       err.Error(),
 			})
+		} else {
+			traceID := ""
+			if d.Tracer != nil {
+				traceID = d.Tracer.TraceID()
+			}
+			sessionID := d.Message.ContextToken
+			if strings.TrimSpace(sessionID) == "" {
+				sessionID = d.Message.Sender
+			}
+			if eventErr := s.SupaMemory.WriteUsageEvent(ctx, supamemory.UsageEventInput{
+				UserID:      promptMeta.UserID,
+				PeriodMonth: time.Now().UTC().Format("2006-01"),
+				Delta:       usageUnits,
+				Source:      "openilink_hub_ai",
+				SessionID:   sessionID,
+				TraceID:     traceID,
+				Detail: map[string]any{
+					"bot_id":      d.BotDBID,
+					"role_id":     promptMeta.RoleID,
+					"sender":      sender,
+					"usage_units": usageUnits,
+					"msg_type":    d.MsgType,
+					"text_chars":  len([]rune(strings.Join(strings.Fields(text), " "))),
+				},
+			}); eventErr != nil {
+				slog.Warn("ai usage event write failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", eventErr)
+				s.writeRuntimeAudit(d, "openilink_hub_ai_usage_event_write_failed", map[string]any{
+					"bot_id":      d.BotDBID,
+					"user_id":     promptMeta.UserID,
+					"role_id":     promptMeta.RoleID,
+					"sender":      sender,
+					"usage_units": usageUnits,
+					"error":       eventErr.Error(),
+				})
+			}
 		}
 	}
 
