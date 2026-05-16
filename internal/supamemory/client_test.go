@@ -2,6 +2,7 @@ package supamemory
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -303,5 +304,166 @@ func TestListEmojiAssets(t *testing.T) {
 	}
 	if assets[1].Lang != "default" || assets[1].URL != "https://cdn.example.com/default.webp" {
 		t.Fatalf("second asset = %#v", assets[1])
+	}
+}
+
+func TestResolveConversationID_ByContextToken(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"conversation_id":"11111111-1111-1111-1111-111111111111"}]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	id, err := client.ResolveConversationID(context.Background(), "1001", "2002", "ctx-1", "wx-user-1")
+	if err != nil {
+		t.Fatalf("ResolveConversationID: %v", err)
+	}
+	if gotPath != "/rest/v1/bl_platform_messages" {
+		t.Fatalf("path=%q", gotPath)
+	}
+	if id != "11111111-1111-1111-1111-111111111111" {
+		t.Fatalf("conversation_id=%q", id)
+	}
+}
+
+func TestUpsertConversationState_DefaultTable(t *testing.T) {
+	var gotPath string
+	var gotMethod string
+	var gotPrefer string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		gotPrefer = r.Header.Get("Prefer")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	err = client.UpsertConversationState(context.Background(), ConversationStateInput{
+		ConversationID: "11111111-1111-1111-1111-111111111111",
+		Stage:          "task_active",
+		ActiveFlow:     "qa",
+		StatePayload: map[string]any{
+			"planner": "ok",
+		},
+		Version: 2,
+	})
+	if err != nil {
+		t.Fatalf("UpsertConversationState: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method=%q", gotMethod)
+	}
+	if gotPath != "/rest/v1/bl_conversation_states" {
+		t.Fatalf("path=%q", gotPath)
+	}
+	if gotPrefer != "resolution=merge-duplicates,return=minimal" {
+		t.Fatalf("prefer=%q", gotPrefer)
+	}
+	if gotBody["stage"] != "task_active" {
+		t.Fatalf("stage=%v", gotBody["stage"])
+	}
+}
+
+func TestAppendDialogueEvent_DefaultTable(t *testing.T) {
+	var gotPath string
+	var gotMethod string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	err = client.AppendDialogueEvent(context.Background(), DialogueEventInput{
+		ConversationID: "11111111-1111-1111-1111-111111111111",
+		TurnID:         "turn-1",
+		EventID:        "evt-1",
+		EventType:      "dialogue.guard.relevance",
+		IdempotencyKey: "idem-1",
+		EventPayload: map[string]any{
+			"score": 90,
+		},
+	})
+	if err != nil {
+		t.Fatalf("AppendDialogueEvent: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method=%q", gotMethod)
+	}
+	if gotPath != "/rest/v1/bl_dialogue_events" {
+		t.Fatalf("path=%q", gotPath)
+	}
+	if gotBody["event_type"] != "dialogue.guard.relevance" {
+		t.Fatalf("event_type=%v", gotBody["event_type"])
+	}
+}
+
+func TestGetDialogueRuntimeFlags(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[
+			{"item_code":"planner_only","item_value":"true"},
+			{"item_code":"guard_soft_mode","item_value":"false"},
+			{"item_code":"fallback_fast_path","item_value":"1"}
+		]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	flags, err := client.GetDialogueRuntimeFlags(context.Background())
+	if err != nil {
+		t.Fatalf("GetDialogueRuntimeFlags: %v", err)
+	}
+	if flags == nil {
+		t.Fatal("flags should not be nil")
+	}
+	if !flags.PlannerOnly {
+		t.Fatal("planner_only should be true")
+	}
+	if flags.GuardSoftMode {
+		t.Fatal("guard_soft_mode should be false")
+	}
+	if !flags.FallbackFastPath {
+		t.Fatal("fallback_fast_path should be true")
 	}
 }

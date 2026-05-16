@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/openilink/openilink-hub/internal/ai"
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
@@ -70,6 +71,20 @@ type emojiDecision struct {
 	TriggerMode     string
 	IncludeEmoji    bool
 	ThrottleSeconds int
+}
+
+type plannerLite struct {
+	AnswerIntent    string `json:"answer_intent"`
+	ContinuityClaim string `json:"continuity_claim"`
+	ToneTarget      string `json:"tone_target"`
+	MemoryFocus     string `json:"memory_focus"`
+}
+
+type guardResult struct {
+	RelevanceScore  int    `json:"relevance_score"`
+	ContinuityScore int    `json:"continuity_score"`
+	Blocked         bool   `json:"blocked"`
+	Reason          string `json:"reason"`
 }
 
 const runtimePromptCacheTTL = 120 * time.Second
@@ -249,6 +264,8 @@ func (s *AI) reply(d Delivery) {
 		usageUnits = calculateUsageUnitsV2(d.Content, d.Message.Items, billingCharsPerUnit)
 	}
 	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
+	runtimeFlags := s.resolveDialogueRuntimeFlags(ctx)
+	conversationID, turnID := s.resolveConversationContext(ctx, promptMeta, d)
 	channelCode := normalizeChannelCode(d.Provider.Name())
 	channelPrompt := buildChannelPrompt(channelCode)
 	cfg.SystemPrompt = composeSystemWithChannelPrompt(cfg.SystemPrompt, channelPrompt)
@@ -272,8 +289,9 @@ func (s *AI) reply(d Delivery) {
 		"channel_code":    channelCode,
 		"user_id":         promptMeta.UserID,
 		"role_id":         promptMeta.RoleID,
+		"conversation_id": conversationID,
+		"turn_id":         turnID,
 	})
-	memQuery := strings.TrimSpace(d.Content)
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
 		quota, err := s.SupaMemory.CheckMonthlyQuota(ctx, promptMeta.UserID)
 		if err != nil {
@@ -431,6 +449,25 @@ func (s *AI) reply(d Delivery) {
 			return
 		}
 	}
+	memQuery := strings.TrimSpace(text)
+	planner := buildPlannerLite(memQuery)
+	cfg.SystemPrompt = composeSystemWithPlanner(cfg.SystemPrompt, planner)
+	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
+		ConversationID: conversationID,
+		TurnID:         turnID,
+		EventID:        buildEventID(turnID, "planner"),
+		EventType:      "dialogue.planner.lite.generated",
+		IdempotencyKey: buildIdempotencyKey(conversationID, turnID, "planner"),
+		EventPayload: map[string]any{
+			"answer_intent":    planner.AnswerIntent,
+			"continuity_claim": planner.ContinuityClaim,
+			"tone_target":      planner.ToneTarget,
+			"memory_focus":     planner.MemoryFocus,
+		},
+	})
+	s.upsertConversationState(ctx, conversationID, "task_active", "free_chat", map[string]any{
+		"planner": planner,
+	}, 1)
 
 	memories := s.resolveMemories(ctx, cfg, promptMeta, memQuery)
 
@@ -472,6 +509,87 @@ func (s *AI) reply(d Delivery) {
 		if promptMeta.UserID != "" {
 			span.SetAttr("memory.user_id", promptMeta.UserID)
 		}
+	}
+	guard := evaluateGuards(memQuery, memories)
+	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
+		ConversationID: conversationID,
+		TurnID:         turnID,
+		EventID:        buildEventID(turnID, "guard"),
+		EventType:      "dialogue.guard.relevance_continuity",
+		IdempotencyKey: buildIdempotencyKey(conversationID, turnID, "guard"),
+		EventPayload: map[string]any{
+			"relevance_score":  guard.RelevanceScore,
+			"continuity_score": guard.ContinuityScore,
+			"blocked":          guard.Blocked,
+			"reason":           guard.Reason,
+			"planner_only":     runtimeFlags.PlannerOnly,
+			"guard_soft_mode":  runtimeFlags.GuardSoftMode,
+		},
+	})
+	if guard.Blocked && !runtimeFlags.GuardSoftMode {
+		blockText := "我需要先确认一下你的意图，避免答非所问。你可以再补一句你最想让我解决的点吗？"
+		_, sendErr := d.Provider.Send(ctx, provider.OutboundMessage{
+			Recipient: sender,
+			Text:      blockText,
+		})
+		if sendErr != nil {
+			slog.Error("ai guard block send failed", "bot", d.BotDBID, "err", sendErr)
+		}
+		s.writeRuntimeAudit(d, "openilink_hub_ai_guard_blocked", map[string]any{
+			"bot_id":            d.BotDBID,
+			"user_id":           promptMeta.UserID,
+			"role_id":           promptMeta.RoleID,
+			"sender":            sender,
+			"conversation_id":   conversationID,
+			"turn_id":           turnID,
+			"relevance_score":   guard.RelevanceScore,
+			"continuity_score":  guard.ContinuityScore,
+			"guard_reason":      guard.Reason,
+			"guard_soft_mode":   runtimeFlags.GuardSoftMode,
+			"planner_only_mode": runtimeFlags.PlannerOnly,
+		})
+		s.upsertConversationState(ctx, conversationID, "awaiting_user_input", "free_chat", map[string]any{
+			"last_guard": guard,
+			"planner":    planner,
+		}, 2)
+		if span != nil {
+			span.SetAttr("guard.blocked", true)
+			span.SetAttr("guard.reason", guard.Reason)
+			span.End()
+		}
+		s.stopTyping(d, typingTicket)
+		return
+	}
+	if runtimeFlags.PlannerOnly {
+		reply := renderPlannerOnlyReply(planner, memQuery)
+		if cfg.StripMarkdown {
+			reply = ai.StripMarkdown(reply)
+		}
+		_, sendErr := d.Provider.Send(ctx, provider.OutboundMessage{
+			Recipient: sender,
+			Text:      reply,
+		})
+		if sendErr != nil {
+			slog.Error("ai planner only send failed", "bot", d.BotDBID, "err", sendErr)
+		}
+		s.writeRuntimeAudit(d, "openilink_hub_ai_planner_only_reply_sent", map[string]any{
+			"bot_id":          d.BotDBID,
+			"user_id":         promptMeta.UserID,
+			"role_id":         promptMeta.RoleID,
+			"sender":          sender,
+			"conversation_id": conversationID,
+			"turn_id":         turnID,
+		})
+		s.upsertConversationState(ctx, conversationID, "idle", "free_chat", map[string]any{
+			"planner": planner,
+			"guard":   guard,
+		}, 3)
+		if span != nil {
+			span.SetAttr("planner.only", true)
+			span.End()
+		}
+		s.stopTyping(d, typingTicket)
+		return
 	}
 	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
@@ -688,19 +806,19 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_sent", map[string]any{
-		"bot_id":            d.BotDBID,
-		"user_id":           promptMeta.UserID,
-		"role_id":           promptMeta.RoleID,
-		"sender":            sender,
-		"model":             cfg.Model,
-		"reply_chars":       len([]rune(reply)),
-		"usage_units":       usageUnits,
-		"prompt_tokens":     totalPrompt,
-		"completion_tokens": totalCompletion,
-		"total_tokens":      totalTokens,
-		"cached_tokens":     totalCached,
-		"reasoning_tokens":  totalReasoning,
-		"memory_hits":       len(memories),
+		"bot_id":                              d.BotDBID,
+		"user_id":                             promptMeta.UserID,
+		"role_id":                             promptMeta.RoleID,
+		"sender":                              sender,
+		"model":                               cfg.Model,
+		"reply_chars":                         len([]rune(reply)),
+		"usage_units":                         usageUnits,
+		"prompt_tokens":                       totalPrompt,
+		"completion_tokens":                   totalCompletion,
+		"total_tokens":                        totalTokens,
+		"cached_tokens":                       totalCached,
+		"reasoning_tokens":                    totalReasoning,
+		"memory_hits":                         len(memories),
 		"emoji_reply_enabled":                 emojiInfo.Enabled,
 		"emoji_trigger_reason":                emojiInfo.Reason,
 		"emoji_trigger_mode":                  emojiInfo.TriggerMode,
@@ -708,6 +826,22 @@ func (s *AI) reply(d Delivery) {
 		"emoji_url":                           emojiInfo.URL,
 		"emoji_user_window_count":             emojiInfo.UserWindowCount,
 		"emoji_conversation_throttle_seconds": emojiInfo.ThrottleSeconds,
+		"conversation_id":                     conversationID,
+		"turn_id":                             turnID,
+	})
+	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
+		ConversationID: conversationID,
+		TurnID:         turnID,
+		EventID:        buildEventID(turnID, "reply"),
+		EventType:      "dialogue.reply.sent",
+		IdempotencyKey: buildIdempotencyKey(conversationID, turnID, "reply"),
+		EventPayload: map[string]any{
+			"reply_chars":       len([]rune(reply)),
+			"memory_hits":       len(memories),
+			"emoji_reply":       emojiAsset != nil,
+			"prompt_tokens":     totalPrompt,
+			"completion_tokens": totalCompletion,
+		},
 	})
 
 	if span != nil {
@@ -803,6 +937,12 @@ func (s *AI) reply(d Delivery) {
 			}
 		}()
 	}
+	s.upsertConversationState(ctx, conversationID, "idle", "free_chat", map[string]any{
+		"last_turn_id":  turnID,
+		"last_planner":  planner,
+		"last_guard":    guard,
+		"last_reply_at": time.Now().UTC().Format(time.RFC3339),
+	}, 4)
 }
 
 // collectTools gathers all tools from enabled app installations on this bot.
@@ -1508,6 +1648,254 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+func composeSystemWithPlanner(systemPrompt string, planner plannerLite) string {
+	base := strings.TrimSpace(systemPrompt)
+	lines := []string{
+		"对话计划（内部约束，需隐式遵循）:",
+		"- 回答意图: " + planner.AnswerIntent,
+		"- 连续性声明: " + planner.ContinuityClaim,
+		"- 语气目标: " + planner.ToneTarget,
+		"- 记忆焦点: " + planner.MemoryFocus,
+	}
+	planBlock := strings.Join(lines, "\n")
+	if base == "" {
+		return planBlock
+	}
+	return base + "\n\n" + planBlock
+}
+
+func buildPlannerLite(text string) plannerLite {
+	normalized := strings.TrimSpace(text)
+	if normalized == "" {
+		return plannerLite{
+			AnswerIntent:    "澄清用户真实问题",
+			ContinuityClaim: "保持与最近回合一致",
+			ToneTarget:      "简洁中性",
+			MemoryFocus:     "最近1-3轮事实",
+		}
+	}
+	intent := "直接回答问题并提供下一步"
+	if strings.Contains(normalized, "?") || strings.Contains(normalized, "？") {
+		intent = "优先回答提问并补充必要上下文"
+	}
+	tone := "友好清晰"
+	if shouldSuppressEmojiReply(normalized) {
+		tone = "严谨克制"
+	}
+	memoryFocus := "最近3轮 + 高相似记忆"
+	if len([]rune(normalized)) > 40 {
+		memoryFocus = "最近5轮 + 高相似记忆"
+	}
+	return plannerLite{
+		AnswerIntent:    intent,
+		ContinuityClaim: "延续当前主题，避免切题漂移",
+		ToneTarget:      tone,
+		MemoryFocus:     memoryFocus,
+	}
+}
+
+func evaluateGuards(text string, memories []supamemory.MemoryRow) guardResult {
+	relevance := estimateRelevance(text, memories)
+	continuity := estimateContinuity(text, memories)
+	res := guardResult{
+		RelevanceScore:  relevance,
+		ContinuityScore: continuity,
+	}
+	if relevance < 40 {
+		res.Blocked = true
+		res.Reason = "relevance_too_low"
+		return res
+	}
+	if continuity < 35 {
+		res.Blocked = true
+		res.Reason = "continuity_too_low"
+		return res
+	}
+	res.Blocked = false
+	res.Reason = "pass"
+	return res
+}
+
+func estimateRelevance(text string, memories []supamemory.MemoryRow) int {
+	tokens := tokenizeText(text)
+	if len(tokens) == 0 {
+		return 35
+	}
+	hits := 0
+	memText := make([]string, 0, len(memories))
+	for _, row := range memories {
+		memText = append(memText, strings.ToLower(row.Content))
+	}
+	for _, tok := range tokens {
+		for _, memo := range memText {
+			if strings.Contains(memo, tok) {
+				hits++
+				break
+			}
+		}
+	}
+	base := 35
+	score := base + hits*10
+	if len(memories) == 0 {
+		score -= 5
+	}
+	if score > 100 {
+		score = 100
+	}
+	if score < 0 {
+		score = 0
+	}
+	return score
+}
+
+func estimateContinuity(text string, memories []supamemory.MemoryRow) int {
+	if strings.TrimSpace(text) == "" {
+		return 30
+	}
+	score := 45
+	if len(memories) > 0 {
+		score += 20
+	}
+	keywords := []string{"然后", "接着", "继续", "后续"}
+	for _, keyword := range keywords {
+		if strings.Contains(text, keyword) {
+			score += 15
+			break
+		}
+	}
+	if shouldSuppressEmojiReply(text) {
+		score += 5
+	}
+	if score > 100 {
+		score = 100
+	}
+	return score
+}
+
+func tokenizeText(input string) []string {
+	lower := strings.ToLower(strings.TrimSpace(input))
+	if lower == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(lower, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsPunct(r)
+	})
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		p := strings.TrimSpace(part)
+		if len([]rune(p)) < 2 {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+func renderPlannerOnlyReply(planner plannerLite, userText string) string {
+	reply := "我理解你的诉求，先给你一个明确答复。"
+	if strings.TrimSpace(userText) == "" {
+		reply = "我先帮你梳理目标，再继续回答。"
+	}
+	if planner.ToneTarget == "严谨克制" {
+		reply += " 当前场景偏严肃，我会保持简洁准确。"
+	}
+	return reply
+}
+
+func (s *AI) resolveDialogueRuntimeFlags(ctx context.Context) supamemory.DialogueRuntimeFlags {
+	flags := supamemory.DialogueRuntimeFlags{
+		PlannerOnly:      false,
+		GuardSoftMode:    true,
+		FallbackFastPath: false,
+	}
+	if s.SupaMemory == nil {
+		return flags
+	}
+	runtimeFlags, err := s.SupaMemory.GetDialogueRuntimeFlags(ctx)
+	if err != nil || runtimeFlags == nil {
+		return flags
+	}
+	return *runtimeFlags
+}
+
+func (s *AI) resolveConversationContext(ctx context.Context, meta runtimePromptMeta, d Delivery) (string, string) {
+	turnSeed := strings.TrimSpace(d.Message.ExternalID)
+	if turnSeed == "" {
+		turnSeed = strings.TrimSpace(d.Message.ContextToken)
+	}
+	if turnSeed == "" {
+		turnSeed = fmt.Sprintf("%s_%d", strings.TrimSpace(d.Message.Sender), time.Now().UnixMilli())
+	}
+	turnID := sanitizeTurnToken(turnSeed)
+	if s.SupaMemory == nil {
+		return "", turnID
+	}
+	conversationID, err := s.SupaMemory.ResolveConversationID(ctx, meta.UserID, meta.RoleID, d.Message.ContextToken, d.Message.Sender)
+	if err != nil {
+		return "", turnID
+	}
+	return conversationID, turnID
+}
+
+func sanitizeTurnToken(raw string) string {
+	input := strings.TrimSpace(raw)
+	if input == "" {
+		return "turn_unknown"
+	}
+	replacer := strings.NewReplacer(" ", "_", "@", "_", ":", "_", "/", "_", "\\", "_")
+	token := replacer.Replace(input)
+	if len(token) > 80 {
+		token = token[:80]
+	}
+	return token
+}
+
+func buildEventID(turnID, kind string) string {
+	k := strings.TrimSpace(kind)
+	if k == "" {
+		k = "event"
+	}
+	return turnID + "_" + k
+}
+
+func buildIdempotencyKey(conversationID, turnID, kind string) string {
+	base := strings.TrimSpace(conversationID)
+	if base == "" {
+		base = "conv_unknown"
+	}
+	return base + ":" + turnID + ":" + strings.TrimSpace(kind)
+}
+
+func (s *AI) appendDialogueEvent(ctx context.Context, conversationID string, input supamemory.DialogueEventInput) {
+	if s.SupaMemory == nil || strings.TrimSpace(conversationID) == "" {
+		return
+	}
+	if err := s.SupaMemory.AppendDialogueEvent(ctx, input); err != nil {
+		slog.Warn("append dialogue event failed", "conversation_id", conversationID, "event_type", input.EventType, "err", err)
+	}
+}
+
+func (s *AI) upsertConversationState(ctx context.Context, conversationID, stage, activeFlow string, payload map[string]any, version int64) {
+	if s.SupaMemory == nil || strings.TrimSpace(conversationID) == "" {
+		return
+	}
+	err := s.SupaMemory.UpsertConversationState(ctx, supamemory.ConversationStateInput{
+		ConversationID: conversationID,
+		Stage:          stage,
+		ActiveFlow:     activeFlow,
+		StatePayload:   payload,
+		Version:        version,
+	})
+	if err != nil {
+		slog.Warn("upsert conversation state failed", "conversation_id", conversationID, "stage", stage, "err", err)
+	}
 }
 
 func (s *AI) resolveUsageBillingConfig(ctx context.Context) (enabled bool, charsPerUnit int, source string) {

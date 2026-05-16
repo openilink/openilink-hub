@@ -23,16 +23,19 @@ type Config struct {
 	MemoryTable    string
 	MemoryMatchRPC string
 
-	BindingsTable      string
-	RoutesTable        string
-	BotsTable          string
-	ProfilesTable      string
-	AuditLogsTable     string
-	SubscriptionsTable string
-	PlanLimitsTable    string
-	UsageCountersTable string
-	UsageEventsTable   string
-	DictItemsTable     string
+	BindingsTable           string
+	RoutesTable             string
+	BotsTable               string
+	ProfilesTable           string
+	AuditLogsTable          string
+	SubscriptionsTable      string
+	PlanLimitsTable         string
+	UsageCountersTable      string
+	UsageEventsTable        string
+	DictItemsTable          string
+	PlatformMessagesTable   string
+	ConversationStatesTable string
+	DialogueEventsTable     string
 
 	EmbeddingModel string
 }
@@ -46,19 +49,22 @@ type Client struct {
 	memoryEnabled bool
 	memoryTopK    int
 
-	memoryTable        string
-	memoryMatchRPC     string
-	bindingsTable      string
-	routesTable        string
-	botsTable          string
-	profilesTable      string
-	auditLogsTable     string
-	subscriptionsTable string
-	planLimitsTable    string
-	usageCountersTable string
-	usageEventsTable   string
-	dictItemsTable     string
-	embeddingModel     string
+	memoryTable             string
+	memoryMatchRPC          string
+	bindingsTable           string
+	routesTable             string
+	botsTable               string
+	profilesTable           string
+	auditLogsTable          string
+	subscriptionsTable      string
+	planLimitsTable         string
+	usageCountersTable      string
+	usageEventsTable        string
+	dictItemsTable          string
+	platformMessagesTable   string
+	conversationStatesTable string
+	dialogueEventsTable     string
+	embeddingModel          string
 }
 
 type BindingContext struct {
@@ -122,18 +128,41 @@ type UsageEventInput struct {
 }
 
 type UsageLedgerInput struct {
-	UserID      string
-	Delta       int
-	Source      string
-	SessionID   string
-	TraceID     string
-	Detail      map[string]any
-	WriteEvent  bool
+	UserID     string
+	Delta      int
+	Source     string
+	SessionID  string
+	TraceID    string
+	Detail     map[string]any
+	WriteEvent bool
 }
 
 type UsageBillingConfig struct {
 	Enabled          bool
 	TextCharsPerUnit int
+}
+
+type DialogueRuntimeFlags struct {
+	PlannerOnly      bool
+	GuardSoftMode    bool
+	FallbackFastPath bool
+}
+
+type ConversationStateInput struct {
+	ConversationID string
+	Stage          string
+	ActiveFlow     string
+	StatePayload   map[string]any
+	Version        int64
+}
+
+type DialogueEventInput struct {
+	ConversationID string
+	TurnID         string
+	EventID        string
+	EventType      string
+	IdempotencyKey string
+	EventPayload   map[string]any
 }
 
 type EmojiAsset struct {
@@ -212,30 +241,45 @@ func NewClient(cfg Config) (*Client, error) {
 	if dictItems == "" {
 		dictItems = "bl_dict_items"
 	}
+	platformMessages := strings.TrimSpace(cfg.PlatformMessagesTable)
+	if platformMessages == "" {
+		platformMessages = "bl_platform_messages"
+	}
+	conversationStates := strings.TrimSpace(cfg.ConversationStatesTable)
+	if conversationStates == "" {
+		conversationStates = "bl_conversation_states"
+	}
+	dialogueEvents := strings.TrimSpace(cfg.DialogueEventsTable)
+	if dialogueEvents == "" {
+		dialogueEvents = "bl_dialogue_events"
+	}
 	embeddingModel := strings.TrimSpace(cfg.EmbeddingModel)
 	if embeddingModel == "" {
 		embeddingModel = "text-embedding-3-small"
 	}
 	return &Client{
-		baseURL:            base,
-		apiKey:             key,
-		schema:             schema,
-		http:               &http.Client{Timeout: 10 * time.Second},
-		memoryEnabled:      cfg.MemoryEnabled,
-		memoryTopK:         topK,
-		memoryTable:        memoryTable,
-		memoryMatchRPC:     matchRPC,
-		bindingsTable:      bindings,
-		routesTable:        routes,
-		botsTable:          bots,
-		profilesTable:      profiles,
-		auditLogsTable:     auditLogs,
-		subscriptionsTable: subscriptions,
-		planLimitsTable:    planLimits,
-		usageCountersTable: usageCounters,
-		usageEventsTable:   usageEvents,
-		dictItemsTable:     dictItems,
-		embeddingModel:     embeddingModel,
+		baseURL:                 base,
+		apiKey:                  key,
+		schema:                  schema,
+		http:                    &http.Client{Timeout: 10 * time.Second},
+		memoryEnabled:           cfg.MemoryEnabled,
+		memoryTopK:              topK,
+		memoryTable:             memoryTable,
+		memoryMatchRPC:          matchRPC,
+		bindingsTable:           bindings,
+		routesTable:             routes,
+		botsTable:               bots,
+		profilesTable:           profiles,
+		auditLogsTable:          auditLogs,
+		subscriptionsTable:      subscriptions,
+		planLimitsTable:         planLimits,
+		usageCountersTable:      usageCounters,
+		usageEventsTable:        usageEvents,
+		dictItemsTable:          dictItems,
+		platformMessagesTable:   platformMessages,
+		conversationStatesTable: conversationStates,
+		dialogueEventsTable:     dialogueEvents,
+		embeddingModel:          embeddingModel,
 	}, nil
 }
 
@@ -385,6 +429,134 @@ func (c *Client) WriteAuditLog(ctx context.Context, in AuditLogInput) error {
 	return err
 }
 
+func (c *Client) ResolveConversationID(ctx context.Context, userID, roleID, contextToken, sender string) (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	userID = strings.TrimSpace(userID)
+	roleID = strings.TrimSpace(roleID)
+	if userID == "" || roleID == "" {
+		return "", nil
+	}
+	paths := make([]string, 0, 2)
+	if token := strings.TrimSpace(contextToken); token != "" {
+		q := url.Values{}
+		q.Set("user_id", "eq."+userID)
+		q.Set("role_id", "eq."+roleID)
+		q.Set("context_token", "eq."+token)
+		q.Set("conversation_id", "not.is.null")
+		q.Set("select", "conversation_id")
+		q.Set("order", "created_at.desc")
+		q.Set("limit", "1")
+		paths = append(paths, "/rest/v1/"+url.PathEscape(c.platformMessagesTable)+"?"+q.Encode())
+	}
+	if extUser := strings.TrimSpace(sender); extUser != "" {
+		q := url.Values{}
+		q.Set("user_id", "eq."+userID)
+		q.Set("role_id", "eq."+roleID)
+		q.Set("external_user_id", "eq."+extUser)
+		q.Set("conversation_id", "not.is.null")
+		q.Set("select", "conversation_id")
+		q.Set("order", "created_at.desc")
+		q.Set("limit", "1")
+		paths = append(paths, "/rest/v1/"+url.PathEscape(c.platformMessagesTable)+"?"+q.Encode())
+	}
+	for _, path := range paths {
+		body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+		if err != nil {
+			return "", err
+		}
+		var rows []struct {
+			ConversationID string `json:"conversation_id"`
+		}
+		if err := json.Unmarshal(body, &rows); err != nil {
+			return "", err
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		if id := strings.TrimSpace(rows[0].ConversationID); id != "" {
+			return id, nil
+		}
+	}
+	return "", nil
+}
+
+func (c *Client) UpsertConversationState(ctx context.Context, in ConversationStateInput) error {
+	if c == nil {
+		return nil
+	}
+	conversationID := strings.TrimSpace(in.ConversationID)
+	if conversationID == "" {
+		return nil
+	}
+	stage := strings.TrimSpace(in.Stage)
+	if stage == "" {
+		stage = "idle"
+	}
+	activeFlow := strings.TrimSpace(in.ActiveFlow)
+	if activeFlow == "" {
+		activeFlow = "free_chat"
+	}
+	payload := in.StatePayload
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	row := map[string]any{
+		"conversation_id": conversationID,
+		"stage":           stage,
+		"active_flow":     activeFlow,
+		"state_payload":   payload,
+	}
+	if in.Version >= 0 {
+		row["version"] = in.Version
+	}
+	body, _ := json.Marshal(row)
+	path := "/rest/v1/" + url.PathEscape(c.conversationStatesTable) + "?on_conflict=conversation_id&select=conversation_id"
+	_, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
+		"Prefer": "resolution=merge-duplicates,return=minimal",
+	})
+	return err
+}
+
+func (c *Client) AppendDialogueEvent(ctx context.Context, in DialogueEventInput) error {
+	if c == nil {
+		return nil
+	}
+	conversationID := strings.TrimSpace(in.ConversationID)
+	eventType := strings.TrimSpace(in.EventType)
+	idempotencyKey := strings.TrimSpace(in.IdempotencyKey)
+	if conversationID == "" || eventType == "" || idempotencyKey == "" {
+		return nil
+	}
+	turnID := strings.TrimSpace(in.TurnID)
+	if turnID == "" {
+		turnID = "turn_unknown"
+	}
+	eventID := strings.TrimSpace(in.EventID)
+	if eventID == "" {
+		eventID = idempotencyKey
+	}
+	payload := in.EventPayload
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	row := map[string]any{
+		"conversation_id": conversationID,
+		"turn_id":         turnID,
+		"event_id":        eventID,
+		"event_type":      eventType,
+		"idempotency_key": idempotencyKey,
+		"event_payload":   payload,
+	}
+	body, _ := json.Marshal(row)
+	path := "/rest/v1/" + url.PathEscape(c.dialogueEventsTable) + "?select=id"
+	_, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
+		"Prefer": "return=minimal",
+	})
+	return err
+}
+
 type subscriptionRow struct {
 	PlanCode string `json:"plan_code"`
 }
@@ -480,12 +652,12 @@ func (c *Client) BumpUsageLedger(ctx context.Context, in UsageLedgerInput) error
 		delta = 1
 	}
 	body, _ := json.Marshal(map[string]any{
-		"p_user_id":    anyID(userID),
-		"p_delta":      delta,
-		"p_source":     strings.TrimSpace(in.Source),
-		"p_session_id": strings.TrimSpace(in.SessionID),
-		"p_trace_id":   strings.TrimSpace(in.TraceID),
-		"p_detail":     in.Detail,
+		"p_user_id":     anyID(userID),
+		"p_delta":       delta,
+		"p_source":      strings.TrimSpace(in.Source),
+		"p_session_id":  strings.TrimSpace(in.SessionID),
+		"p_trace_id":    strings.TrimSpace(in.TraceID),
+		"p_detail":      in.Detail,
 		"p_write_event": in.WriteEvent,
 	})
 	_, err := c.do(ctx, http.MethodPost, "/rest/v1/rpc/bump_usage_ledger", body, nil)
@@ -570,6 +742,47 @@ func (c *Client) GetUsageBillingConfig(ctx context.Context) (*UsageBillingConfig
 		Enabled:          enabled,
 		TextCharsPerUnit: charsPerUnit,
 	}, nil
+}
+
+func (c *Client) GetDialogueRuntimeFlags(ctx context.Context) (*DialogueRuntimeFlags, error) {
+	if c == nil {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("dict_code", "eq.system_runtime_flags")
+	q.Set("item_code", "in.(planner_only,guard_soft_mode,fallback_fast_path)")
+	q.Set("is_active", "eq.true")
+	q.Set("select", "item_code,item_value")
+	path := "/rest/v1/" + url.PathEscape(c.dictItemsTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ItemCode  string `json:"item_code"`
+		ItemValue string `json:"item_value"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	flags := &DialogueRuntimeFlags{
+		PlannerOnly:      false,
+		GuardSoftMode:    true,
+		FallbackFastPath: false,
+	}
+	for _, row := range rows {
+		v := strings.ToLower(strings.TrimSpace(row.ItemValue))
+		enabled := v == "true" || v == "1" || v == "yes" || v == "on"
+		switch strings.TrimSpace(row.ItemCode) {
+		case "planner_only":
+			flags.PlannerOnly = enabled
+		case "guard_soft_mode":
+			flags.GuardSoftMode = enabled
+		case "fallback_fast_path":
+			flags.FallbackFastPath = enabled
+		}
+	}
+	return flags, nil
 }
 
 func (c *Client) IsEmojiReplyEnabled(ctx context.Context, userID, roleID string) (bool, error) {
