@@ -9,6 +9,38 @@ import (
 	"testing"
 )
 
+func TestDecodeMemoryRows_BotIDAsNumber(t *testing.T) {
+	body := []byte(`[
+		{"id":"m1","user_id":"u1","bot_id":18,"content":"hello","source":"openilink_user","created_at":"2026-05-16T00:00:00Z"}
+	]`)
+	rows, err := decodeMemoryRows(body)
+	if err != nil {
+		t.Fatalf("decodeMemoryRows: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows len=%d", len(rows))
+	}
+	if string(rows[0].RoleID) != "18" {
+		t.Fatalf("role_id=%q", rows[0].RoleID)
+	}
+}
+
+func TestDecodeMemoryRows_BotIDAsString(t *testing.T) {
+	body := []byte(`[
+		{"id":"m1","user_id":"u1","bot_id":"18","content":"hello","source":"openilink_user","created_at":"2026-05-16T00:00:00Z"}
+	]`)
+	rows, err := decodeMemoryRows(body)
+	if err != nil {
+		t.Fatalf("decodeMemoryRows: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows len=%d", len(rows))
+	}
+	if string(rows[0].RoleID) != "18" {
+		t.Fatalf("role_id=%q", rows[0].RoleID)
+	}
+}
+
 func TestResolveBindingContext_RoleIDAsNumber(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

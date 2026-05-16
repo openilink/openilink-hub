@@ -88,7 +88,7 @@ type PromptSnapshot struct {
 type MemoryRow struct {
 	ID         string  `json:"id"`
 	UserID     string  `json:"user_id"`
-	RoleID     string  `json:"bot_id"`
+	RoleID     flexID  `json:"bot_id"`
 	Content    string  `json:"content"`
 	Source     string  `json:"source"`
 	CreatedAt  string  `json:"created_at"`
