@@ -1839,6 +1839,51 @@ func TestSetBotAIModel(t *testing.T) {
 	}
 }
 
+func TestAdminAIConfigLanguageRouteFields(t *testing.T) {
+	env := setupTestEnv(t)
+
+	setResp := doJSON(t, env.ts, "PUT", "/api/admin/config/ai", map[string]any{
+		"base_url":               "https://openrouter.ai/api/v1",
+		"api_key":                "or-key",
+		"model":                  "ai21/jamba-large-1.7",
+		"model_zh":               "deepseek/deepseek-v3.2",
+		"model_non_zh":           "ai21/jamba-large-1.7",
+		"fallback_model":         "openai/gpt-4o-mini",
+		"fallback_model_zh":      "deepseek/deepseek-chat",
+		"fallback_model_non_zh":  "openai/gpt-4o-mini",
+		"available_models":       "[\"deepseek/deepseek-v3.2\",\"ai21/jamba-large-1.7\"]",
+	}, withCookie(env.cookie))
+	defer setResp.Body.Close()
+	if setResp.StatusCode != http.StatusOK {
+		t.Fatalf("set ai config expected 200, got %d", setResp.StatusCode)
+	}
+
+	getResp := doJSON(t, env.ts, "GET", "/api/admin/config/ai", nil, withCookie(env.cookie))
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("get ai config expected 200, got %d", getResp.StatusCode)
+	}
+	body := decodeJSON(t, getResp)
+	if got, _ := body["model_zh"].(string); got != "deepseek/deepseek-v3.2" {
+		t.Fatalf("model_zh=%q", got)
+	}
+	if got, _ := body["model_non_zh"].(string); got != "ai21/jamba-large-1.7" {
+		t.Fatalf("model_non_zh=%q", got)
+	}
+	if got, _ := body["fallback_model_zh"].(string); got != "deepseek/deepseek-chat" {
+		t.Fatalf("fallback_model_zh=%q", got)
+	}
+	if got, _ := body["fallback_model_non_zh"].(string); got != "openai/gpt-4o-mini" {
+		t.Fatalf("fallback_model_non_zh=%q", got)
+	}
+
+	delResp := doJSON(t, env.ts, "DELETE", "/api/admin/config/ai", nil, withCookie(env.cookie))
+	defer delResp.Body.Close()
+	if delResp.StatusCode != http.StatusOK {
+		t.Fatalf("delete ai config expected 200, got %d", delResp.StatusCode)
+	}
+}
+
 func TestMarketplaceInstalledStatusIsPerUser(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	s, err := sqlite.Open(dbPath)

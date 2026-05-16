@@ -53,6 +53,25 @@
 - `docs/binding-prompt-sync.md`
 - `docs/full-prompt-flow.md`
 
+### AI 模型语言路由（新增）
+
+当 Bot 未手动指定 `ai_model` 时，Hub 会按消息语言自动选模型：
+
+1. 中文（`zh-CN`）默认：`deepseek/deepseek-v3.2`
+2. 非中文默认：`ai21/jamba-large-1.7`
+
+可通过全局配置覆盖（环境变量优先，其次数据库配置）：
+
+- `AI_MODEL_ZH` / `ai.model_zh`
+- `AI_MODEL_NON_ZH` / `ai.model_non_zh`
+- `AI_FALLBACK_MODEL_ZH` / `ai.fallback_model_zh`
+- `AI_FALLBACK_MODEL_NON_ZH` / `ai.fallback_model_non_zh`
+
+兼容规则：
+
+1. 若 Bot 通过 `/model` 或后台设置了 `ai_model`，优先使用该模型（跳过语言路由）。
+2. 若未设置语言专用 fallback，则回退到 `AI_FALLBACK_MODEL` / `ai.fallback_model`。
+
 ## 快速开始
 
 ```bash
