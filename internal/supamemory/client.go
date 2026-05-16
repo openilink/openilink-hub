@@ -156,6 +156,14 @@ type ConversationStateInput struct {
 	Version        int64
 }
 
+type ConversationStateRow struct {
+	ConversationID string         `json:"conversation_id"`
+	Stage          string         `json:"stage"`
+	ActiveFlow     string         `json:"active_flow"`
+	StatePayload   map[string]any `json:"state_payload"`
+	Version        int64          `json:"version"`
+}
+
 type DialogueEventInput struct {
 	ConversationID string
 	TurnID         string
@@ -517,6 +525,59 @@ func (c *Client) UpsertConversationState(ctx context.Context, in ConversationSta
 		"Prefer": "resolution=merge-duplicates,return=minimal",
 	})
 	return err
+}
+
+func (c *Client) GetConversationState(ctx context.Context, conversationID string) (*ConversationStateRow, error) {
+	if c == nil {
+		return nil, nil
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("conversation_id", "eq."+conversationID)
+	q.Set("select", "conversation_id,stage,active_flow,state_payload,version")
+	q.Set("limit", "1")
+	path := "/rest/v1/" + url.PathEscape(c.conversationStatesTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ConversationID string         `json:"conversation_id"`
+		Stage          string         `json:"stage"`
+		ActiveFlow     string         `json:"active_flow"`
+		StatePayload   map[string]any `json:"state_payload"`
+		Version        any            `json:"version"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	version := int64(0)
+	switch v := rows[0].Version.(type) {
+	case float64:
+		version = int64(v)
+	case int64:
+		version = v
+	case int:
+		version = int64(v)
+	case string:
+		n, parseErr := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		if parseErr == nil {
+			version = n
+		}
+	}
+	return &ConversationStateRow{
+		ConversationID: strings.TrimSpace(rows[0].ConversationID),
+		Stage:          strings.TrimSpace(rows[0].Stage),
+		ActiveFlow:     strings.TrimSpace(rows[0].ActiveFlow),
+		StatePayload:   rows[0].StatePayload,
+		Version:        version,
+	}, nil
 }
 
 func (c *Client) AppendDialogueEvent(ctx context.Context, in DialogueEventInput) error {

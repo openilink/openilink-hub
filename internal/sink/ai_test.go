@@ -581,3 +581,31 @@ func TestResolveEmojiReply_DedupRecentAsset(t *testing.T) {
 		t.Fatalf("reason=%s", info.Reason)
 	}
 }
+
+func TestTrimMemoriesForPhase2(t *testing.T) {
+	rows := []supamemory.MemoryRow{
+		{Source: "openilink_user", Content: "u1"},
+		{Source: "openilink_user", Content: "u2"},
+		{Source: "openilink_assistant", Content: "a1"},
+		{Source: "role_profile", Content: "r1"},
+		{Source: "global", Content: "g1"},
+		{Source: "global", Content: "g2"},
+	}
+	got := trimMemoriesForPhase2(rows, 4)
+	if len(got) != 4 {
+		t.Fatalf("len=%d", len(got))
+	}
+	if got[0].Content != "u1" || got[1].Content != "u2" {
+		t.Fatalf("session priority broken: %#v", got)
+	}
+}
+
+func TestMergeRollingSummary(t *testing.T) {
+	got := mergeRollingSummary("之前摘要", "用户问了一个很长很长的问题", "助手给了一个很长很长的回答")
+	if !strings.Contains(got, "之前摘要") {
+		t.Fatalf("missing prev: %q", got)
+	}
+	if !strings.Contains(got, "用户:") || !strings.Contains(got, "助手:") {
+		t.Fatalf("missing merged parts: %q", got)
+	}
+}

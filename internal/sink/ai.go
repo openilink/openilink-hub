@@ -87,6 +87,12 @@ type guardResult struct {
 	Reason          string `json:"reason"`
 }
 
+type memoryBucket struct {
+	SessionRows []supamemory.MemoryRow
+	RoleRows    []supamemory.MemoryRow
+	GeneralRows []supamemory.MemoryRow
+}
+
 const runtimePromptCacheTTL = 120 * time.Second
 
 func (s *AI) writeRuntimeAudit(d Delivery, eventType string, detail map[string]any) {
@@ -470,6 +476,8 @@ func (s *AI) reply(d Delivery) {
 	}, 1)
 
 	memories := s.resolveMemories(ctx, cfg, promptMeta, memQuery)
+	trimmedMemories := trimMemoriesForPhase2(memories, 6)
+	memSummary := s.resolveRollingSummary(ctx, conversationID)
 
 	// Create media resolver for history images
 	var resolver ai.MediaResolver
@@ -482,8 +490,18 @@ func (s *AI) reply(d Delivery) {
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
 	messages = injectUserPromptMessage(messages, promptMeta.UserPrompt)
-	if len(memories) > 0 {
-		memPrompt := buildMemoryPrompt(memories)
+	if memSummary != "" {
+		for i := range messages {
+			if messages[i].Role == "system" {
+				if content, ok := messages[i].Content.(string); ok {
+					messages[i].Content = strings.TrimSpace(content + "\n\n历史摘要（rolling summary）:\n" + memSummary)
+				}
+				break
+			}
+		}
+	}
+	if len(trimmedMemories) > 0 {
+		memPrompt := buildMemoryPrompt(trimmedMemories)
 		if memPrompt != "" {
 			for i := range messages {
 				if messages[i].Role == "system" {
@@ -502,7 +520,7 @@ func (s *AI) reply(d Delivery) {
 			span.SetAttr("prompt.full_hash", promptMeta.FullHash)
 		}
 		span.SetAttr("prompt.truncated", promptMeta.Truncated)
-		span.SetAttr("memory.hit_count", len(memories))
+		span.SetAttr("memory.hit_count", len(trimmedMemories))
 		if promptMeta.RoleID != "" {
 			span.SetAttr("memory.role_id", promptMeta.RoleID)
 		}
@@ -510,7 +528,7 @@ func (s *AI) reply(d Delivery) {
 			span.SetAttr("memory.user_id", promptMeta.UserID)
 		}
 	}
-	guard := evaluateGuards(memQuery, memories)
+	guard := evaluateGuards(memQuery, trimmedMemories)
 	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
 		ConversationID: conversationID,
 		TurnID:         turnID,
@@ -600,7 +618,7 @@ func (s *AI) reply(d Delivery) {
 			"role_id":     promptMeta.RoleID,
 			"sender":      sender,
 			"model":       cfg.Model,
-			"memory_hits": len(memories),
+			"memory_hits": len(trimmedMemories),
 			"error":       err.Error(),
 		})
 		if span != nil {
@@ -837,7 +855,7 @@ func (s *AI) reply(d Delivery) {
 		IdempotencyKey: buildIdempotencyKey(conversationID, turnID, "reply"),
 		EventPayload: map[string]any{
 			"reply_chars":       len([]rune(reply)),
-			"memory_hits":       len(memories),
+			"memory_hits":       len(trimmedMemories),
 			"emoji_reply":       emojiAsset != nil,
 			"prompt_tokens":     totalPrompt,
 			"completion_tokens": totalCompletion,
@@ -937,11 +955,13 @@ func (s *AI) reply(d Delivery) {
 			}
 		}()
 	}
+	nextSummary := mergeRollingSummary(memSummary, text, result.Content)
 	s.upsertConversationState(ctx, conversationID, "idle", "free_chat", map[string]any{
-		"last_turn_id":  turnID,
-		"last_planner":  planner,
-		"last_guard":    guard,
-		"last_reply_at": time.Now().UTC().Format(time.RFC3339),
+		"last_turn_id":    turnID,
+		"last_planner":    planner,
+		"last_guard":      guard,
+		"last_reply_at":   time.Now().UTC().Format(time.RFC3339),
+		"rolling_summary": nextSummary,
 	}, 4)
 }
 
@@ -1525,6 +1545,97 @@ func (s *AI) resolveMemories(ctx context.Context, cfg store.AIConfig, meta runti
 		return nil
 	}
 	return rows
+}
+
+func (s *AI) resolveRollingSummary(ctx context.Context, conversationID string) string {
+	if s.SupaMemory == nil || strings.TrimSpace(conversationID) == "" {
+		return ""
+	}
+	row, err := s.SupaMemory.GetConversationState(ctx, conversationID)
+	if err != nil || row == nil || row.StatePayload == nil {
+		return ""
+	}
+	raw, ok := row.StatePayload["rolling_summary"]
+	if !ok {
+		return ""
+	}
+	summary, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(summary)
+}
+
+func mergeRollingSummary(prevSummary, userText, replyText string) string {
+	prev := strings.TrimSpace(prevSummary)
+	u := strings.TrimSpace(userText)
+	r := strings.TrimSpace(replyText)
+	if u == "" && r == "" {
+		return prev
+	}
+	parts := make([]string, 0, 3)
+	if prev != "" {
+		parts = append(parts, prev)
+	}
+	if u != "" {
+		parts = append(parts, "用户:"+truncateRune(u, 80))
+	}
+	if r != "" {
+		parts = append(parts, "助手:"+truncateRune(r, 80))
+	}
+	merged := strings.Join(parts, " | ")
+	return truncateRune(merged, 420)
+}
+
+func truncateRune(input string, max int) string {
+	runes := []rune(strings.TrimSpace(input))
+	if len(runes) <= max {
+		return string(runes)
+	}
+	return string(runes[:max])
+}
+
+func trimMemoriesForPhase2(rows []supamemory.MemoryRow, maxCount int) []supamemory.MemoryRow {
+	if len(rows) == 0 {
+		return nil
+	}
+	if maxCount <= 0 {
+		maxCount = 6
+	}
+	bucket := bucketMemories(rows)
+	out := make([]supamemory.MemoryRow, 0, maxCount)
+	appendRows := func(src []supamemory.MemoryRow) {
+		for _, row := range src {
+			if len(out) >= maxCount {
+				return
+			}
+			out = append(out, row)
+		}
+	}
+	appendRows(bucket.SessionRows)
+	appendRows(bucket.RoleRows)
+	appendRows(bucket.GeneralRows)
+	return out
+}
+
+func bucketMemories(rows []supamemory.MemoryRow) memoryBucket {
+	bucket := memoryBucket{
+		SessionRows: make([]supamemory.MemoryRow, 0),
+		RoleRows:    make([]supamemory.MemoryRow, 0),
+		GeneralRows: make([]supamemory.MemoryRow, 0),
+	}
+	for _, row := range rows {
+		source := strings.ToLower(strings.TrimSpace(row.Source))
+		switch {
+		case strings.Contains(source, "openilink_user"), strings.Contains(source, "session"):
+			bucket.SessionRows = append(bucket.SessionRows, row)
+		case strings.Contains(source, "assistant"), strings.Contains(source, "role"):
+			bucket.RoleRows = append(bucket.RoleRows, row)
+		default:
+			bucket.GeneralRows = append(bucket.GeneralRows, row)
+		}
+	}
+	return bucket
 }
 
 func buildMemoryPrompt(rows []supamemory.MemoryRow) string {

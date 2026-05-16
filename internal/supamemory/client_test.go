@@ -467,3 +467,41 @@ func TestGetDialogueRuntimeFlags(t *testing.T) {
 		t.Fatal("fallback_fast_path should be true")
 	}
 }
+
+func TestGetConversationState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{
+			"conversation_id":"11111111-1111-1111-1111-111111111111",
+			"stage":"idle",
+			"active_flow":"free_chat",
+			"state_payload":{"rolling_summary":"foo bar"},
+			"version":"7"
+		}]`))
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	row, err := client.GetConversationState(context.Background(), "11111111-1111-1111-1111-111111111111")
+	if err != nil {
+		t.Fatalf("GetConversationState: %v", err)
+	}
+	if row == nil {
+		t.Fatal("row should not be nil")
+	}
+	if row.Stage != "idle" {
+		t.Fatalf("stage=%q", row.Stage)
+	}
+	if row.Version != 7 {
+		t.Fatalf("version=%d", row.Version)
+	}
+	if row.StatePayload["rolling_summary"] != "foo bar" {
+		t.Fatalf("summary=%v", row.StatePayload["rolling_summary"])
+	}
+}
