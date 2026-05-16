@@ -591,6 +591,50 @@ func TestResolveEmojiReply_DedupRecentAsset(t *testing.T) {
 	}
 }
 
+func TestResolveConversationContext_FallbackWhenSupabaseReturnsEmpty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_platform_messages"):
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := supamemory.NewClient(supamemory.Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	aiSink := &AI{SupaMemory: client}
+	delivery := Delivery{
+		Message: provider.InboundMessage{
+			ExternalID:   "evt-1",
+			ContextToken: "ctx-1",
+			Sender:       "wx-user-1",
+		},
+	}
+	convID, turnID := aiSink.resolveConversationContext(context.Background(), runtimePromptMeta{
+		UserID: "u-1",
+		RoleID: "r-1",
+	}, delivery)
+
+	if convID == "" {
+		t.Fatal("conversation id should fallback, got empty")
+	}
+	if !strings.HasPrefix(convID, "fallback_u-1_r-1_") {
+		t.Fatalf("unexpected fallback conversation id: %q", convID)
+	}
+	if turnID != "evt-1" {
+		t.Fatalf("turnID=%q", turnID)
+	}
+}
+
 func TestTrimMemoriesForPhase2(t *testing.T) {
 	rows := []supamemory.MemoryRow{
 		{Source: "openilink_user", Content: "u1"},

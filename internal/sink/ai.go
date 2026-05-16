@@ -57,6 +57,7 @@ type runtimePromptMeta struct {
 	RoleID     string
 	UserID     string
 	UserPrompt string
+	ConversationFallback bool
 }
 
 type cachedRuntimePrompt struct {
@@ -304,6 +305,7 @@ func (s *AI) reply(d Delivery) {
 		"user_id":         promptMeta.UserID,
 		"role_id":         promptMeta.RoleID,
 		"conversation_id": conversationID,
+		"conversation_fallback": strings.HasPrefix(strings.TrimSpace(conversationID), "fallback_"),
 		"turn_id":         turnID,
 	})
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
@@ -873,6 +875,7 @@ func (s *AI) reply(d Delivery) {
 		"emotion_state":                       emotion.State,
 		"emotion_tone_target":                 emotion.ToneTarget,
 		"conversation_id":                     conversationID,
+		"conversation_fallback":               strings.HasPrefix(strings.TrimSpace(conversationID), "fallback_"),
 		"turn_id":                             turnID,
 	})
 	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
@@ -2076,9 +2079,29 @@ func (s *AI) resolveConversationContext(ctx context.Context, meta runtimePromptM
 	}
 	conversationID, err := s.SupaMemory.ResolveConversationID(ctx, meta.UserID, meta.RoleID, d.Message.ContextToken, d.Message.Sender)
 	if err != nil {
-		return "", turnID
+		return fallbackConversationID(meta.UserID, meta.RoleID, d.Message.Sender), turnID
+	}
+	if strings.TrimSpace(conversationID) == "" {
+		return fallbackConversationID(meta.UserID, meta.RoleID, d.Message.Sender), turnID
 	}
 	return conversationID, turnID
+}
+
+func fallbackConversationID(userID, roleID, sender string) string {
+	u := strings.TrimSpace(userID)
+	r := strings.TrimSpace(roleID)
+	s := strings.TrimSpace(sender)
+	if u == "" || r == "" {
+		return ""
+	}
+	if s == "" {
+		s = "sender_unknown"
+	}
+	token := sanitizeTurnToken(s)
+	if token == "" {
+		token = "sender_unknown"
+	}
+	return fmt.Sprintf("fallback_%s_%s_%s", u, r, token)
 }
 
 func sanitizeTurnToken(raw string) string {
