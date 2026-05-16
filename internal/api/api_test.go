@@ -191,6 +191,22 @@ func TestBotAPI_ScopeChecks(t *testing.T) {
 		}
 	})
 
+	t.Run("media type accepts content url as media source", func(t *testing.T) {
+		resp := doJSON(t, env.ts, "POST", "/bot/v1/message/send",
+			map[string]string{
+				"type":    "image",
+				"content": "https://example.com/non-existent-image.png",
+			},
+			withBearer(instMsgOnly.AppToken))
+		defer resp.Body.Close()
+		// Scope check and media branch should pass; with no live bot we expect
+		// a non-403 auth/runtime status (typically 503).
+		if resp.StatusCode == http.StatusForbidden {
+			body := decodeJSON(t, resp)
+			t.Fatalf("expected media content-url to pass scope check, got 403: %v", body)
+		}
+	})
+
 	t.Run("missing contact:read scope denied", func(t *testing.T) {
 		resp := doJSON(t, env.ts, "GET", "/bot/v1/contact", nil,
 			withBearer(instMsgOnly.AppToken))

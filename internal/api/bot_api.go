@@ -116,6 +116,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Media message: resolve data from base64, url, or content
 		var mediaData []byte
+		mediaURL := normalizeMediaURL(req.URL, req.Content)
 		if req.Base64 != "" {
 			var decErr error
 			var mime string
@@ -127,10 +128,10 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 			if mime != "" && req.FileName == "" {
 				req.FileName = defaultFileNameFromMIME(mime)
 			}
-		} else if req.URL != "" {
+		} else if mediaURL != "" {
 			var dlErr error
 			var mime string
-			mediaData, mime, dlErr = downloadURL(r.Context(), req.URL)
+			mediaData, mime, dlErr = downloadURL(r.Context(), mediaURL)
 			if dlErr != nil {
 				botAPIError(w, "download failed: "+dlErr.Error(), http.StatusBadGateway)
 				return
@@ -227,6 +228,26 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		"client_id": clientID,
 		"trace_id":  traceID,
 	})
+}
+
+func normalizeMediaURL(rawURL, content string) string {
+	url := strings.TrimSpace(rawURL)
+	if url != "" {
+		return url
+	}
+	candidate := strings.TrimSpace(content)
+	if candidate == "" {
+		return ""
+	}
+	u, err := neturl.Parse(candidate)
+	if err != nil {
+		return ""
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if (scheme != "http" && scheme != "https") || strings.TrimSpace(u.Hostname()) == "" {
+		return ""
+	}
+	return candidate
 }
 
 func enqueueOutboundOutbox(st store.Store, botID string, msgID int64, msg *store.Message) {
