@@ -16,13 +16,14 @@ type SupabaseClient interface {
 }
 
 type HTTPSupabaseClient struct {
-	baseURL string
-	apiKey  string
-	schema  string
-	client  *http.Client
+	baseURL      string
+	apiKey       string
+	schema       string
+	messageTable string
+	client       *http.Client
 }
 
-func NewHTTPSupabaseClient(url, serviceRoleKey, schema string) (*HTTPSupabaseClient, error) {
+func NewHTTPSupabaseClient(url, serviceRoleKey, schema, messageTable string) (*HTTPSupabaseClient, error) {
 	url = strings.TrimRight(strings.TrimSpace(url), "/")
 	serviceRoleKey = strings.TrimSpace(serviceRoleKey)
 	if url == "" || serviceRoleKey == "" {
@@ -31,16 +32,20 @@ func NewHTTPSupabaseClient(url, serviceRoleKey, schema string) (*HTTPSupabaseCli
 	if schema == "" {
 		schema = "public"
 	}
+	if strings.TrimSpace(messageTable) == "" {
+		messageTable = "bl_platform_messages"
+	}
 	return &HTTPSupabaseClient{
-		baseURL: url,
-		apiKey:  serviceRoleKey,
-		schema:  schema,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		baseURL:      url,
+		apiKey:       serviceRoleKey,
+		schema:       schema,
+		messageTable: strings.TrimSpace(messageTable),
+		client:       &http.Client{Timeout: 10 * time.Second},
 	}, nil
 }
 
 func (c *HTTPSupabaseClient) UpsertMessageEvent(ctx context.Context, payload json.RawMessage) error {
-	return c.upsert(ctx, "openilink_mirror_messages", payload)
+	return c.upsert(ctx, c.messageTable, payload)
 }
 
 func (c *HTTPSupabaseClient) UpsertPromptProfileEvent(ctx context.Context, payload json.RawMessage) error {

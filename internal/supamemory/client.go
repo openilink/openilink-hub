@@ -110,6 +110,25 @@ type RecordInput struct {
 	Source  string
 }
 
+type PlatformMessageInput struct {
+	UserID            string
+	RoleID            string
+	ConversationID    string
+	Platform          string
+	Direction         string
+	Role              string
+	Content           string
+	ItemList          json.RawMessage
+	ExternalEventID   string
+	ProviderMessageID string
+	ExternalChatID    string
+	ExternalUserID    string
+	ContextToken      string
+	Raw               map[string]any
+	Meta              map[string]any
+	MessageAt         time.Time
+}
+
 type AuditLogInput struct {
 	EventType string
 	SessionID string
@@ -431,6 +450,66 @@ func (c *Client) WriteAuditLog(ctx context.Context, in AuditLogInput) error {
 	}
 	body, _ := json.Marshal(payload)
 	path := "/rest/v1/" + url.PathEscape(c.auditLogsTable) + "?select=id"
+	_, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
+		"Prefer": "return=minimal",
+	})
+	return err
+}
+
+func (c *Client) WritePlatformMessage(ctx context.Context, in PlatformMessageInput) error {
+	if c == nil {
+		return nil
+	}
+	userID := strings.TrimSpace(in.UserID)
+	roleID := strings.TrimSpace(in.RoleID)
+	direction := strings.TrimSpace(in.Direction)
+	role := strings.TrimSpace(in.Role)
+	if userID == "" || roleID == "" || direction == "" || role == "" {
+		return nil
+	}
+
+	platform := strings.TrimSpace(in.Platform)
+	if platform == "" {
+		platform = "openilink"
+	}
+
+	itemList := in.ItemList
+	if len(itemList) == 0 {
+		itemList = json.RawMessage("[]")
+	}
+
+	payload := map[string]any{
+		"user_id":             anyID(userID),
+		"role_id":             anyID(roleID),
+		"platform":            platform,
+		"direction":           direction,
+		"role":                role,
+		"content":             strings.TrimSpace(in.Content),
+		"item_list":           json.RawMessage(itemList),
+		"external_event_id":   strings.TrimSpace(in.ExternalEventID),
+		"provider_message_id": strings.TrimSpace(in.ProviderMessageID),
+		"external_chat_id":    strings.TrimSpace(in.ExternalChatID),
+		"external_user_id":    strings.TrimSpace(in.ExternalUserID),
+		"context_token":       strings.TrimSpace(in.ContextToken),
+		"meta":                in.Meta,
+		"raw":                 in.Raw,
+	}
+	if payload["meta"] == nil {
+		payload["meta"] = map[string]any{}
+	}
+	if payload["raw"] == nil {
+		payload["raw"] = map[string]any{}
+	}
+
+	if conversationID := strings.TrimSpace(in.ConversationID); isUUID(conversationID) {
+		payload["conversation_id"] = conversationID
+	}
+	if !in.MessageAt.IsZero() {
+		payload["message_at"] = in.MessageAt.UTC().Format(time.RFC3339Nano)
+	}
+
+	body, _ := json.Marshal(payload)
+	path := "/rest/v1/" + url.PathEscape(c.platformMessagesTable) + "?select=id"
 	_, err := c.do(ctx, http.MethodPost, path, body, map[string]string{
 		"Prefer": "return=minimal",
 	})
@@ -1274,6 +1353,30 @@ func parsePositiveInt(input string) (int64, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+func isUUID(v string) bool {
+	s := strings.TrimSpace(v)
+	if len(s) != 36 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		switch i {
+		case 8, 13, 18, 23:
+			if s[i] != '-' {
+				return false
+			}
+		default:
+			ch := s[i]
+			isDigit := ch >= '0' && ch <= '9'
+			isLowerHex := ch >= 'a' && ch <= 'f'
+			isUpperHex := ch >= 'A' && ch <= 'F'
+			if !isDigit && !isLowerHex && !isUpperHex {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func parseAnyPositiveInt(v any) int {

@@ -492,36 +492,8 @@ func (m *Manager) storeMessage(inst *Instance, msg provider.InboundMessage, p pa
 		if err := m.store.IncrBotMsgCount(inst.DBID); err != nil {
 			slog.Error("incr msg count failed", "bot", inst.DBID, "err", err)
 		}
-		m.enqueueMessageOutbox(inst.DBID, result.ID, store.OutboxEventMessageInbound, dbMsg)
 	}
 	return result
-}
-
-func (m *Manager) enqueueMessageOutbox(botID string, msgID int64, eventType string, msg *store.Message) {
-	if m.store == nil || msg == nil || msgID <= 0 {
-		return
-	}
-	payload, _ := json.Marshal(map[string]any{
-		"message_db_id":  msgID,
-		"bot_id":         botID,
-		"direction":      msg.Direction,
-		"from_user_id":   msg.FromUserID,
-		"to_user_id":     msg.ToUserID,
-		"message_id":     msg.MessageID,
-		"client_id":      msg.ClientID,
-		"create_time_ms": msg.CreateTimeMs,
-		"item_list":      msg.ItemList,
-		"created_at":     msg.CreatedAt,
-	})
-	eventID := fmt.Sprintf("msg:%s:%s:%d", eventType, botID, msgID)
-	if _, _, err := m.store.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
-		EventID:      eventID,
-		EventType:    eventType,
-		PartitionKey: botID,
-		Payload:      payload,
-	}); err != nil {
-		slog.Warn("enqueue outbox failed", "event_type", eventType, "event_id", eventID, "bot", botID, "err", err)
-	}
 }
 
 // broadcastStateUpdate pushes a message state update to all connected WebSocket

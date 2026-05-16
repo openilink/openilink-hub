@@ -467,6 +467,32 @@ func (s *AI) reply(d Delivery) {
 			return
 		}
 	}
+	s.writePlatformMessage(ctx, promptMeta, supamemory.PlatformMessageInput{
+		UserID:            promptMeta.UserID,
+		RoleID:            promptMeta.RoleID,
+		ConversationID:    conversationID,
+		Platform:          "openilink",
+		Direction:         "inbound",
+		Role:              "user",
+		Content:           strings.TrimSpace(text),
+		ItemList:          toRawJSON(d.Message.Items, json.RawMessage("[]")),
+		ExternalEventID:   strings.TrimSpace(d.Message.ExternalID),
+		ProviderMessageID: "",
+		ExternalChatID:    strings.TrimSpace(d.Message.Recipient),
+		ExternalUserID:    strings.TrimSpace(d.Message.Sender),
+		ContextToken:      strings.TrimSpace(d.Message.ContextToken),
+		Raw:               mapFromRawJSON(d.Message.Raw),
+		Meta: map[string]any{
+			"bot_id":                 d.BotDBID,
+			"message_type":           d.MsgType,
+			"message_state":          d.Message.MessageState,
+			"session_id":             d.Message.SessionID,
+			"group_id":               d.Message.GroupID,
+			"source":                 "openilink_hub_ai",
+			"conversation_fallback":  strings.HasPrefix(strings.TrimSpace(conversationID), "fallback_"),
+		},
+		MessageAt: time.Now().UTC(),
+	})
 	memQuery := strings.TrimSpace(text)
 	planner := buildPlannerLite(memQuery)
 	prevEmotion := s.resolveEmotionState(ctx, conversationID)
@@ -968,12 +994,26 @@ func (s *AI) reply(d Delivery) {
 		ItemList:    itemList,
 	})
 	if saveRes.Inserted {
-		s.enqueueOutboundOutbox(d.BotDBID, saveRes.ID, &store.Message{
-			BotID:       d.BotDBID,
-			Direction:   "outbound",
-			ToUserID:    sender,
-			MessageType: 2,
-			ItemList:    itemList,
+		s.writePlatformMessage(ctx, promptMeta, supamemory.PlatformMessageInput{
+			UserID:            promptMeta.UserID,
+			RoleID:            promptMeta.RoleID,
+			ConversationID:    conversationID,
+			Platform:          "openilink",
+			Direction:         "outbound",
+			Role:              "assistant",
+			Content:           strings.TrimSpace(result.Content),
+			ItemList:          itemList,
+			ExternalEventID:   strings.TrimSpace(turnID),
+			ProviderMessageID: fmt.Sprintf("%d", saveRes.ID),
+			ExternalChatID:    strings.TrimSpace(d.Message.Recipient),
+			ExternalUserID:    strings.TrimSpace(sender),
+			ContextToken:      strings.TrimSpace(d.Message.ContextToken),
+			Meta: map[string]any{
+				"bot_id":       d.BotDBID,
+				"source":       "openilink_hub_ai",
+				"local_msg_id": saveRes.ID,
+			},
+			MessageAt: time.Now().UTC(),
 		})
 	}
 	if s.SupaMemory != nil && promptMeta.RoleID != "" && promptMeta.UserID != "" {
@@ -1275,14 +1315,30 @@ func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageD
 			ItemList: itemList, MediaStatus: mediaStatus, MediaKeys: mediaKeys,
 		})
 		if saveRes.Inserted {
-			s.enqueueOutboundOutbox(d.BotDBID, saveRes.ID, &store.Message{
-				BotID:       d.BotDBID,
-				Direction:   "outbound",
-				ToUserID:    sender,
-				MessageType: 2,
-				ItemList:    itemList,
-				MediaStatus: mediaStatus,
-				MediaKeys:   mediaKeys,
+			cfg := s.resolveConfig(d.AIModel)
+			_, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, d.Message.Sender)
+			conversationID, _ := s.resolveConversationContext(ctx, promptMeta, d)
+			s.writePlatformMessage(ctx, promptMeta, supamemory.PlatformMessageInput{
+				UserID:            promptMeta.UserID,
+				RoleID:            promptMeta.RoleID,
+				ConversationID:    conversationID,
+				Platform:          "openilink",
+				Direction:         "outbound",
+				Role:              "assistant",
+				Content:           "",
+				ItemList:          itemList,
+				ProviderMessageID: fmt.Sprintf("%d", saveRes.ID),
+				ExternalChatID:    strings.TrimSpace(d.Message.Recipient),
+				ExternalUserID:    strings.TrimSpace(sender),
+				ContextToken:      strings.TrimSpace(d.Message.ContextToken),
+				Meta: map[string]any{
+					"bot_id":       d.BotDBID,
+					"source":       "openilink_hub_ai_tool_media",
+					"local_msg_id": saveRes.ID,
+					"media_status": mediaStatus,
+					"media_keys":   json.RawMessage(mediaKeys),
+				},
+				MessageAt: time.Now().UTC(),
 			})
 		}
 	}
@@ -1887,28 +1943,47 @@ func (s *AI) setTokenUsage(span, rootSpan *store.SpanBuilder, prompt, completion
 	}
 }
 
-func (s *AI) enqueueOutboundOutbox(botID string, msgID int64, msg *store.Message) {
-	if s.Store == nil || msgID <= 0 || msg == nil {
+func (s *AI) writePlatformMessage(ctx context.Context, meta runtimePromptMeta, in supamemory.PlatformMessageInput) {
+	if s.SupaMemory == nil {
 		return
 	}
-	payload, _ := json.Marshal(map[string]any{
-		"message_db_id": msgID,
-		"bot_id":        botID,
-		"direction":     "outbound",
-		"to_user_id":    msg.ToUserID,
-		"item_list":     msg.ItemList,
-		"media_status":  msg.MediaStatus,
-		"media_keys":    msg.MediaKeys,
-	})
-	eventID := fmt.Sprintf("msg:%s:%s:%d", store.OutboxEventMessageOutbound, botID, msgID)
-	if _, _, err := s.Store.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
-		EventID:      eventID,
-		EventType:    store.OutboxEventMessageOutbound,
-		PartitionKey: botID,
-		Payload:      payload,
-	}); err != nil {
-		slog.Warn("enqueue outbox failed", "event_id", eventID, "bot", botID, "err", err)
+	if strings.TrimSpace(in.UserID) == "" {
+		in.UserID = strings.TrimSpace(meta.UserID)
 	}
+	if strings.TrimSpace(in.RoleID) == "" {
+		in.RoleID = strings.TrimSpace(meta.RoleID)
+	}
+	if strings.TrimSpace(in.UserID) == "" || strings.TrimSpace(in.RoleID) == "" {
+		return
+	}
+	if err := s.SupaMemory.WritePlatformMessage(ctx, in); err != nil {
+		slog.Warn("write platform message failed",
+			"direction", in.Direction,
+			"role", in.Role,
+			"user_id", in.UserID,
+			"role_id", in.RoleID,
+			"err", err,
+		)
+	}
+}
+
+func toRawJSON(v any, fallback json.RawMessage) json.RawMessage {
+	data, err := json.Marshal(v)
+	if err != nil || len(data) == 0 {
+		return fallback
+	}
+	return json.RawMessage(data)
+}
+
+func mapFromRawJSON(raw json.RawMessage) map[string]any {
+	if len(raw) == 0 {
+		return map[string]any{}
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil || out == nil {
+		return map[string]any{}
+	}
+	return out
 }
 
 func truncateStr(s string, max int) string {

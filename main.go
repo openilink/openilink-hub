@@ -28,7 +28,6 @@ import (
 	"github.com/openilink/openilink-hub/internal/store/postgres"
 	"github.com/openilink/openilink-hub/internal/store/sqlite"
 	"github.com/openilink/openilink-hub/internal/supamemory"
-	syncworker "github.com/openilink/openilink-hub/internal/sync"
 
 	// Register providers
 	_ "github.com/openilink/openilink-hub/internal/provider/ilink"
@@ -223,28 +222,12 @@ func main() {
 	mgr.SetAppWSHub(srv.AppWSHub)
 	mgr.SetPushHub(srv.PushHub)
 
-	var outboxWorker *syncworker.OutboxWorker
-	if cfg.SupabaseURL != "" && cfg.SupabaseServiceRoleKey != "" {
-		supabaseClient, err := syncworker.NewHTTPSupabaseClient(cfg.SupabaseURL, cfg.SupabaseServiceRoleKey, cfg.SupabaseSchema)
-		if err != nil {
-			slog.Error("supabase client init failed", "err", err)
-		} else {
-			wcfg := syncworker.ParseOutboxConfig(cfg.OutboxBatchSize, cfg.OutboxPollIntervalMS, cfg.OutboxMaxRetries)
-			outboxWorker = syncworker.NewOutboxWorker(s, supabaseClient, wcfg)
-			slog.Info("outbox worker configured", "batch_size", wcfg.BatchSize, "poll_interval", wcfg.PollInterval, "max_retries", wcfg.MaxRetries)
-		}
-	} else {
-		slog.Info("outbox worker disabled: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-	}
+	slog.Info("outbox worker disabled: superseded by direct supabase writes")
 
 	// Start all saved bots
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	mgr.StartAll(ctx)
-	if outboxWorker != nil {
-		go outboxWorker.Run(ctx)
-	}
-
 	// Periodic cleanup
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)

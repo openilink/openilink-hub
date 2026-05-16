@@ -295,7 +295,6 @@ func (m *Manager) sendAppText(ctx context.Context, inst *Instance, to, contextTo
 		BotID: inst.DBID, Direction: "outbound", ToUserID: to, MessageType: 2, ItemList: itemList,
 	}
 	if res, err := m.store.SaveMessage(dbMsg); err == nil && res.Inserted {
-		m.enqueueMessageOutbox(inst.DBID, res.ID, store.OutboxEventMessageOutbound, dbMsg)
 	}
 }
 
@@ -412,7 +411,6 @@ func (m *Manager) sendAppMedia(ctx context.Context, inst *Instance, to, contextT
 		MediaStatus: mediaStatus, MediaKeys: mediaKeys,
 	}
 	if res, err := m.store.SaveMessage(dbMsg); err == nil && res.Inserted {
-		m.enqueueMessageOutbox(inst.DBID, res.ID, store.OutboxEventMessageOutbound, dbMsg)
 	}
 
 	return storageKey
