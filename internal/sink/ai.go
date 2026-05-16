@@ -93,6 +93,13 @@ type memoryBucket struct {
 	GeneralRows []supamemory.MemoryRow
 }
 
+type emotionPolicy struct {
+	State      string `json:"state"`
+	ToneTarget string `json:"tone_target"`
+	AllowEmoji bool   `json:"allow_emoji"`
+	Reason     string `json:"reason"`
+}
+
 const runtimePromptCacheTTL = 120 * time.Second
 
 func (s *AI) writeRuntimeAudit(d Delivery, eventType string, detail map[string]any) {
@@ -457,7 +464,10 @@ func (s *AI) reply(d Delivery) {
 	}
 	memQuery := strings.TrimSpace(text)
 	planner := buildPlannerLite(memQuery)
+	prevEmotion := s.resolveEmotionState(ctx, conversationID)
+	emotion := deriveEmotionPolicy(memQuery, prevEmotion, planner.ToneTarget)
 	cfg.SystemPrompt = composeSystemWithPlanner(cfg.SystemPrompt, planner)
+	cfg.SystemPrompt = composeSystemWithEmotionPolicy(cfg.SystemPrompt, emotion)
 	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
 		ConversationID: conversationID,
 		TurnID:         turnID,
@@ -472,7 +482,13 @@ func (s *AI) reply(d Delivery) {
 		},
 	})
 	s.upsertConversationState(ctx, conversationID, "task_active", "free_chat", map[string]any{
-		"planner": planner,
+		"planner":       planner,
+		"emotion_state": emotion.State,
+		"emotion_policy": map[string]any{
+			"tone_target": emotion.ToneTarget,
+			"allow_emoji": emotion.AllowEmoji,
+			"reason":      emotion.Reason,
+		},
 	}, 1)
 
 	memories := s.resolveMemories(ctx, cfg, promptMeta, memQuery)
@@ -786,6 +802,14 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	emojiAsset, emojiInfo := s.resolveEmojiReply(ctx, d, promptMeta, text)
+	emojiSuppressedByEmotion := false
+	if emojiAsset != nil && !emotion.AllowEmoji {
+		emojiSuppressedByEmotion = true
+		emojiAsset = nil
+		emojiInfo.URL = ""
+		emojiInfo.Reason = "suppressed_by_emotion_policy"
+		emojiInfo.TriggerMode = "policy"
+	}
 
 	if span != nil {
 		span.SetAttr("reply.content", reply)
@@ -836,7 +860,7 @@ func (s *AI) reply(d Delivery) {
 		"total_tokens":                        totalTokens,
 		"cached_tokens":                       totalCached,
 		"reasoning_tokens":                    totalReasoning,
-		"memory_hits":                         len(memories),
+		"memory_hits":                         len(trimmedMemories),
 		"emoji_reply_enabled":                 emojiInfo.Enabled,
 		"emoji_trigger_reason":                emojiInfo.Reason,
 		"emoji_trigger_mode":                  emojiInfo.TriggerMode,
@@ -844,6 +868,9 @@ func (s *AI) reply(d Delivery) {
 		"emoji_url":                           emojiInfo.URL,
 		"emoji_user_window_count":             emojiInfo.UserWindowCount,
 		"emoji_conversation_throttle_seconds": emojiInfo.ThrottleSeconds,
+		"emoji_suppressed_by_emotion_policy":  emojiSuppressedByEmotion,
+		"emotion_state":                       emotion.State,
+		"emotion_tone_target":                 emotion.ToneTarget,
 		"conversation_id":                     conversationID,
 		"turn_id":                             turnID,
 	})
@@ -857,6 +884,9 @@ func (s *AI) reply(d Delivery) {
 			"reply_chars":       len([]rune(reply)),
 			"memory_hits":       len(trimmedMemories),
 			"emoji_reply":       emojiAsset != nil,
+			"emoji_suppressed":  emojiSuppressedByEmotion,
+			"emotion_state":     emotion.State,
+			"tone_target":       emotion.ToneTarget,
 			"prompt_tokens":     totalPrompt,
 			"completion_tokens": totalCompletion,
 		},
@@ -957,10 +987,16 @@ func (s *AI) reply(d Delivery) {
 	}
 	nextSummary := mergeRollingSummary(memSummary, text, result.Content)
 	s.upsertConversationState(ctx, conversationID, "idle", "free_chat", map[string]any{
-		"last_turn_id":    turnID,
-		"last_planner":    planner,
-		"last_guard":      guard,
-		"last_reply_at":   time.Now().UTC().Format(time.RFC3339),
+		"last_turn_id":  turnID,
+		"last_planner":  planner,
+		"last_guard":    guard,
+		"last_reply_at": time.Now().UTC().Format(time.RFC3339),
+		"emotion_state": emotion.State,
+		"emotion_policy": map[string]any{
+			"tone_target": emotion.ToneTarget,
+			"allow_emoji": emotion.AllowEmoji,
+			"reason":      emotion.Reason,
+		},
 		"rolling_summary": nextSummary,
 	}, 4)
 }
@@ -1587,12 +1623,101 @@ func mergeRollingSummary(prevSummary, userText, replyText string) string {
 	return truncateRune(merged, 420)
 }
 
+func composeSystemWithEmotionPolicy(systemPrompt string, policy emotionPolicy) string {
+	base := strings.TrimSpace(systemPrompt)
+	block := strings.Join([]string{
+		"情绪与语气策略（内部约束，需隐式遵循）:",
+		"- 情绪状态: " + policy.State,
+		"- 语气目标: " + policy.ToneTarget,
+		"- 表情许可: " + func() string {
+			if policy.AllowEmoji {
+				return "allow"
+			}
+			return "deny"
+		}(),
+		"- 策略原因: " + policy.Reason,
+	}, "\n")
+	if base == "" {
+		return block
+	}
+	return base + "\n\n" + block
+}
+
+func deriveEmotionPolicy(text, prevState, plannerTone string) emotionPolicy {
+	state := strings.TrimSpace(prevState)
+	if state == "" {
+		state = "calm"
+	}
+	lower := strings.ToLower(strings.TrimSpace(text))
+	policy := emotionPolicy{
+		State:      state,
+		ToneTarget: firstNonEmpty(strings.TrimSpace(plannerTone), "友好清晰"),
+		AllowEmoji: true,
+		Reason:     "default",
+	}
+	if shouldSuppressEmojiReply(text) || containsSeriousKeyword(lower) {
+		policy.State = "serious"
+		policy.ToneTarget = "严谨克制"
+		policy.AllowEmoji = false
+		policy.Reason = "serious_topic"
+		return policy
+	}
+	if strings.Contains(lower, "谢谢") || strings.Contains(lower, "thanks") {
+		policy.State = "warm"
+		policy.ToneTarget = "温和友好"
+		policy.AllowEmoji = true
+		policy.Reason = "gratitude_context"
+		return policy
+	}
+	if shouldSmartEmojiReply(text) {
+		policy.State = "excited"
+		policy.ToneTarget = "轻松活跃"
+		policy.AllowEmoji = true
+		policy.Reason = "casual_fun_context"
+		return policy
+	}
+	policy.Reason = "carry_forward"
+	return policy
+}
+
+func containsSeriousKeyword(lowerText string) bool {
+	if lowerText == "" {
+		return false
+	}
+	keywords := []string{"退款", "投诉", "账号", "安全", "风险", "报错", "故障", "紧急", "事故"}
+	for _, keyword := range keywords {
+		if strings.Contains(lowerText, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
 func truncateRune(input string, max int) string {
 	runes := []rune(strings.TrimSpace(input))
 	if len(runes) <= max {
 		return string(runes)
 	}
 	return string(runes[:max])
+}
+
+func (s *AI) resolveEmotionState(ctx context.Context, conversationID string) string {
+	if s.SupaMemory == nil || strings.TrimSpace(conversationID) == "" {
+		return ""
+	}
+	row, err := s.SupaMemory.GetConversationState(ctx, conversationID)
+	if err != nil || row == nil || row.StatePayload == nil {
+		return ""
+	}
+	raw, ok := row.StatePayload["emotion_state"]
+	if !ok {
+		return ""
+	}
+	state, ok := raw.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(state)
 }
 
 func trimMemoriesForPhase2(rows []supamemory.MemoryRow, maxCount int) []supamemory.MemoryRow {

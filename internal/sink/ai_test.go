@@ -609,3 +609,31 @@ func TestMergeRollingSummary(t *testing.T) {
 		t.Fatalf("missing merged parts: %q", got)
 	}
 }
+
+func TestDeriveEmotionPolicy(t *testing.T) {
+	serious := deriveEmotionPolicy("这个退款和账号安全怎么处理", "calm", "友好清晰")
+	if serious.State != "serious" || serious.AllowEmoji {
+		t.Fatalf("serious policy=%+v", serious)
+	}
+	casual := deriveEmotionPolicy("哈哈这个太有趣了", "calm", "友好清晰")
+	if casual.State != "excited" || !casual.AllowEmoji {
+		t.Fatalf("casual policy=%+v", casual)
+	}
+}
+
+func TestComposeSystemWithEmotionPolicy(t *testing.T) {
+	base := "你是一个助手"
+	p := emotionPolicy{
+		State:      "serious",
+		ToneTarget: "严谨克制",
+		AllowEmoji: false,
+		Reason:     "serious_topic",
+	}
+	got := composeSystemWithEmotionPolicy(base, p)
+	if !strings.Contains(got, "情绪与语气策略") {
+		t.Fatalf("missing policy block: %q", got)
+	}
+	if !strings.Contains(got, "表情许可: deny") {
+		t.Fatalf("missing deny: %q", got)
+	}
+}
