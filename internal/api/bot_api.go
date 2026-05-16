@@ -200,6 +200,11 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		MediaKeys:   mediaKeys,
 	}
 	_, _ = s.Store.SaveMessage(dbMsg)
+	s.writePlatformOutboundMessage(r.Context(), inst.BotID, "", req.To, contextToken, outMsg.Text, itemList, clientID, map[string]any{
+		"app_name":    inst.AppName,
+		"message_type": itemType,
+		"media_status": mediaStatus,
+	})
 
 	// Append span to message trace if trace_id links to an existing trace
 	if traceID != "" {

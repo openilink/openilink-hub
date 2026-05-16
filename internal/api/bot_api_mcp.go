@@ -243,6 +243,11 @@ func (s *Server) mcpSendMessage(ctx context.Context, req mcp.CallToolRequest) (*
 	}); err != nil {
 		slog.Warn("mcp: failed to save outbound message", "bot_id", inst.BotID, "err", err)
 	}
+	s.writePlatformOutboundMessage(ctx, inst.BotID, "", to, contextToken, outMsg.Text, itemList, clientID, map[string]any{
+		"source":       "openilink_hub_mcp",
+		"message_type": itemType,
+		"media_status": mediaStatus,
+	})
 
 	// Append span to message trace
 	replyContent := content

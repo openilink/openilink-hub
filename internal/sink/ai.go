@@ -145,14 +145,48 @@ func (s *AI) Handle(d Delivery) {
 	if d.MsgType == "text" {
 		trimmed := strings.TrimSpace(d.Content)
 		if strings.HasPrefix(trimmed, "@") {
+			s.writeSkippedInboundMessage(d, "mention_skipped")
 			return
 		}
 		if strings.HasPrefix(trimmed, "/") {
+			s.writeSkippedInboundMessage(d, "command_skipped")
 			s.handleCommand(d, trimmed)
 			return
 		}
 	}
 	s.reply(d)
+}
+
+func (s *AI) writeSkippedInboundMessage(d Delivery, reason string) {
+	if s == nil || s.SupaMemory == nil {
+		return
+	}
+	ctx := context.Background()
+	cfg := s.resolveConfig(d.AIModel)
+	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, d.Message.Sender)
+	conversationID, _ := s.resolveConversationContext(ctx, promptMeta, d)
+	s.writePlatformMessage(ctx, promptMeta, supamemory.PlatformMessageInput{
+		UserID:          promptMeta.UserID,
+		RoleID:          promptMeta.RoleID,
+		ConversationID:  conversationID,
+		Platform:        "openilink",
+		Direction:       "inbound",
+		Role:            "user",
+		Content:         strings.TrimSpace(d.Content),
+		ItemList:        toRawJSON(d.Message.Items, json.RawMessage("[]")),
+		ExternalEventID: strings.TrimSpace(d.Message.ExternalID),
+		ExternalChatID:  strings.TrimSpace(d.Message.Recipient),
+		ExternalUserID:  strings.TrimSpace(d.Message.Sender),
+		ContextToken:    strings.TrimSpace(d.Message.ContextToken),
+		Raw:             mapFromRawJSON(d.Message.Raw),
+		Meta: map[string]any{
+			"bot_id":   d.BotDBID,
+			"reason":   reason,
+			"source":   "openilink_hub_ai_handle_skip",
+			"msg_type": d.MsgType,
+		},
+		MessageAt: time.Now().UTC(),
+	})
 }
 
 func (s *AI) handleCommand(d Delivery, cmd string) {
@@ -282,6 +316,30 @@ func (s *AI) reply(d Delivery) {
 	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
 	runtimeFlags := s.resolveDialogueRuntimeFlags(ctx)
 	conversationID, turnID := s.resolveConversationContext(ctx, promptMeta, d)
+	s.writePlatformMessage(ctx, promptMeta, supamemory.PlatformMessageInput{
+		UserID:            promptMeta.UserID,
+		RoleID:            promptMeta.RoleID,
+		ConversationID:    conversationID,
+		Platform:          "openilink",
+		Direction:         "inbound",
+		Role:              "user",
+		Content:           strings.TrimSpace(d.Content),
+		ItemList:          toRawJSON(d.Message.Items, json.RawMessage("[]")),
+		ExternalEventID:   strings.TrimSpace(d.Message.ExternalID),
+		ExternalChatID:    strings.TrimSpace(d.Message.Recipient),
+		ExternalUserID:    strings.TrimSpace(d.Message.Sender),
+		ContextToken:      strings.TrimSpace(d.Message.ContextToken),
+		Raw:               mapFromRawJSON(d.Message.Raw),
+		Meta: map[string]any{
+			"bot_id":        d.BotDBID,
+			"message_type":  d.MsgType,
+			"message_state": d.Message.MessageState,
+			"session_id":    d.Message.SessionID,
+			"group_id":      d.Message.GroupID,
+			"source":        "openilink_hub_ai_precheck",
+		},
+		MessageAt: time.Now().UTC(),
+	})
 	channelCode := normalizeChannelCode(d.Provider.Name())
 	channelPrompt := buildChannelPrompt(channelCode)
 	cfg.SystemPrompt = composeSystemWithChannelPrompt(cfg.SystemPrompt, channelPrompt)
@@ -467,32 +525,6 @@ func (s *AI) reply(d Delivery) {
 			return
 		}
 	}
-	s.writePlatformMessage(ctx, promptMeta, supamemory.PlatformMessageInput{
-		UserID:            promptMeta.UserID,
-		RoleID:            promptMeta.RoleID,
-		ConversationID:    conversationID,
-		Platform:          "openilink",
-		Direction:         "inbound",
-		Role:              "user",
-		Content:           strings.TrimSpace(text),
-		ItemList:          toRawJSON(d.Message.Items, json.RawMessage("[]")),
-		ExternalEventID:   strings.TrimSpace(d.Message.ExternalID),
-		ProviderMessageID: "",
-		ExternalChatID:    strings.TrimSpace(d.Message.Recipient),
-		ExternalUserID:    strings.TrimSpace(d.Message.Sender),
-		ContextToken:      strings.TrimSpace(d.Message.ContextToken),
-		Raw:               mapFromRawJSON(d.Message.Raw),
-		Meta: map[string]any{
-			"bot_id":                 d.BotDBID,
-			"message_type":           d.MsgType,
-			"message_state":          d.Message.MessageState,
-			"session_id":             d.Message.SessionID,
-			"group_id":               d.Message.GroupID,
-			"source":                 "openilink_hub_ai",
-			"conversation_fallback":  strings.HasPrefix(strings.TrimSpace(conversationID), "fallback_"),
-		},
-		MessageAt: time.Now().UTC(),
-	})
 	memQuery := strings.TrimSpace(text)
 	planner := buildPlannerLite(memQuery)
 	prevEmotion := s.resolveEmotionState(ctx, conversationID)

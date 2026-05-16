@@ -6,11 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/config"
+	"github.com/openilink/openilink-hub/internal/supamemory"
 )
 
 func signAdmin(secret string, body []byte) string {
@@ -23,6 +26,30 @@ func TestAdminBindingSync_UnsupportedSnapshotAndInvalidate(t *testing.T) {
 	env := setupTestEnv(t)
 	secret := "test-secret"
 	t.Setenv("ADMIN_SYNC_SHARED_SECRET", secret)
+	auditSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer auditSrv.Close()
+	client, err := supamemory.NewClient(supamemory.Config{
+		BaseURL:        auditSrv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	envSrv := &Server{
+		Store:       env.store,
+		Config:      &config.Config{RPOrigin: "http://localhost"},
+		OAuthStates: newOAuthStateStore(),
+		SupaMemory:  client,
+	}
+	env.handler = envSrv.Handler()
+	env.ts.Close()
+	env.ts = httptest.NewServer(env.handler)
+	defer env.ts.Close()
 	if _, err := env.store.CreateBot(env.user.ID, "snapshot-bot", "ilink", "provider-bot-1", json.RawMessage(`{"bot_id":"provider-bot-1","bot_token":"t"}`)); err != nil {
 		t.Fatalf("CreateBot: %v", err)
 	}
@@ -79,14 +106,7 @@ func TestAdminBindingSync_UnsupportedSnapshotAndInvalidate(t *testing.T) {
 		t.Fatalf("invalidate status=%d", resp3.StatusCode)
 	}
 
-	// Ensure invalidated event still mirrored to outbox
-	claimed, err := env.store.ClaimPendingSyncOutboxEvents(store.ClaimOutboxOptions{Limit: 20})
-	if err != nil {
-		t.Fatalf("ClaimPendingSyncOutboxEvents: %v", err)
-	}
-	if len(claimed) < 1 {
-		t.Fatalf("expected >=1 outbox event, got %d", len(claimed))
-	}
+	// outbox 已废弃：这里只验证 handler 正常返回 200（且不再依赖 outbox）
 }
 
 func TestAdminBindingSync_PrebindAndDedup(t *testing.T) {

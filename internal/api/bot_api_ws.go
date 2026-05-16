@@ -159,6 +159,10 @@ func (s *Server) HandleAppWSSend(conn *app.WSConn, msg map[string]any) {
 		MessageType: 2,
 		ItemList:    itemList,
 	})
+	s.writePlatformOutboundMessage(context.Background(), conn.BotID, "", to, contextToken, content, itemList, clientID, map[string]any{
+		"source":       "openilink_hub_app_ws",
+		"message_type": msgType,
+	})
 
 	slog.Info("app ws send ok", "bot_id", conn.BotID, "client_id", clientID, "to", to)
 	sendAck()

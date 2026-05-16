@@ -171,6 +171,11 @@ func (s *Server) handleChannelSend(w http.ResponseWriter, r *http.Request) {
 		MediaStatus: mediaStatus,
 		MediaKeys:   mediaKeys,
 	})
+	s.writePlatformOutboundMessage(r.Context(), ch.BotID, "", msg.Recipient, msg.ContextToken, msg.Text, itemList, clientID, map[string]any{
+		"source":      "openilink_hub_channel_api",
+		"message_type": msgType,
+		"media_status": mediaStatus,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{

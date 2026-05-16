@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/supamemory"
 )
 
 type adminSyncEnvelope struct {
@@ -167,22 +168,22 @@ func (s *Server) handleAdminBindingSync(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		localBotID := strings.TrimSpace(bot.ID)
-		payload, _ := json.Marshal(map[string]any{
-			"event_id":        p.EventID,
-			"event_type":      "binding_invalidated",
-			"bot_id":          localBotID,
-			"provider_bot_id": strings.TrimSpace(p.BotID),
-			"sender_user_id":  p.SenderUserID,
-			"binding_id":      p.BindingID,
-			"reason":          p.Reason,
-			"invalidation_at": time.Now().Unix(),
-		})
-		_, _, _ = s.Store.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
-			EventID:      p.EventID + ":binding_invalidated",
-			EventType:    store.OutboxEventBindingInvalidated,
-			PartitionKey: localBotID,
-			Payload:      payload,
-		})
+		if s.SupaMemory != nil {
+			_ = s.SupaMemory.WriteAuditLog(r.Context(), supamemory.AuditLogInput{
+				EventType: "binding_invalidated",
+				SessionID: p.SenderUserID,
+				TraceID:   p.EventID,
+				Detail: map[string]any{
+					"event_id":        p.EventID,
+					"bot_id":          localBotID,
+					"provider_bot_id": strings.TrimSpace(p.BotID),
+					"sender_user_id":  p.SenderUserID,
+					"binding_id":      p.BindingID,
+					"reason":          p.Reason,
+					"invalidation_at": time.Now().Unix(),
+				},
+			})
+		}
 		jsonOK(w)
 	default:
 		jsonError(w, "unsupported event type", http.StatusBadRequest)
