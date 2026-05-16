@@ -420,6 +420,15 @@ func TestResolveEmojiDecision(t *testing.T) {
 		t.Fatalf("decision=%+v", decision)
 	}
 
+	for _, text := range []string{"发一个", "来一个吧", "都可以，随便发"} {
+		forceInput := base
+		forceInput.Text = text
+		decision = resolveEmojiDecision(forceInput)
+		if !decision.IncludeEmoji || decision.Reason != "force_trigger" {
+			t.Fatalf("force text=%q decision=%+v", text, decision)
+		}
+	}
+
 	suppressed := base
 	suppressed.Text = "我想退款订单，别发表情包"
 	decision = resolveEmojiDecision(suppressed)

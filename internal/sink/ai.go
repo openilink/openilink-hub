@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -2225,11 +2226,22 @@ func shouldForceEmojiReply(text string) bool {
 	if t == "" {
 		return false
 	}
-	keywords := []string{"表情包", "斗图", "发图", "来个图", "emoji", "sticker"}
+	compact := strings.ReplaceAll(t, " ", "")
+	keywords := []string{
+		"表情包", "斗图", "发图", "来个图",
+		"发一个", "来一个", "整一个", "随便发",
+		"emoji", "sticker",
+	}
 	for _, k := range keywords {
-		if strings.Contains(t, k) {
+		if strings.Contains(compact, k) {
 			return true
 		}
+	}
+	if matched, _ := regexp.MatchString("(发|来|整)(一|1)?个(吧|呗|吗)?", compact); matched {
+		return true
+	}
+	if matched, _ := regexp.MatchString("(都可以|随便|任意).*(发|来|整)", compact); matched {
+		return true
 	}
 	return false
 }
