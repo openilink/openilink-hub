@@ -25,6 +25,7 @@ import (
 )
 
 const typingTimeout = 30 * time.Second
+const defaultCompletionTimeout = 35 * time.Second
 const maxImageBytes = 20 * 1024 * 1024 // 20MB
 const emojiConversationCooldown = 10 * time.Minute
 const emojiUserWindow = 24 * time.Hour
@@ -307,6 +308,7 @@ func (s *AI) reply(d Delivery) {
 		"conversation_id": conversationID,
 		"conversation_fallback": strings.HasPrefix(strings.TrimSpace(conversationID), "fallback_"),
 		"turn_id":         turnID,
+		"completion_timeout_seconds": int(resolveCompletionTimeout(cfg).Seconds()),
 	})
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
 		quota, err := s.SupaMemory.CheckMonthlyQuota(ctx, promptMeta.UserID)
@@ -628,7 +630,10 @@ func (s *AI) reply(d Delivery) {
 		s.stopTyping(d, typingTicket)
 		return
 	}
-	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
+	completionTimeout := resolveCompletionTimeout(cfg)
+	completionCtx, cancelCompletion := context.WithTimeout(ctx, completionTimeout)
+	result, err := ai.CompleteMessages(completionCtx, cfg, messages, tools)
+	cancelCompletion()
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
 		s.writeRuntimeAudit(d, "openilink_hub_ai_completion_failed", map[string]any{
@@ -639,6 +644,7 @@ func (s *AI) reply(d Delivery) {
 			"model":       cfg.Model,
 			"memory_hits": len(trimmedMemories),
 			"error":       err.Error(),
+			"completion_timeout_seconds": int(completionTimeout.Seconds()),
 		})
 		if span != nil {
 			span.SetStatus(store.StatusError, err.Error())
@@ -735,7 +741,9 @@ func (s *AI) reply(d Delivery) {
 
 		// Continue conversation with tool results
 		var nextErr error
-		result, messages, nextErr = ai.ContinueWithToolResults(ctx, cfg, messages, llmResults, tools)
+		nextCtx, cancelNext := context.WithTimeout(ctx, completionTimeout)
+		result, messages, nextErr = ai.ContinueWithToolResults(nextCtx, cfg, messages, llmResults, tools)
+		cancelNext()
 		if nextErr != nil {
 			slog.Error("ai continuation failed", "bot", d.BotDBID, "round", round+1, "err", nextErr)
 			s.writeRuntimeAudit(d, "openilink_hub_ai_continuation_failed", map[string]any{
@@ -746,6 +754,7 @@ func (s *AI) reply(d Delivery) {
 				"model":   cfg.Model,
 				"round":   round + 1,
 				"error":   nextErr.Error(),
+				"completion_timeout_seconds": int(completionTimeout.Seconds()),
 			})
 			if span != nil {
 				span.SetStatus(store.StatusError, nextErr.Error())
@@ -877,6 +886,7 @@ func (s *AI) reply(d Delivery) {
 		"conversation_id":                     conversationID,
 		"conversation_fallback":               strings.HasPrefix(strings.TrimSpace(conversationID), "fallback_"),
 		"turn_id":                             turnID,
+		"completion_timeout_seconds":          int(completionTimeout.Seconds()),
 	})
 	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
 		ConversationID: conversationID,
@@ -1395,6 +1405,9 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	cfg.HideThinking = hideThinkingRaw == "true" || hideThinkingRaw == "1"
 	stripMarkdownRaw := strings.ToLower(firstNonEmpty(strings.TrimSpace(os.Getenv("AI_STRIP_MARKDOWN")), global["ai.strip_markdown"]))
 	cfg.StripMarkdown = stripMarkdownRaw == "true" || stripMarkdownRaw == "1"
+	if v := firstNonEmpty(strings.TrimSpace(os.Getenv("AI_COMPLETION_TIMEOUT_SEC")), global["ai.completion_timeout_sec"]); v != "" {
+		fmt.Sscanf(v, "%d", &cfg.CompletionTimeoutSec)
+	}
 	if v := firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MAX_HISTORY")), global["ai.max_history"]); v != "" {
 		fmt.Sscanf(v, "%d", &cfg.MaxHistory)
 	}
@@ -1411,6 +1424,21 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func resolveCompletionTimeout(cfg store.AIConfig) time.Duration {
+	sec := cfg.CompletionTimeoutSec
+	if sec <= 0 {
+		return defaultCompletionTimeout
+	}
+	d := time.Duration(sec) * time.Second
+	if d < 5*time.Second {
+		return 5 * time.Second
+	}
+	if d > 120*time.Second {
+		return 120 * time.Second
+	}
+	return d
 }
 
 func normalizeChannelCode(providerName string) string {

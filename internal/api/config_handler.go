@@ -135,6 +135,7 @@ func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	result := map[string]string{
 		"base_url":         dbConf["ai.base_url"],
 		"api_key":          maskSecret(dbConf["ai.api_key"]),
+		"completion_timeout_sec": dbConf["ai.completion_timeout_sec"],
 		"model":            dbConf["ai.model"],
 		"model_zh":         dbConf["ai.model_zh"],
 		"model_non_zh":     dbConf["ai.model_non_zh"],
@@ -160,6 +161,7 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		BaseURL         string  `json:"base_url"`
 		APIKey          string  `json:"api_key"`
+		CompletionTimeoutSec string `json:"completion_timeout_sec"`
 		Model           string  `json:"model"`
 		ModelZH         string  `json:"model_zh"`
 		ModelNonZH      string  `json:"model_non_zh"`
@@ -186,6 +188,9 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 		if req.APIKey != maskSecret(current) {
 			s.Store.SetConfig("ai.api_key", req.APIKey)
 		}
+	}
+	if req.CompletionTimeoutSec != "" {
+		s.Store.SetConfig("ai.completion_timeout_sec", req.CompletionTimeoutSec)
 	}
 	if req.Model != "" {
 		s.Store.SetConfig("ai.model", req.Model)
@@ -236,6 +241,7 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 	s.Store.DeleteConfig("ai.base_url")
 	s.Store.DeleteConfig("ai.api_key")
+	s.Store.DeleteConfig("ai.completion_timeout_sec")
 	s.Store.DeleteConfig("ai.model")
 	s.Store.DeleteConfig("ai.model_zh")
 	s.Store.DeleteConfig("ai.model_non_zh")

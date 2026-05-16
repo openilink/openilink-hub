@@ -189,6 +189,36 @@ func TestResolveLanguageModel(t *testing.T) {
 	})
 }
 
+func TestResolveCompletionTimeout(t *testing.T) {
+	t.Run("default timeout when unset", func(t *testing.T) {
+		got := resolveCompletionTimeout(store.AIConfig{})
+		if got != defaultCompletionTimeout {
+			t.Fatalf("timeout=%v", got)
+		}
+	})
+
+	t.Run("clamp low value", func(t *testing.T) {
+		got := resolveCompletionTimeout(store.AIConfig{CompletionTimeoutSec: 1})
+		if got != 5*time.Second {
+			t.Fatalf("timeout=%v", got)
+		}
+	})
+
+	t.Run("clamp high value", func(t *testing.T) {
+		got := resolveCompletionTimeout(store.AIConfig{CompletionTimeoutSec: 360})
+		if got != 120*time.Second {
+			t.Fatalf("timeout=%v", got)
+		}
+	})
+
+	t.Run("use configured value", func(t *testing.T) {
+		got := resolveCompletionTimeout(store.AIConfig{CompletionTimeoutSec: 42})
+		if got != 42*time.Second {
+			t.Fatalf("timeout=%v", got)
+		}
+	})
+}
+
 func TestResolveRuntimePrompt_RPCAndCache(t *testing.T) {
 	var promptRPCCount int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

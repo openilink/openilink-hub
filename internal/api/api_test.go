@@ -1845,6 +1845,7 @@ func TestAdminAIConfigLanguageRouteFields(t *testing.T) {
 	setResp := doJSON(t, env.ts, "PUT", "/api/admin/config/ai", map[string]any{
 		"base_url":               "https://openrouter.ai/api/v1",
 		"api_key":                "or-key",
+		"completion_timeout_sec": "35",
 		"model":                  "ai21/jamba-large-1.7",
 		"model_zh":               "deepseek/deepseek-v3.2",
 		"model_non_zh":           "ai21/jamba-large-1.7",
@@ -1875,6 +1876,9 @@ func TestAdminAIConfigLanguageRouteFields(t *testing.T) {
 	}
 	if got, _ := body["fallback_model_non_zh"].(string); got != "openai/gpt-4o-mini" {
 		t.Fatalf("fallback_model_non_zh=%q", got)
+	}
+	if got, _ := body["completion_timeout_sec"].(string); got != "35" {
+		t.Fatalf("completion_timeout_sec=%q", got)
 	}
 
 	delResp := doJSON(t, env.ts, "DELETE", "/api/admin/config/ai", nil, withCookie(env.cookie))
