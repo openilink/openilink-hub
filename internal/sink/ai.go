@@ -1684,7 +1684,7 @@ func containsSeriousKeyword(lowerText string) bool {
 	if lowerText == "" {
 		return false
 	}
-	keywords := []string{"退款", "投诉", "账号", "安全", "风险", "报错", "故障", "紧急", "事故"}
+	keywords := []string{"退款", "投诉", "账号", "安全", "风险", "报错", "故障", "紧急", "事故", "订单"}
 	for _, keyword := range keywords {
 		if strings.Contains(lowerText, keyword) {
 			return true
