@@ -200,8 +200,29 @@ func (s *AI) resolveConfig(botModel string) store.AIConfig {
 	return cfg
 }
 
+func resolveLanguageModel(cfg store.AIConfig, text string, hasBotOverride bool) (string, string, string) {
+	if hasBotOverride {
+		return cfg.Model, cfg.FallbackModel, "bot_override"
+	}
+	bucket := detectLanguageBucket(text)
+	switch bucket {
+	case "zh-CN":
+		model := firstNonEmpty(cfg.ModelZH, "deepseek/deepseek-v3.2")
+		fallback := firstNonEmpty(cfg.FallbackModelZH, cfg.FallbackModel, model)
+		return model, fallback, bucket
+	default:
+		model := firstNonEmpty(cfg.ModelNonZH, cfg.Model, "ai21/jamba-large-1.7")
+		fallback := firstNonEmpty(cfg.FallbackModelNonZH, cfg.FallbackModel, model)
+		return model, fallback, bucket
+	}
+}
+
 func (s *AI) reply(d Delivery) {
+	hasBotModelOverride := strings.TrimSpace(d.AIModel) != ""
 	cfg := s.resolveConfig(d.AIModel)
+	resolvedModel, resolvedFallback, languageBucket := resolveLanguageModel(cfg, d.Content, hasBotModelOverride)
+	cfg.Model = resolvedModel
+	cfg.FallbackModel = resolvedFallback
 	if cfg.APIKey == "" {
 		slog.Warn("ai reply skipped: no api key", "bot", d.BotDBID)
 		s.writeRuntimeAudit(d, "openilink_hub_ai_skipped_no_api_key", map[string]any{
@@ -237,6 +258,14 @@ func (s *AI) reply(d Delivery) {
 		"context_token":   d.Message.ContextToken,
 		"sender":          sender,
 		"model":           cfg.Model,
+		"fallback_model":  cfg.FallbackModel,
+		"language_bucket": languageBucket,
+		"model_route_source": func() string {
+			if hasBotModelOverride {
+				return "bot_override"
+			}
+			return "language_route"
+		}(),
 		"prompt_source":   promptMeta.Source,
 		"billing_source":  billingSource,
 		"billing_enabled": billingEnabled,
@@ -1152,7 +1181,11 @@ func (s *AI) resolveGlobalConfig() store.AIConfig {
 	cfg.BaseURL = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_BASE_URL")), global["ai.base_url"])
 	cfg.APIKey = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_API_KEY")), global["ai.api_key"])
 	cfg.Model = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MODEL")), global["ai.model"])
+	cfg.ModelZH = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MODEL_ZH")), global["ai.model_zh"])
+	cfg.ModelNonZH = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MODEL_NON_ZH")), global["ai.model_non_zh"])
 	cfg.FallbackModel = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_FALLBACK_MODEL")), global["ai.fallback_model"])
+	cfg.FallbackModelZH = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_FALLBACK_MODEL_ZH")), global["ai.fallback_model_zh"])
+	cfg.FallbackModelNonZH = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_FALLBACK_MODEL_NON_ZH")), global["ai.fallback_model_non_zh"])
 	cfg.SystemPrompt = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_SYSTEM_PROMPT")), global["ai.system_prompt"])
 	if cfg.APIKey == "" {
 		return store.AIConfig{}

@@ -145,6 +145,50 @@ func TestParseCustomHeaders_Empty(t *testing.T) {
 	}
 }
 
+func TestResolveLanguageModel(t *testing.T) {
+	cfg := store.AIConfig{
+		Model:         "ai21/jamba-large-1.7",
+		ModelZH:       "deepseek/deepseek-v3.2",
+		ModelNonZH:    "ai21/jamba-large-1.7",
+		FallbackModel: "openai/gpt-4o-mini",
+	}
+
+	t.Run("zh routes to deepseek", func(t *testing.T) {
+		model, fallback, bucket := resolveLanguageModel(cfg, "你好，今天聊角色设定", false)
+		if model != "deepseek/deepseek-v3.2" {
+			t.Fatalf("model=%q", model)
+		}
+		if fallback != "openai/gpt-4o-mini" {
+			t.Fatalf("fallback=%q", fallback)
+		}
+		if bucket != "zh-CN" {
+			t.Fatalf("bucket=%q", bucket)
+		}
+	})
+
+	t.Run("non-zh routes to jamba", func(t *testing.T) {
+		model, _, bucket := resolveLanguageModel(cfg, "Can you help me with this character?", false)
+		if model != "ai21/jamba-large-1.7" {
+			t.Fatalf("model=%q", model)
+		}
+		if bucket != "default" {
+			t.Fatalf("bucket=%q", bucket)
+		}
+	})
+
+	t.Run("bot override keeps selected model", func(t *testing.T) {
+		overrideCfg := cfg
+		overrideCfg.Model = "anthropic/claude-3.5-sonnet"
+		model, _, bucket := resolveLanguageModel(overrideCfg, "你好", true)
+		if model != "anthropic/claude-3.5-sonnet" {
+			t.Fatalf("model=%q", model)
+		}
+		if bucket != "bot_override" {
+			t.Fatalf("bucket=%q", bucket)
+		}
+	})
+}
+
 func TestResolveRuntimePrompt_RPCAndCache(t *testing.T) {
 	var promptRPCCount int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
