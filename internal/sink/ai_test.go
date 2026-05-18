@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openilink/openilink-hub/internal/ai"
 	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/store/sqlite"
@@ -683,6 +684,17 @@ func TestTrimMemoriesForPhase2(t *testing.T) {
 	}
 }
 
+func TestTrimMemoriesForPhase2DefaultLimit(t *testing.T) {
+	rows := make([]supamemory.MemoryRow, 0, 12)
+	for i := 0; i < 12; i++ {
+		rows = append(rows, supamemory.MemoryRow{Source: "global", Content: "g"})
+	}
+	got := trimMemoriesForPhase2(rows, 0)
+	if len(got) != memoryPromptMaxRows {
+		t.Fatalf("len=%d, want=%d", len(got), memoryPromptMaxRows)
+	}
+}
+
 func TestMergeRollingSummary(t *testing.T) {
 	got := mergeRollingSummary("之前摘要", "用户问了一个很长很长的问题", "助手给了一个很长很长的回答")
 	if !strings.Contains(got, "之前摘要") {
@@ -690,6 +702,66 @@ func TestMergeRollingSummary(t *testing.T) {
 	}
 	if !strings.Contains(got, "用户:") || !strings.Contains(got, "助手:") {
 		t.Fatalf("missing merged parts: %q", got)
+	}
+}
+
+func TestMergeRollingSummaryAllowsLongerSummary(t *testing.T) {
+	got := mergeRollingSummary(strings.Repeat("旧", 760), "用户希望以后先给结论", "我会按这个偏好回复")
+	runes := len([]rune(got))
+	if runes > rollingSummaryMaxRunes {
+		t.Fatalf("summary runes=%d, max=%d", runes, rollingSummaryMaxRunes)
+	}
+	if runes <= 420 {
+		t.Fatalf("summary should exceed old 420 rune cap, got=%d", runes)
+	}
+}
+
+func TestBuildMemoryQueryFromMessagesIncludesRecentContext(t *testing.T) {
+	query := buildMemoryQueryFromMessages([]ai.Message{
+		{Role: "system", Content: "system"},
+		{Role: "user", Content: "我的偏好是以后先给结论"},
+		{Role: "assistant", Content: "我会记住这个偏好"},
+		{Role: "user", Content: "继续"},
+	}, "继续")
+	if !strings.Contains(query, "我的偏好是以后先给结论") {
+		t.Fatalf("missing history context: %q", query)
+	}
+	if !strings.Contains(query, "user: 继续") {
+		t.Fatalf("missing current text: %q", query)
+	}
+	if strings.Count(query, "user: 继续") != 1 {
+		t.Fatalf("current text duplicated: %q", query)
+	}
+}
+
+func TestShouldRecordLongTermMemory(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		text   string
+		want   bool
+	}{
+		{name: "drops greeting", source: "openilink_user", text: "你好", want: false},
+		{name: "drops command", source: "openilink_user", text: "/help", want: false},
+		{name: "keeps user preference", source: "openilink_user", text: "我的偏好是以后先给结论再给步骤", want: true},
+		{name: "drops assistant error", source: "openilink_assistant", text: "工具调用失败 timeout error", want: false},
+		{name: "keeps assistant commitment", source: "openilink_assistant", text: "我会记住你希望以后先给结论再给步骤推进", want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldRecordLongTermMemory(tc.source, tc.text)
+			if got != tc.want {
+				t.Fatalf("got=%v, want=%v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildMemoryPromptKeepsLongerContent(t *testing.T) {
+	content := strings.Repeat("记", 200)
+	got := buildMemoryPrompt([]supamemory.MemoryRow{{Source: "global", Content: content}})
+	if !strings.Contains(got, strings.Repeat("记", 180)) {
+		t.Fatalf("content was truncated too aggressively: %q", got)
 	}
 }
 

@@ -30,6 +30,11 @@ const maxImageBytes = 20 * 1024 * 1024 // 20MB
 const emojiConversationCooldown = 10 * time.Minute
 const emojiUserWindow = 24 * time.Hour
 const emojiUserWindowCap = 3
+const memoryPromptMaxRows = 10
+const memoryPromptContentMaxRunes = 240
+const memoryQueryHistoryMaxMessages = 6
+const memoryQueryMaxRunes = 600
+const rollingSummaryMaxRunes = 800
 
 // BotModelSyncer allows the AI sink to sync an in-memory bot's model after a
 // /model switch without importing the bot package (which would create a cycle).
@@ -51,13 +56,13 @@ type AI struct {
 }
 
 type runtimePromptMeta struct {
-	Source     string
-	Version    int64
-	FullHash   string
-	Truncated  bool
-	RoleID     string
-	UserID     string
-	UserPrompt string
+	Source               string
+	Version              int64
+	FullHash             string
+	Truncated            bool
+	RoleID               string
+	UserID               string
+	UserPrompt           string
 	ConversationFallback bool
 }
 
@@ -317,19 +322,19 @@ func (s *AI) reply(d Delivery) {
 	runtimeFlags := s.resolveDialogueRuntimeFlags(ctx)
 	conversationID, turnID := s.resolveConversationContext(ctx, promptMeta, d)
 	s.writePlatformMessage(ctx, promptMeta, supamemory.PlatformMessageInput{
-		UserID:            promptMeta.UserID,
-		RoleID:            promptMeta.RoleID,
-		ConversationID:    conversationID,
-		Platform:          "openilink",
-		Direction:         "inbound",
-		Role:              "user",
-		Content:           strings.TrimSpace(d.Content),
-		ItemList:          toRawJSON(d.Message.Items, json.RawMessage("[]")),
-		ExternalEventID:   strings.TrimSpace(d.Message.ExternalID),
-		ExternalChatID:    strings.TrimSpace(d.Message.Recipient),
-		ExternalUserID:    strings.TrimSpace(d.Message.Sender),
-		ContextToken:      strings.TrimSpace(d.Message.ContextToken),
-		Raw:               mapFromRawJSON(d.Message.Raw),
+		UserID:          promptMeta.UserID,
+		RoleID:          promptMeta.RoleID,
+		ConversationID:  conversationID,
+		Platform:        "openilink",
+		Direction:       "inbound",
+		Role:            "user",
+		Content:         strings.TrimSpace(d.Content),
+		ItemList:        toRawJSON(d.Message.Items, json.RawMessage("[]")),
+		ExternalEventID: strings.TrimSpace(d.Message.ExternalID),
+		ExternalChatID:  strings.TrimSpace(d.Message.Recipient),
+		ExternalUserID:  strings.TrimSpace(d.Message.Sender),
+		ContextToken:    strings.TrimSpace(d.Message.ContextToken),
+		Raw:             mapFromRawJSON(d.Message.Raw),
 		Meta: map[string]any{
 			"bot_id":        d.BotDBID,
 			"message_type":  d.MsgType,
@@ -357,15 +362,15 @@ func (s *AI) reply(d Delivery) {
 			}
 			return "language_route"
 		}(),
-		"prompt_source":   promptMeta.Source,
-		"billing_source":  billingSource,
-		"billing_enabled": billingEnabled,
-		"channel_code":    channelCode,
-		"user_id":         promptMeta.UserID,
-		"role_id":         promptMeta.RoleID,
-		"conversation_id": conversationID,
-		"conversation_fallback": strings.HasPrefix(strings.TrimSpace(conversationID), "fallback_"),
-		"turn_id":         turnID,
+		"prompt_source":              promptMeta.Source,
+		"billing_source":             billingSource,
+		"billing_enabled":            billingEnabled,
+		"channel_code":               channelCode,
+		"user_id":                    promptMeta.UserID,
+		"role_id":                    promptMeta.RoleID,
+		"conversation_id":            conversationID,
+		"conversation_fallback":      strings.HasPrefix(strings.TrimSpace(conversationID), "fallback_"),
+		"turn_id":                    turnID,
 		"completion_timeout_seconds": int(resolveCompletionTimeout(cfg).Seconds()),
 	})
 	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
@@ -525,10 +530,10 @@ func (s *AI) reply(d Delivery) {
 			return
 		}
 	}
-	memQuery := strings.TrimSpace(text)
-	planner := buildPlannerLite(memQuery)
+	currentText := strings.TrimSpace(text)
+	planner := buildPlannerLite(currentText)
 	prevEmotion := s.resolveEmotionState(ctx, conversationID)
-	emotion := deriveEmotionPolicy(memQuery, prevEmotion, planner.ToneTarget)
+	emotion := deriveEmotionPolicy(currentText, prevEmotion, planner.ToneTarget)
 	cfg.SystemPrompt = composeSystemWithPlanner(cfg.SystemPrompt, planner)
 	cfg.SystemPrompt = composeSystemWithEmotionPolicy(cfg.SystemPrompt, emotion)
 	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
@@ -554,10 +559,6 @@ func (s *AI) reply(d Delivery) {
 		},
 	}, 1)
 
-	memories := s.resolveMemories(ctx, cfg, promptMeta, memQuery)
-	trimmedMemories := trimMemoriesForPhase2(memories, 6)
-	memSummary := s.resolveRollingSummary(ctx, conversationID)
-
 	// Create media resolver for history images
 	var resolver ai.MediaResolver
 	if s.Storage != nil {
@@ -568,6 +569,10 @@ func (s *AI) reply(d Delivery) {
 
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+	memoryQuery := buildMemoryQueryFromMessages(messages, currentText)
+	memories := s.resolveMemories(ctx, cfg, promptMeta, memoryQuery)
+	trimmedMemories := trimMemoriesForPhase2(memories, memoryPromptMaxRows)
+	memSummary := s.resolveRollingSummary(ctx, conversationID)
 	messages = injectUserPromptMessage(messages, promptMeta.UserPrompt)
 	if memSummary != "" {
 		for i := range messages {
@@ -607,7 +612,7 @@ func (s *AI) reply(d Delivery) {
 			span.SetAttr("memory.user_id", promptMeta.UserID)
 		}
 	}
-	guard := evaluateGuards(memQuery, trimmedMemories)
+	guard := evaluateGuards(currentText, trimmedMemories)
 	s.appendDialogueEvent(ctx, conversationID, supamemory.DialogueEventInput{
 		ConversationID: conversationID,
 		TurnID:         turnID,
@@ -658,7 +663,7 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 	if runtimeFlags.PlannerOnly {
-		reply := renderPlannerOnlyReply(planner, memQuery)
+		reply := renderPlannerOnlyReply(planner, currentText)
 		if cfg.StripMarkdown {
 			reply = ai.StripMarkdown(reply)
 		}
@@ -695,13 +700,13 @@ func (s *AI) reply(d Delivery) {
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
 		s.writeRuntimeAudit(d, "openilink_hub_ai_completion_failed", map[string]any{
-			"bot_id":      d.BotDBID,
-			"user_id":     promptMeta.UserID,
-			"role_id":     promptMeta.RoleID,
-			"sender":      sender,
-			"model":       cfg.Model,
-			"memory_hits": len(trimmedMemories),
-			"error":       err.Error(),
+			"bot_id":                     d.BotDBID,
+			"user_id":                    promptMeta.UserID,
+			"role_id":                    promptMeta.RoleID,
+			"sender":                     sender,
+			"model":                      cfg.Model,
+			"memory_hits":                len(trimmedMemories),
+			"error":                      err.Error(),
 			"completion_timeout_seconds": int(completionTimeout.Seconds()),
 		})
 		if span != nil {
@@ -805,13 +810,13 @@ func (s *AI) reply(d Delivery) {
 		if nextErr != nil {
 			slog.Error("ai continuation failed", "bot", d.BotDBID, "round", round+1, "err", nextErr)
 			s.writeRuntimeAudit(d, "openilink_hub_ai_continuation_failed", map[string]any{
-				"bot_id":  d.BotDBID,
-				"user_id": promptMeta.UserID,
-				"role_id": promptMeta.RoleID,
-				"sender":  sender,
-				"model":   cfg.Model,
-				"round":   round + 1,
-				"error":   nextErr.Error(),
+				"bot_id":                     d.BotDBID,
+				"user_id":                    promptMeta.UserID,
+				"role_id":                    promptMeta.RoleID,
+				"sender":                     sender,
+				"model":                      cfg.Model,
+				"round":                      round + 1,
+				"error":                      nextErr.Error(),
 				"completion_timeout_seconds": int(completionTimeout.Seconds()),
 			})
 			if span != nil {
@@ -1053,7 +1058,7 @@ func (s *AI) reply(d Delivery) {
 		replyText := strings.TrimSpace(result.Content)
 		go func() {
 			bg := context.Background()
-			if inboundText != "" {
+			if shouldRecordLongTermMemory("openilink_user", inboundText) {
 				_ = s.SupaMemory.RecordMemory(bg, supamemory.RecordInput{
 					UserID:  promptMeta.UserID,
 					RoleID:  promptMeta.RoleID,
@@ -1061,7 +1066,7 @@ func (s *AI) reply(d Delivery) {
 					Source:  "openilink_user",
 				})
 			}
-			if replyText != "" {
+			if shouldRecordLongTermMemory("openilink_assistant", replyText) {
 				_ = s.SupaMemory.RecordMemory(bg, supamemory.RecordInput{
 					UserID:  promptMeta.UserID,
 					RoleID:  promptMeta.RoleID,
@@ -1703,6 +1708,62 @@ func (s *AI) resolveMemories(ctx context.Context, cfg store.AIConfig, meta runti
 	return rows
 }
 
+func buildMemoryQueryFromMessages(messages []ai.Message, currentText string) string {
+	segments := make([]string, 0, memoryQueryHistoryMaxMessages+1)
+	for i := len(messages) - 1; i >= 0 && len(segments) < memoryQueryHistoryMaxMessages; i-- {
+		role := strings.TrimSpace(messages[i].Role)
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		text := memoryQueryTextFromContent(messages[i].Content)
+		if text == "" {
+			continue
+		}
+		segments = append(segments, role+": "+text)
+	}
+	for i, j := 0, len(segments)-1; i < j; i, j = i+1, j-1 {
+		segments[i], segments[j] = segments[j], segments[i]
+	}
+	current := strings.TrimSpace(currentText)
+	if current != "" {
+		currentLine := "user: " + current
+		if len(segments) == 0 || segments[len(segments)-1] != currentLine {
+			segments = append(segments, currentLine)
+		}
+	}
+	if len(segments) == 0 {
+		return truncateRune(current, memoryQueryMaxRunes)
+	}
+	return truncateRune(strings.Join(segments, "\n"), memoryQueryMaxRunes)
+}
+
+func memoryQueryTextFromContent(content any) string {
+	switch v := content.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	default:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		var parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text,omitempty"`
+		}
+		if err := json.Unmarshal(data, &parts); err != nil {
+			return ""
+		}
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			text := strings.TrimSpace(part.Text)
+			if text != "" {
+				out = append(out, text)
+			}
+		}
+		return strings.Join(out, "\n")
+	}
+}
+
 func (s *AI) resolveRollingSummary(ctx context.Context, conversationID string) string {
 	if s.SupaMemory == nil || strings.TrimSpace(conversationID) == "" {
 		return ""
@@ -1740,7 +1801,99 @@ func mergeRollingSummary(prevSummary, userText, replyText string) string {
 		parts = append(parts, "助手:"+truncateRune(r, 80))
 	}
 	merged := strings.Join(parts, " | ")
-	return truncateRune(merged, 420)
+	return truncateRune(merged, rollingSummaryMaxRunes)
+}
+
+func shouldRecordLongTermMemory(source, text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "@") {
+		return false
+	}
+	if isPureLowValueMemoryText(trimmed) {
+		return false
+	}
+	src := strings.ToLower(strings.TrimSpace(source))
+	if strings.Contains(src, "assistant") && isAssistantStatusOrErrorMemoryText(trimmed) {
+		return false
+	}
+	if !meetsLongTermMemoryLength(src, trimmed) {
+		return false
+	}
+	return hasLongTermMemorySignal(src, trimmed)
+}
+
+func isPureLowValueMemoryText(text string) bool {
+	normalized := strings.ToLower(strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || unicode.IsPunct(r) {
+			return -1
+		}
+		return r
+	}, text))
+	switch normalized {
+	case "你好", "您好", "hi", "hello", "hey", "嗯", "嗯嗯", "哦", "好", "好的", "ok", "okay", "谢谢", "thanks", "哈哈", "哈哈哈", "在吗", "继续", "晚安", "早安":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAssistantStatusOrErrorMemoryText(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	keywords := []string{"工具调用", "调用失败", "发送失败", "处理失败", "系统错误", "网络错误", "error", "failed", "timeout"}
+	for _, keyword := range keywords {
+		if strings.Contains(lower, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func meetsLongTermMemoryLength(source, text string) bool {
+	cjk, latin := countMemoryTextRunes(text)
+	if strings.Contains(source, "assistant") {
+		if cjk > 0 {
+			return cjk+latin >= 18
+		}
+		return latin >= 40
+	}
+	if cjk > 0 {
+		return cjk+latin >= 12
+	}
+	return latin >= 20
+}
+
+func countMemoryTextRunes(text string) (int, int) {
+	var cjk int
+	var latin int
+	for _, r := range text {
+		switch {
+		case unicode.In(r, unicode.Han):
+			cjk++
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			latin++
+		}
+	}
+	return cjk, latin
+}
+
+func hasLongTermMemorySignal(source, text string) bool {
+	lower := strings.ToLower(text)
+	keywords := []string{
+		"偏好", "喜欢", "不喜欢", "习惯", "以后", "记住", "目标", "计划", "决定", "方案", "阶段", "关系", "称呼", "叫我", "我是", "我的", "希望", "不要", "需要", "正在", "项目", "任务", "约定", "承诺", "下一步", "推进", "确认",
+		"prefer", "preference", "remember", "goal", "plan", "decision", "project", "task", "next step",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(lower, keyword) {
+			return true
+		}
+	}
+	if strings.Contains(source, "assistant") {
+		return strings.Contains(lower, "我会") || strings.Contains(lower, "已确认")
+	}
+	return false
 }
 
 func composeSystemWithEmotionPolicy(systemPrompt string, policy emotionPolicy) string {
@@ -1845,7 +1998,7 @@ func trimMemoriesForPhase2(rows []supamemory.MemoryRow, maxCount int) []supamemo
 		return nil
 	}
 	if maxCount <= 0 {
-		maxCount = 6
+		maxCount = memoryPromptMaxRows
 	}
 	bucket := bucketMemories(rows)
 	out := make([]supamemory.MemoryRow, 0, maxCount)
@@ -1894,8 +2047,8 @@ func buildMemoryPrompt(rows []supamemory.MemoryRow) string {
 		if content == "" {
 			continue
 		}
-		if len([]rune(content)) > 140 {
-			content = string([]rune(content)[:140])
+		if len([]rune(content)) > memoryPromptContentMaxRunes {
+			content = string([]rune(content)[:memoryPromptContentMaxRunes])
 		}
 		lines = append(lines, "- "+content)
 	}
