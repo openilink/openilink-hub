@@ -209,6 +209,7 @@ func main() {
 		AppDisp:                  appDisp,
 		Storage:                  objStore,
 		SupaMemory:               runtimeSupa,
+		MemoryRecordEnabled:      cfg.SupabaseMemoryRecordEnabled,
 		UsageBillingV2Enabled:    cfg.UsageBillingV2Enabled,
 		UsageBillingCharsPerUnit: cfg.UsageBillingCharsPerUnit,
 	}

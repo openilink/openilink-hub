@@ -30,29 +30,30 @@ type Config struct {
 	LinuxDoClientID     string
 	LinuxDoClientSecret string
 
-	AdminSyncSharedSecret    string
-	AdminSyncAllowlist       string
-	AdminFinalizeURL         string
-	AdminFinalizeSecret      string
-	SupabaseURL              string
-	SupabaseServiceRoleKey   string
-	SupabaseSchema           string
-	SupabaseMemoryEnabled    bool
-	SupabaseMemoryTopK       int
-	SupabaseMemoryTable      string
-	SupabaseMemoryMatchRPC   string
-	SupabaseBindingsTable    string
-	SupabaseRoutesTable      string
-	SupabaseBotsTable        string
-	SupabaseProfilesTable    string
-	SupabaseAuditLogsTable   string
-	SupabaseEmbeddingModel   string
-	OutboxBatchSize          int
-	OutboxPollIntervalMS     int
-	OutboxMaxRetries         int
-	AIFullPromptMaxBytes     int
-	UsageBillingV2Enabled    bool
-	UsageBillingCharsPerUnit int
+	AdminSyncSharedSecret       string
+	AdminSyncAllowlist          string
+	AdminFinalizeURL            string
+	AdminFinalizeSecret         string
+	SupabaseURL                 string
+	SupabaseServiceRoleKey      string
+	SupabaseSchema              string
+	SupabaseMemoryEnabled       bool
+	SupabaseMemoryRecordEnabled bool
+	SupabaseMemoryTopK          int
+	SupabaseMemoryTable         string
+	SupabaseMemoryMatchRPC      string
+	SupabaseBindingsTable       string
+	SupabaseRoutesTable         string
+	SupabaseBotsTable           string
+	SupabaseProfilesTable       string
+	SupabaseAuditLogsTable      string
+	SupabaseEmbeddingModel      string
+	OutboxBatchSize             int
+	OutboxPollIntervalMS        int
+	OutboxMaxRetries            int
+	AIFullPromptMaxBytes        int
+	UsageBillingV2Enabled       bool
+	UsageBillingCharsPerUnit    int
 }
 
 func Parse() *Config {
@@ -84,6 +85,7 @@ func Parse() *Config {
 	cfg.SupabaseServiceRoleKey = envOr("SUPABASE_SERVICE_ROLE_KEY", "")
 	cfg.SupabaseSchema = envOr("SUPABASE_SCHEMA", "public")
 	cfg.SupabaseMemoryEnabled = strings.ToLower(strings.TrimSpace(envOr("SUPABASE_MEMORY_ENABLED", "true"))) == "true"
+	cfg.SupabaseMemoryRecordEnabled = strings.ToLower(strings.TrimSpace(envOr("SUPABASE_MEMORY_RECORD_ENABLED", "false"))) == "true"
 	cfg.SupabaseMemoryTopK = envOrInt("SUPABASE_MEMORY_TOP_K", 5)
 	cfg.SupabaseMemoryTable = envOr("SUPABASE_MEMORY_TABLE", "bl_memories")
 	cfg.SupabaseMemoryMatchRPC = envOr("SUPABASE_MEMORY_MATCH_RPC", "match_memories")

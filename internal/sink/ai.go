@@ -50,6 +50,7 @@ type AI struct {
 	Storage                  storage.Store
 	BotManager               BotModelSyncer
 	SupaMemory               *supamemory.Client
+	MemoryRecordEnabled      bool
 	promptCache              map[string]cachedRuntimePrompt
 	UsageBillingV2Enabled    bool
 	UsageBillingCharsPerUnit int
@@ -1053,7 +1054,7 @@ func (s *AI) reply(d Delivery) {
 			MessageAt: time.Now().UTC(),
 		})
 	}
-	if s.SupaMemory != nil && promptMeta.RoleID != "" && promptMeta.UserID != "" {
+	if s.canRecordLongTermMemory(promptMeta) {
 		inboundText := strings.TrimSpace(text)
 		replyText := strings.TrimSpace(result.Content)
 		go func() {
@@ -1706,6 +1707,14 @@ func (s *AI) resolveMemories(ctx context.Context, cfg store.AIConfig, meta runti
 		return nil
 	}
 	return rows
+}
+
+func (s *AI) canRecordLongTermMemory(meta runtimePromptMeta) bool {
+	return s != nil &&
+		s.SupaMemory != nil &&
+		s.MemoryRecordEnabled &&
+		strings.TrimSpace(meta.RoleID) != "" &&
+		strings.TrimSpace(meta.UserID) != ""
 }
 
 func buildMemoryQueryFromMessages(messages []ai.Message, currentText string) string {
