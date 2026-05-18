@@ -146,19 +146,21 @@ func main() {
 	var runtimeSupa *supamemory.Client
 	if cfg.SupabaseURL != "" && cfg.SupabaseServiceRoleKey != "" && cfg.SupabaseMemoryEnabled {
 		runtimeSupa, err = supamemory.NewClient(supamemory.Config{
-			BaseURL:        cfg.SupabaseURL,
-			ServiceRoleKey: cfg.SupabaseServiceRoleKey,
-			Schema:         cfg.SupabaseSchema,
-			MemoryEnabled:  cfg.SupabaseMemoryEnabled,
-			MemoryTopK:     cfg.SupabaseMemoryTopK,
-			MemoryTable:    cfg.SupabaseMemoryTable,
-			MemoryMatchRPC: cfg.SupabaseMemoryMatchRPC,
-			BindingsTable:  cfg.SupabaseBindingsTable,
-			RoutesTable:    cfg.SupabaseRoutesTable,
-			BotsTable:      cfg.SupabaseBotsTable,
-			ProfilesTable:  cfg.SupabaseProfilesTable,
-			AuditLogsTable: cfg.SupabaseAuditLogsTable,
-			EmbeddingModel: cfg.SupabaseEmbeddingModel,
+			BaseURL:                   cfg.SupabaseURL,
+			ServiceRoleKey:            cfg.SupabaseServiceRoleKey,
+			Schema:                    cfg.SupabaseSchema,
+			MemoryEnabled:             cfg.SupabaseMemoryEnabled,
+			MemoryTopK:                cfg.SupabaseMemoryTopK,
+			MemoryTable:               cfg.SupabaseMemoryTable,
+			MemoryMatchRPC:            cfg.SupabaseMemoryMatchRPC,
+			MessageEmbeddingsEnabled:  cfg.SupabaseMessageEmbeddingsEnabled,
+			MessageEmbeddingsMatchRPC: cfg.SupabaseMessageEmbeddingsMatchRPC,
+			BindingsTable:             cfg.SupabaseBindingsTable,
+			RoutesTable:               cfg.SupabaseRoutesTable,
+			BotsTable:                 cfg.SupabaseBotsTable,
+			ProfilesTable:             cfg.SupabaseProfilesTable,
+			AuditLogsTable:            cfg.SupabaseAuditLogsTable,
+			EmbeddingModel:            cfg.SupabaseEmbeddingModel,
 		})
 		if err != nil {
 			slog.Warn("runtime supabase memory disabled", "err", err)

@@ -451,6 +451,67 @@ func TestSearchMemoriesFiltersExpiredVectorAndFallbacksWithRetention(t *testing.
 	}
 }
 
+func TestSearchMemoriesMergesMessageEmbeddingsWithRetention(t *testing.T) {
+	var messageEmbeddingPayload map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_subscriptions"):
+			_, _ = w.Write([]byte(`[{"plan_code":"free"}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_plan_limits"):
+			_, _ = w.Write([]byte(`[{"monthly_message_limit":100,"features":{"intelligence":{"memory_retention_days":30}}}]`))
+		case strings.HasPrefix(r.URL.Path, "/embeddings"):
+			_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/rpc/match_message_embeddings"):
+			_ = json.NewDecoder(r.Body).Decode(&messageEmbeddingPayload)
+			_, _ = w.Write([]byte(`[{
+				"message_id":9001,
+				"user_id":"11111111-1111-4111-8111-111111111111",
+				"role_id":2,
+				"conversation_id":"22222222-2222-4222-8222-222222222222",
+				"platform":"wechat",
+				"message_role":"user",
+				"content":"我以后计划都要先结论后步骤",
+				"message_at":"2026-05-12T00:00:00Z",
+				"created_at":"2026-05-18T00:00:00Z",
+				"similarity":0.88
+			}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:                  srv.URL,
+		ServiceRoleKey:           "test-key",
+		MemoryEnabled:            true,
+		MessageEmbeddingsEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	rows, err := client.SearchMemories(context.Background(), "11111111-1111-4111-8111-111111111111", "2", "按我习惯整理", SearchOptions{
+		EmbeddingBase: srv.URL,
+		EmbeddingKey:  "embedding-key",
+	})
+	if err != nil {
+		t.Fatalf("SearchMemories: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows=%#v", rows)
+	}
+	if rows[0].ID != "message:9001" || rows[0].Source != "platform_message:user" {
+		t.Fatalf("unexpected message row=%#v", rows[0])
+	}
+	if messageEmbeddingPayload["p_user_id"] != "11111111-1111-4111-8111-111111111111" {
+		t.Fatalf("payload=%#v", messageEmbeddingPayload)
+	}
+	if messageEmbeddingPayload["p_after"] == nil || !strings.Contains(messageEmbeddingPayload["p_after"].(string), "T") {
+		t.Fatalf("missing p_after payload=%#v", messageEmbeddingPayload)
+	}
+}
+
 func TestUpsertConversationState_DefaultTable(t *testing.T) {
 	var gotPath string
 	var gotMethod string

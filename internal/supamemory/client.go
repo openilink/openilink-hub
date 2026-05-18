@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,9 @@ type Config struct {
 	MemoryTopK     int
 	MemoryTable    string
 	MemoryMatchRPC string
+
+	MessageEmbeddingsEnabled  bool
+	MessageEmbeddingsMatchRPC string
 
 	BindingsTable           string
 	RoutesTable             string
@@ -49,22 +53,24 @@ type Client struct {
 	memoryEnabled bool
 	memoryTopK    int
 
-	memoryTable             string
-	memoryMatchRPC          string
-	bindingsTable           string
-	routesTable             string
-	botsTable               string
-	profilesTable           string
-	auditLogsTable          string
-	subscriptionsTable      string
-	planLimitsTable         string
-	usageCountersTable      string
-	usageEventsTable        string
-	dictItemsTable          string
-	platformMessagesTable   string
-	conversationStatesTable string
-	dialogueEventsTable     string
-	embeddingModel          string
+	memoryTable               string
+	memoryMatchRPC            string
+	messageEmbeddingsEnabled  bool
+	messageEmbeddingsMatchRPC string
+	bindingsTable             string
+	routesTable               string
+	botsTable                 string
+	profilesTable             string
+	auditLogsTable            string
+	subscriptionsTable        string
+	planLimitsTable           string
+	usageCountersTable        string
+	usageEventsTable          string
+	dictItemsTable            string
+	platformMessagesTable     string
+	conversationStatesTable   string
+	dialogueEventsTable       string
+	embeddingModel            string
 }
 
 type BindingContext struct {
@@ -93,6 +99,19 @@ type MemoryRow struct {
 	Source     string  `json:"source"`
 	CreatedAt  string  `json:"created_at"`
 	Similarity float64 `json:"similarity,omitempty"`
+}
+
+type messageEmbeddingMatchRow struct {
+	MessageID      flexID  `json:"message_id"`
+	UserID         string  `json:"user_id"`
+	RoleID         flexID  `json:"role_id"`
+	ConversationID string  `json:"conversation_id"`
+	Platform       string  `json:"platform"`
+	MessageRole    string  `json:"message_role"`
+	Content        string  `json:"content"`
+	MessageAt      string  `json:"message_at"`
+	CreatedAt      string  `json:"created_at"`
+	Similarity     float64 `json:"similarity,omitempty"`
 }
 
 type SearchOptions struct {
@@ -228,6 +247,10 @@ func NewClient(cfg Config) (*Client, error) {
 	if matchRPC == "" {
 		matchRPC = "match_memories"
 	}
+	messageEmbeddingsRPC := strings.TrimSpace(cfg.MessageEmbeddingsMatchRPC)
+	if messageEmbeddingsRPC == "" {
+		messageEmbeddingsRPC = "match_message_embeddings"
+	}
 	bindings := strings.TrimSpace(cfg.BindingsTable)
 	if bindings == "" {
 		bindings = "bl_tool_bindings"
@@ -285,28 +308,30 @@ func NewClient(cfg Config) (*Client, error) {
 		embeddingModel = "text-embedding-3-small"
 	}
 	return &Client{
-		baseURL:                 base,
-		apiKey:                  key,
-		schema:                  schema,
-		http:                    &http.Client{Timeout: 10 * time.Second},
-		memoryEnabled:           cfg.MemoryEnabled,
-		memoryTopK:              topK,
-		memoryTable:             memoryTable,
-		memoryMatchRPC:          matchRPC,
-		bindingsTable:           bindings,
-		routesTable:             routes,
-		botsTable:               bots,
-		profilesTable:           profiles,
-		auditLogsTable:          auditLogs,
-		subscriptionsTable:      subscriptions,
-		planLimitsTable:         planLimits,
-		usageCountersTable:      usageCounters,
-		usageEventsTable:        usageEvents,
-		dictItemsTable:          dictItems,
-		platformMessagesTable:   platformMessages,
-		conversationStatesTable: conversationStates,
-		dialogueEventsTable:     dialogueEvents,
-		embeddingModel:          embeddingModel,
+		baseURL:                   base,
+		apiKey:                    key,
+		schema:                    schema,
+		http:                      &http.Client{Timeout: 10 * time.Second},
+		memoryEnabled:             cfg.MemoryEnabled,
+		memoryTopK:                topK,
+		memoryTable:               memoryTable,
+		memoryMatchRPC:            matchRPC,
+		messageEmbeddingsEnabled:  cfg.MessageEmbeddingsEnabled,
+		messageEmbeddingsMatchRPC: messageEmbeddingsRPC,
+		bindingsTable:             bindings,
+		routesTable:               routes,
+		botsTable:                 bots,
+		profilesTable:             profiles,
+		auditLogsTable:            auditLogs,
+		subscriptionsTable:        subscriptions,
+		planLimitsTable:           planLimits,
+		usageCountersTable:        usageCounters,
+		usageEventsTable:          usageEvents,
+		dictItemsTable:            dictItems,
+		platformMessagesTable:     platformMessages,
+		conversationStatesTable:   conversationStates,
+		dialogueEventsTable:       dialogueEvents,
+		embeddingModel:            embeddingModel,
 	}, nil
 }
 
@@ -406,10 +431,18 @@ func (c *Client) SearchMemories(ctx context.Context, userID, roleID, query strin
 	embeddingBase := strings.TrimSpace(opt.EmbeddingBase)
 	embeddingKey := strings.TrimSpace(opt.EmbeddingKey)
 	if embeddingBase != "" && embeddingKey != "" {
-		if rows, err := c.vectorSearch(ctx, userID, roleID, query, topK, embeddingBase, embeddingKey, opt.EmbeddingModel, opt.CustomHeaders); err == nil && len(rows) > 0 {
-			retained := filterMemoryRowsByRetention(rows, retentionDays, time.Now().UTC())
-			if len(retained) > 0 {
-				return retained, nil
+		vector, err := c.buildEmbedding(ctx, query, embeddingBase, embeddingKey, fallbackStr(strings.TrimSpace(opt.EmbeddingModel), c.embeddingModel), opt.CustomHeaders)
+		if err == nil && len(vector) > 0 {
+			memoryRows := []MemoryRow{}
+			if rows, err := c.vectorSearchWithVector(ctx, userID, roleID, vector, topK); err == nil && len(rows) > 0 {
+				memoryRows = filterMemoryRowsByRetention(rows, retentionDays, time.Now().UTC())
+			}
+			messageRows := []MemoryRow{}
+			if rows, err := c.messageEmbeddingSearchWithVector(ctx, userID, roleID, vector, topK, retentionDays, fallbackStr(strings.TrimSpace(opt.EmbeddingModel), c.embeddingModel)); err == nil && len(rows) > 0 {
+				messageRows = rows
+			}
+			if merged := mergeRankMemoryRows(append(memoryRows, messageRows...), topK); len(merged) > 0 {
+				return merged, nil
 			}
 		}
 	}
@@ -1279,14 +1312,18 @@ func (c *Client) getUsageByMonth(ctx context.Context, userID, periodMonth string
 }
 
 func (c *Client) vectorSearch(ctx context.Context, userID, roleID, query string, topK int, embeddingBase, embeddingKey, embeddingModel string, customHeaders map[string]string) ([]MemoryRow, error) {
+	vector, err := c.buildEmbedding(ctx, query, embeddingBase, embeddingKey, fallbackStr(strings.TrimSpace(embeddingModel), c.embeddingModel), customHeaders)
+	if err != nil || len(vector) == 0 {
+		return nil, err
+	}
+	return c.vectorSearchWithVector(ctx, userID, roleID, vector, topK)
+}
+
+func (c *Client) vectorSearchWithVector(ctx context.Context, userID, roleID string, vector []float64, topK int) ([]MemoryRow, error) {
 	uid, okUID := parsePositiveInt(userID)
 	rid, okRID := parsePositiveInt(roleID)
 	if !okUID || !okRID {
 		return nil, fmt.Errorf("non-numeric id for vector search")
-	}
-	vector, err := c.buildEmbedding(ctx, query, embeddingBase, embeddingKey, fallbackStr(strings.TrimSpace(embeddingModel), c.embeddingModel), customHeaders)
-	if err != nil || len(vector) == 0 {
-		return nil, err
 	}
 	payload := map[string]any{
 		"p_user_id":         uid,
@@ -1306,6 +1343,62 @@ func (c *Client) vectorSearch(ctx context.Context, userID, roleID, query string,
 		return nil, err
 	}
 	return rows, nil
+}
+
+func (c *Client) messageEmbeddingSearchWithVector(ctx context.Context, userID, roleID string, vector []float64, topK int, retentionDays int, embeddingModel string) ([]MemoryRow, error) {
+	if c == nil || !c.messageEmbeddingsEnabled {
+		return nil, nil
+	}
+	if !isUUID(userID) {
+		return nil, nil
+	}
+	rid, okRID := parsePositiveInt(roleID)
+	if !okRID {
+		return nil, nil
+	}
+	var after any
+	if retentionDays > 0 {
+		after = time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour).Format(time.RFC3339Nano)
+	}
+	payload := map[string]any{
+		"p_user_id":         userID,
+		"p_role_id":         rid,
+		"p_query_embedding": toPgVectorLiteral(vector),
+		"p_match_count":     topK,
+		"p_after":           after,
+		"p_embedding_model": fallbackStr(strings.TrimSpace(embeddingModel), c.embeddingModel),
+	}
+	body, _ := json.Marshal(payload)
+	path := "/rest/v1/rpc/" + url.PathEscape(c.messageEmbeddingsMatchRPC)
+	respBody, err := c.do(ctx, http.MethodPost, path, body, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []messageEmbeddingMatchRow
+	if err := json.Unmarshal(respBody, &rows); err != nil {
+		var single messageEmbeddingMatchRow
+		if errSingle := json.Unmarshal(respBody, &single); errSingle != nil {
+			return nil, err
+		}
+		rows = []messageEmbeddingMatchRow{single}
+	}
+	out := make([]MemoryRow, 0, len(rows))
+	for _, row := range rows {
+		createdAt := fallbackStr(strings.TrimSpace(row.MessageAt), strings.TrimSpace(row.CreatedAt))
+		if retentionDays > 0 && !memoryCreatedAtWithinRetention(createdAt, retentionDays, time.Now().UTC()) {
+			continue
+		}
+		out = append(out, MemoryRow{
+			ID:         "message:" + strings.TrimSpace(string(row.MessageID)),
+			UserID:     row.UserID,
+			RoleID:     row.RoleID,
+			Content:    strings.TrimSpace(row.MessageRole) + ": " + strings.TrimSpace(row.Content),
+			Source:     "platform_message:" + strings.TrimSpace(row.MessageRole),
+			CreatedAt:  createdAt,
+			Similarity: row.Similarity,
+		})
+	}
+	return out, nil
 }
 
 func (c *Client) fallbackSearch(ctx context.Context, userID, roleID string, topK int, retentionDays int) ([]MemoryRow, error) {
@@ -1491,21 +1584,83 @@ func filterMemoryRowsByRetention(rows []MemoryRow, retentionDays int, now time.T
 	if retentionDays <= 0 || len(rows) == 0 {
 		return rows
 	}
-	cutoff := now.UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
 	out := make([]MemoryRow, 0, len(rows))
 	for _, row := range rows {
-		createdAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(row.CreatedAt))
-		if err != nil {
-			createdAt, err = time.Parse(time.RFC3339, strings.TrimSpace(row.CreatedAt))
-		}
-		if err != nil {
-			continue
-		}
-		if !createdAt.Before(cutoff) {
+		if memoryCreatedAtWithinRetention(row.CreatedAt, retentionDays, now) {
 			out = append(out, row)
 		}
 	}
 	return out
+}
+
+func memoryCreatedAtWithinRetention(createdAtRaw string, retentionDays int, now time.Time) bool {
+	if retentionDays <= 0 {
+		return true
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(createdAtRaw))
+	if err != nil {
+		createdAt, err = time.Parse(time.RFC3339, strings.TrimSpace(createdAtRaw))
+	}
+	if err != nil {
+		return false
+	}
+	cutoff := now.UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
+	return !createdAt.Before(cutoff)
+}
+
+func memorySourceWeight(source string) float64 {
+	tag := strings.ToLower(strings.TrimSpace(source))
+	switch {
+	case tag == "summary":
+		return 1.15
+	case strings.Contains(tag, "scene"):
+		return 1.10
+	case strings.Contains(tag, "user_pref") || strings.Contains(tag, "profile"):
+		return 1.08
+	case strings.Contains(tag, "lore"):
+		return 1.05
+	case strings.Contains(tag, "platform_message:user"):
+		return 1.00
+	case strings.Contains(tag, "platform_message:assistant"):
+		return 0.96
+	case strings.Contains(tag, "openilink_user"):
+		return 0.90
+	case strings.Contains(tag, "openilink_assistant"):
+		return 0.86
+	default:
+		return 1.00
+	}
+}
+
+func rankMemoryRow(row MemoryRow) float64 {
+	recency := 0.0
+	if ts, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(row.CreatedAt)); err == nil {
+		recency = float64(ts.Unix()) * 0.0000000001
+	}
+	return row.Similarity*memorySourceWeight(row.Source) + recency
+}
+
+func mergeRankMemoryRows(rows []MemoryRow, topK int) []MemoryRow {
+	if len(rows) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]MemoryRow, 0, len(rows))
+	for _, row := range rows {
+		key := strings.ToLower(strings.TrimSpace(row.Content))
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, row)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return rankMemoryRow(out[i]) > rankMemoryRow(out[j])
+	})
+	if topK <= 0 || topK > len(out) {
+		return out
+	}
+	return out[:topK]
 }
 
 func anyID(input string) any {

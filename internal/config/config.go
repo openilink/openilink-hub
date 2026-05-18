@@ -30,30 +30,32 @@ type Config struct {
 	LinuxDoClientID     string
 	LinuxDoClientSecret string
 
-	AdminSyncSharedSecret       string
-	AdminSyncAllowlist          string
-	AdminFinalizeURL            string
-	AdminFinalizeSecret         string
-	SupabaseURL                 string
-	SupabaseServiceRoleKey      string
-	SupabaseSchema              string
-	SupabaseMemoryEnabled       bool
-	SupabaseMemoryRecordEnabled bool
-	SupabaseMemoryTopK          int
-	SupabaseMemoryTable         string
-	SupabaseMemoryMatchRPC      string
-	SupabaseBindingsTable       string
-	SupabaseRoutesTable         string
-	SupabaseBotsTable           string
-	SupabaseProfilesTable       string
-	SupabaseAuditLogsTable      string
-	SupabaseEmbeddingModel      string
-	OutboxBatchSize             int
-	OutboxPollIntervalMS        int
-	OutboxMaxRetries            int
-	AIFullPromptMaxBytes        int
-	UsageBillingV2Enabled       bool
-	UsageBillingCharsPerUnit    int
+	AdminSyncSharedSecret             string
+	AdminSyncAllowlist                string
+	AdminFinalizeURL                  string
+	AdminFinalizeSecret               string
+	SupabaseURL                       string
+	SupabaseServiceRoleKey            string
+	SupabaseSchema                    string
+	SupabaseMemoryEnabled             bool
+	SupabaseMemoryRecordEnabled       bool
+	SupabaseMemoryTopK                int
+	SupabaseMemoryTable               string
+	SupabaseMemoryMatchRPC            string
+	SupabaseMessageEmbeddingsEnabled  bool
+	SupabaseMessageEmbeddingsMatchRPC string
+	SupabaseBindingsTable             string
+	SupabaseRoutesTable               string
+	SupabaseBotsTable                 string
+	SupabaseProfilesTable             string
+	SupabaseAuditLogsTable            string
+	SupabaseEmbeddingModel            string
+	OutboxBatchSize                   int
+	OutboxPollIntervalMS              int
+	OutboxMaxRetries                  int
+	AIFullPromptMaxBytes              int
+	UsageBillingV2Enabled             bool
+	UsageBillingCharsPerUnit          int
 }
 
 func Parse() *Config {
@@ -89,6 +91,8 @@ func Parse() *Config {
 	cfg.SupabaseMemoryTopK = envOrInt("SUPABASE_MEMORY_TOP_K", 5)
 	cfg.SupabaseMemoryTable = envOr("SUPABASE_MEMORY_TABLE", "bl_memories")
 	cfg.SupabaseMemoryMatchRPC = envOr("SUPABASE_MEMORY_MATCH_RPC", "match_memories")
+	cfg.SupabaseMessageEmbeddingsEnabled = strings.ToLower(strings.TrimSpace(envOr("SUPABASE_MESSAGE_EMBEDDINGS_ENABLED", "false"))) == "true"
+	cfg.SupabaseMessageEmbeddingsMatchRPC = envOr("SUPABASE_MESSAGE_EMBEDDINGS_MATCH_RPC", "match_message_embeddings")
 	cfg.SupabaseBindingsTable = envOr("SUPABASE_BINDINGS_TABLE", "bl_tool_bindings")
 	cfg.SupabaseRoutesTable = envOr("SUPABASE_ROUTES_TABLE", "bl_role_tool_routes")
 	cfg.SupabaseBotsTable = envOr("SUPABASE_BOTS_TABLE", "bl_bots")
