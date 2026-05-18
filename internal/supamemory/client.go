@@ -401,15 +401,19 @@ func (c *Client) SearchMemories(ctx context.Context, userID, roleID, query strin
 	if topK <= 0 {
 		topK = 5
 	}
+	retentionDays := c.memoryRetentionDaysForUser(ctx, userID)
 
 	embeddingBase := strings.TrimSpace(opt.EmbeddingBase)
 	embeddingKey := strings.TrimSpace(opt.EmbeddingKey)
 	if embeddingBase != "" && embeddingKey != "" {
 		if rows, err := c.vectorSearch(ctx, userID, roleID, query, topK, embeddingBase, embeddingKey, opt.EmbeddingModel, opt.CustomHeaders); err == nil && len(rows) > 0 {
-			return rows, nil
+			retained := filterMemoryRowsByRetention(rows, retentionDays, time.Now().UTC())
+			if len(retained) > 0 {
+				return retained, nil
+			}
 		}
 	}
-	return c.fallbackSearch(ctx, userID, roleID, topK)
+	return c.fallbackSearch(ctx, userID, roleID, topK, retentionDays)
 }
 
 func (c *Client) RecordMemory(ctx context.Context, in RecordInput) error {
@@ -702,7 +706,8 @@ type subscriptionRow struct {
 }
 
 type planLimitRow struct {
-	MonthlyMessageLimit int `json:"monthly_message_limit"`
+	MonthlyMessageLimit int            `json:"monthly_message_limit"`
+	Features            map[string]any `json:"features"`
 }
 
 type usageCounterRow struct {
@@ -1178,7 +1183,7 @@ func (c *Client) getPlanLimit(ctx context.Context, planCode string) (*planLimitR
 	q := url.Values{}
 	q.Set("plan_code", "eq."+planCode)
 	q.Set("is_active", "eq.true")
-	q.Set("select", "monthly_message_limit")
+	q.Set("select", "monthly_message_limit,features")
 	q.Set("limit", "1")
 	path := "/rest/v1/" + url.PathEscape(c.planLimitsTable) + "?" + q.Encode()
 	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
@@ -1193,6 +1198,60 @@ func (c *Client) getPlanLimit(ctx context.Context, planCode string) (*planLimitR
 		return nil, nil
 	}
 	return &rows[0], nil
+}
+
+func (c *Client) memoryRetentionDaysForUser(ctx context.Context, userID string) int {
+	planCode := "free"
+	subscription, err := c.getSubscription(ctx, strings.TrimSpace(userID))
+	if err == nil && subscription != nil {
+		if normalized := normalizePlanCode(subscription.PlanCode); normalized != "" {
+			planCode = normalized
+		}
+	}
+	limitRow, err := c.getPlanLimit(ctx, planCode)
+	if err == nil && limitRow != nil {
+		if days := memoryRetentionDaysFromFeatures(limitRow.Features); days >= 0 {
+			return days
+		}
+	}
+	return defaultMemoryRetentionDays(planCode)
+}
+
+func memoryRetentionDaysFromFeatures(features map[string]any) int {
+	if features == nil {
+		return -1
+	}
+	for _, key := range []string{"intelligence", "ai", "smartness"} {
+		raw, ok := features[key]
+		if !ok {
+			continue
+		}
+		nested, ok := raw.(map[string]any)
+		if !ok || nested == nil {
+			continue
+		}
+		for _, field := range []string{"memory_retention_days", "memoryRetentionDays"} {
+			if v, ok := nested[field]; ok {
+				if days, okDays := parseAnyNonNegativeInt(v); okDays {
+					return days
+				}
+			}
+		}
+	}
+	return -1
+}
+
+func defaultMemoryRetentionDays(planCode string) int {
+	switch normalizePlanCode(planCode) {
+	case "m1", "y1", "pro":
+		return 180
+	case "m2", "y2":
+		return 365
+	case "y3", "ultra":
+		return 0
+	default:
+		return 30
+	}
 }
 
 func (c *Client) getUsageByMonth(ctx context.Context, userID, periodMonth string) (*usageCounterRow, error) {
@@ -1249,10 +1308,13 @@ func (c *Client) vectorSearch(ctx context.Context, userID, roleID, query string,
 	return rows, nil
 }
 
-func (c *Client) fallbackSearch(ctx context.Context, userID, roleID string, topK int) ([]MemoryRow, error) {
+func (c *Client) fallbackSearch(ctx context.Context, userID, roleID string, topK int, retentionDays int) ([]MemoryRow, error) {
 	q := url.Values{}
 	q.Set("user_id", "eq."+userID)
 	q.Set("bot_id", "eq."+roleID)
+	if retentionDays > 0 {
+		q.Set("created_at", "gte."+time.Now().UTC().Add(-time.Duration(retentionDays)*24*time.Hour).Format(time.RFC3339Nano))
+	}
 	q.Set("select", "id,user_id,bot_id,content,source,created_at")
 	q.Set("order", "created_at.desc")
 	q.Set("limit", strconv.Itoa(topK))
@@ -1402,6 +1464,50 @@ func parseAnyPositiveInt(v any) int {
 	return 0
 }
 
+func parseAnyNonNegativeInt(v any) (int, bool) {
+	switch val := v.(type) {
+	case float64:
+		if val >= 0 {
+			return int(val), true
+		}
+	case int:
+		if val >= 0 {
+			return val, true
+		}
+	case int64:
+		if val >= 0 {
+			return int(val), true
+		}
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(val))
+		if err == nil && n >= 0 {
+			return n, true
+		}
+	}
+	return 0, false
+}
+
+func filterMemoryRowsByRetention(rows []MemoryRow, retentionDays int, now time.Time) []MemoryRow {
+	if retentionDays <= 0 || len(rows) == 0 {
+		return rows
+	}
+	cutoff := now.UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
+	out := make([]MemoryRow, 0, len(rows))
+	for _, row := range rows {
+		createdAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(row.CreatedAt))
+		if err != nil {
+			createdAt, err = time.Parse(time.RFC3339, strings.TrimSpace(row.CreatedAt))
+		}
+		if err != nil {
+			continue
+		}
+		if !createdAt.Before(cutoff) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
 func anyID(input string) any {
 	if n, ok := parsePositiveInt(input); ok {
 		return n
@@ -1433,7 +1539,7 @@ func normalizePlanCode(raw string) string {
 		return ""
 	}
 	switch code {
-	case "free", "pro", "ultra":
+	case "free", "m1", "m2", "y1", "y2", "y3", "pro", "ultra":
 		return code
 	default:
 		return "free"

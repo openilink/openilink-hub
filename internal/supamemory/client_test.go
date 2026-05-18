@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDecodeMemoryRows_BotIDAsNumber(t *testing.T) {
@@ -365,6 +366,88 @@ func TestResolveConversationID_ByContextToken(t *testing.T) {
 	}
 	if id != "11111111-1111-1111-1111-111111111111" {
 		t.Fatalf("conversation_id=%q", id)
+	}
+}
+
+func TestMemoryRetentionDefaultsAndFeatureOverride(t *testing.T) {
+	if got := defaultMemoryRetentionDays("free"); got != 30 {
+		t.Fatalf("free retention=%d", got)
+	}
+	if got := defaultMemoryRetentionDays("m1"); got != 180 {
+		t.Fatalf("m1 retention=%d", got)
+	}
+	if got := defaultMemoryRetentionDays("y3"); got != 0 {
+		t.Fatalf("y3 retention=%d", got)
+	}
+	if got := memoryRetentionDaysFromFeatures(map[string]any{
+		"intelligence": map[string]any{
+			"memory_retention_days": 45,
+		},
+	}); got != 45 {
+		t.Fatalf("feature retention=%d", got)
+	}
+	if got := memoryRetentionDaysFromFeatures(map[string]any{
+		"intelligence": map[string]any{
+			"memory_retention_days": 0,
+		},
+	}); got != 0 {
+		t.Fatalf("unlimited retention=%d", got)
+	}
+}
+
+func TestFilterMemoryRowsByRetention(t *testing.T) {
+	now := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
+	rows := filterMemoryRowsByRetention([]MemoryRow{
+		{ID: "old", CreatedAt: "2026-03-01T00:00:00Z"},
+		{ID: "recent", CreatedAt: "2026-05-10T00:00:00Z"},
+	}, 30, now)
+	if len(rows) != 1 || rows[0].ID != "recent" {
+		t.Fatalf("rows=%#v", rows)
+	}
+}
+
+func TestSearchMemoriesFiltersExpiredVectorAndFallbacksWithRetention(t *testing.T) {
+	var fallbackRawQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_subscriptions"):
+			_, _ = w.Write([]byte(`[{"plan_code":"free"}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_plan_limits"):
+			_, _ = w.Write([]byte(`[{"monthly_message_limit":100,"features":{"intelligence":{"memory_retention_days":30}}}]`))
+		case strings.HasPrefix(r.URL.Path, "/embeddings"):
+			_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3]}]}`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/rpc/match_memories"):
+			_, _ = w.Write([]byte(`[{"id":"old","user_id":"1","bot_id":2,"content":"old","source":"summary","created_at":"2026-03-01T00:00:00Z"}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_memories"):
+			fallbackRawQuery = r.URL.RawQuery
+			_, _ = w.Write([]byte(`[{"id":"recent","user_id":"1","bot_id":2,"content":"recent","source":"summary","created_at":"2026-05-10T00:00:00Z"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+		MemoryEnabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	rows, err := client.SearchMemories(context.Background(), "1", "2", "hello", SearchOptions{
+		EmbeddingBase: srv.URL,
+		EmbeddingKey:  "embedding-key",
+	})
+	if err != nil {
+		t.Fatalf("SearchMemories: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != "recent" {
+		t.Fatalf("rows=%#v", rows)
+	}
+	if !strings.Contains(fallbackRawQuery, "created_at=gte.") {
+		t.Fatalf("fallback query missing retention filter: %q", fallbackRawQuery)
 	}
 }
 
