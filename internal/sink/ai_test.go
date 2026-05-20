@@ -746,6 +746,13 @@ func TestShouldRecordLongTermMemory(t *testing.T) {
 		{name: "keeps user preference", source: "openilink_user", text: "我的偏好是以后先给结论再给步骤", want: true},
 		{name: "drops assistant error", source: "openilink_assistant", text: "工具调用失败 timeout error", want: false},
 		{name: "keeps assistant commitment", source: "openilink_assistant", text: "我会记住你希望以后先给结论再给步骤推进", want: true},
+		// 场景/叙事/情感类信号
+		{name: "keeps scene location keyword", source: "openilink_user", text: "我们坐在海边小木屋的窗边看雨", want: true},
+		{name: "keeps weather scene", source: "openilink_user", text: "窗外下雨，气氛很安静", want: true},
+		{name: "keeps emotional action", source: "openilink_user", text: "她微笑着递给我一杯热茶", want: true},
+		{name: "keeps memory recall", source: "openilink_user", text: "我想起了小时候在老家的那段日子", want: true},
+		{name: "keeps long narrative no keyword", source: "openilink_user", text: "今天天色渐暗，街道上行人寥寥，我一个人走着，心里说不清是什么感受，只是觉得有些空荡荡的", want: true},
+		{name: "drops short plain text no keyword", source: "openilink_user", text: "嗯嗯", want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -755,6 +762,216 @@ func TestShouldRecordLongTermMemory(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveSceneState(t *testing.T) {
+	t.Run("empty payload returns zero", func(t *testing.T) {
+		text, remaining := resolveSceneState(nil)
+		if text != "" || remaining != 0 {
+			t.Fatalf("got text=%q remaining=%d", text, remaining)
+		}
+	})
+	t.Run("reads text and sticky from payload", func(t *testing.T) {
+		payload := map[string]any{
+			"scene_state": map[string]any{
+				"text":                   "夕阳下两人坐在阳台",
+				"sticky_turns_remaining": float64(15),
+			},
+		}
+		text, remaining := resolveSceneState(payload)
+		if text != "夕阳下两人坐在阳台" {
+			t.Fatalf("text=%q", text)
+		}
+		if remaining != 15 {
+			t.Fatalf("remaining=%d", remaining)
+		}
+	})
+	t.Run("missing scene_state key returns zero", func(t *testing.T) {
+		text, remaining := resolveSceneState(map[string]any{"rolling_summary": "foo"})
+		if text != "" || remaining != 0 {
+			t.Fatalf("got text=%q remaining=%d", text, remaining)
+		}
+	})
+}
+
+func TestComputeNextSceneStateFields(t *testing.T) {
+	t.Run("decrements sticky when remaining > 0", func(t *testing.T) {
+		prev := map[string]any{
+			"scene_state": map[string]any{
+				"text":                   "场景A",
+				"sticky_turns_remaining": float64(10),
+			},
+		}
+		next := computeNextSceneStateFields(prev, "场景B（新）")
+		if next["text"] != "场景A" {
+			t.Fatalf("text should stay, got=%v", next["text"])
+		}
+		if next["sticky_turns_remaining"] != 9 {
+			t.Fatalf("should decrement to 9, got=%v", next["sticky_turns_remaining"])
+		}
+	})
+	t.Run("resets with new summary when sticky exhausted", func(t *testing.T) {
+		prev := map[string]any{
+			"scene_state": map[string]any{
+				"text":                   "旧场景",
+				"sticky_turns_remaining": float64(0),
+			},
+		}
+		next := computeNextSceneStateFields(prev, "新场景摘要内容")
+		if next["text"] != "新场景摘要内容" {
+			t.Fatalf("text should update, got=%v", next["text"])
+		}
+		if next["sticky_turns_remaining"] != sceneStateStickyDefault {
+			t.Fatalf("should reset to default=%d, got=%v", sceneStateStickyDefault, next["sticky_turns_remaining"])
+		}
+	})
+	t.Run("keeps old text when new summary empty", func(t *testing.T) {
+		prev := map[string]any{
+			"scene_state": map[string]any{
+				"text":                   "保留旧场景",
+				"sticky_turns_remaining": float64(0),
+			},
+		}
+		next := computeNextSceneStateFields(prev, "")
+		if next["text"] != "保留旧场景" {
+			t.Fatalf("should keep old text, got=%v", next["text"])
+		}
+	})
+	t.Run("nil payload with new summary initializes", func(t *testing.T) {
+		next := computeNextSceneStateFields(nil, "初次场景")
+		if next["text"] != "初次场景" {
+			t.Fatalf("text=%v", next["text"])
+		}
+		if next["sticky_turns_remaining"] != sceneStateStickyDefault {
+			t.Fatalf("sticky=%v", next["sticky_turns_remaining"])
+		}
+	})
+}
+
+func TestExtractSceneSummaryFromMemories(t *testing.T) {
+	t.Run("returns empty when no scene_summary", func(t *testing.T) {
+		rows := []supamemory.MemoryRow{
+			{Source: "summary", Content: "CronSummary@...\n摘要内容"},
+			{Source: "openilink_user", Content: "普通消息"},
+		}
+		got := extractSceneSummaryFromMemories(rows)
+		if got != "" {
+			t.Fatalf("expected empty, got=%q", got)
+		}
+	})
+	t.Run("strips SceneSummary@ prefix", func(t *testing.T) {
+		rows := []supamemory.MemoryRow{
+			{Source: "scene_summary", Content: "SceneSummary@2026-05-20T00:00:00Z\n两人走进咖啡馆，窗外下雨"},
+		}
+		got := extractSceneSummaryFromMemories(rows)
+		if got != "两人走进咖啡馆，窗外下雨" {
+			t.Fatalf("got=%q", got)
+		}
+	})
+	t.Run("returns first scene_summary in list", func(t *testing.T) {
+		rows := []supamemory.MemoryRow{
+			{Source: "openilink_user", Content: "消息"},
+			{Source: "scene_summary", Content: "第一条场景摘要"},
+			{Source: "scene_summary", Content: "第二条场景摘要"},
+		}
+		got := extractSceneSummaryFromMemories(rows)
+		if got != "第一条场景摘要" {
+			t.Fatalf("got=%q", got)
+		}
+	})
+}
+
+func TestSeparatePlatformMessageRows(t *testing.T) {
+	rows := []supamemory.MemoryRow{
+		{Source: "platform_message:user", Content: "user: 历史消息A"},
+		{Source: "platform_message:assistant", Content: "assistant: 历史回复A"},
+		{Source: "summary", Content: "CronSummary@...\n摘要"},
+		{Source: "openilink_user", Content: "用户偏好"},
+	}
+	platform, other := separatePlatformMessageRows(rows)
+	if len(platform) != 2 {
+		t.Fatalf("platform count=%d, want 2", len(platform))
+	}
+	if len(other) != 2 {
+		t.Fatalf("other count=%d, want 2", len(other))
+	}
+	for _, r := range platform {
+		if !strings.HasPrefix(r.Source, "platform_message:") {
+			t.Fatalf("unexpected source in platform: %q", r.Source)
+		}
+	}
+}
+
+func TestInjectRAGMessagesBlock(t *testing.T) {
+	t.Run("empty platform rows returns original", func(t *testing.T) {
+		msgs := []ai.Message{
+			{Role: "system", Content: "你是助手"},
+			{Role: "user", Content: "你好"},
+		}
+		got := injectRAGMessagesBlock(msgs, nil, ragMessagesMaxCount)
+		if len(got) != 2 {
+			t.Fatalf("len=%d want 2", len(got))
+		}
+	})
+	t.Run("injects RAG block between older and recent messages", func(t *testing.T) {
+		msgs := []ai.Message{
+			{Role: "system", Content: "你是助手"},
+			{Role: "user", Content: "消息1"},
+			{Role: "assistant", Content: "回复1"},
+			{Role: "user", Content: "消息2"},
+			{Role: "assistant", Content: "回复2"},
+			{Role: "user", Content: "消息3"},
+			{Role: "assistant", Content: "回复3"},
+			{Role: "user", Content: "当前消息"},
+		}
+		platform := []supamemory.MemoryRow{
+			{Source: "platform_message:user", Content: "user: 历史相关消息X"},
+		}
+		got := injectRAGMessagesBlock(msgs, platform, ragMessagesMaxCount)
+		// 验证有 system 分隔符
+		var systemContents []string
+		for _, m := range got {
+			if m.Role == "system" {
+				if c, ok := m.Content.(string); ok {
+					systemContents = append(systemContents, c)
+				}
+			}
+		}
+		hasRAGHeader := false
+		for _, c := range systemContents {
+			if strings.Contains(c, "历史对话片段") {
+				hasRAGHeader = true
+			}
+		}
+		if !hasRAGHeader {
+			t.Fatalf("RAG header not found in system messages: %v", systemContents)
+		}
+		// 最后一条消息仍为 "当前消息"
+		last := got[len(got)-1]
+		if c, ok := last.Content.(string); !ok || c != "当前消息" {
+			t.Fatalf("last message should be current, got=%v", last.Content)
+		}
+	})
+	t.Run("respects maxCount limit", func(t *testing.T) {
+		msgs := []ai.Message{{Role: "system", Content: "sys"}, {Role: "user", Content: "cur"}}
+		platform := make([]supamemory.MemoryRow, 10)
+		for i := range platform {
+			platform[i] = supamemory.MemoryRow{Source: "platform_message:user", Content: "user: msg"}
+		}
+		got := injectRAGMessagesBlock(msgs, platform, 3)
+		// 最多 3 条 RAG 消息 + 2 system 分隔 + 原始 2 条
+		ragCount := 0
+		for _, m := range got {
+			if m.Role == "user" {
+				if c, ok := m.Content.(string); ok && c == "msg" {
+					ragCount++
+				}
+			}
+		}
+		if ragCount > 3 {
+			t.Fatalf("RAG injected %d messages, want <= 3", ragCount)
+		}
+	})
 }
 
 func TestBuildMemoryPromptKeepsLongerContent(t *testing.T) {

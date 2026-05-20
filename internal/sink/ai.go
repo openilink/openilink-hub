@@ -573,8 +573,20 @@ func (s *AI) reply(d Delivery) {
 	memoryQuery := buildMemoryQueryFromMessages(messages, currentText)
 	memories := s.resolveMemories(ctx, cfg, promptMeta, memoryQuery)
 	trimmedMemories := trimMemoriesForPhase2(memories, memoryPromptMaxRows)
-	memSummary := s.resolveRollingSummary(ctx, conversationID)
+	convState := s.resolveConversationStateAll(ctx, conversationID)
+	memSummary := convState.RollingSummary
 	messages = injectUserPromptMessage(messages, promptMeta.UserPrompt)
+	// 注入场景状态（sticky，优先于 rolling summary）
+	if convState.SceneText != "" {
+		for i := range messages {
+			if messages[i].Role == "system" {
+				if content, ok := messages[i].Content.(string); ok {
+					messages[i].Content = strings.TrimSpace(content + "\n\n【当前场景状态】\n" + convState.SceneText)
+				}
+				break
+			}
+		}
+	}
 	if memSummary != "" {
 		for i := range messages {
 			if messages[i].Role == "system" {
@@ -586,14 +598,22 @@ func (s *AI) reply(d Delivery) {
 		}
 	}
 	if len(trimmedMemories) > 0 {
-		memPrompt := buildMemoryPrompt(trimmedMemories)
-		if memPrompt != "" {
-			for i := range messages {
-				if messages[i].Role == "system" {
-					if content, ok := messages[i].Content.(string); ok {
-						messages[i].Content = strings.TrimSpace(content + "\n\n" + memPrompt)
+		platformRows, otherRows := separatePlatformMessageRows(trimmedMemories)
+		// Phase 4: platform_message 类历史消息以完整消息块注入（RAG shuffle）
+		if len(platformRows) > 0 {
+			messages = injectRAGMessagesBlock(messages, platformRows, ragMessagesMaxCount)
+		}
+		// 其余记忆仍走 hint 注入到 system prompt
+		if len(otherRows) > 0 {
+			memPrompt := buildMemoryPrompt(otherRows)
+			if memPrompt != "" {
+				for i := range messages {
+					if messages[i].Role == "system" {
+						if content, ok := messages[i].Content.(string); ok {
+							messages[i].Content = strings.TrimSpace(content + "\n\n" + memPrompt)
+						}
+						break
 					}
-					break
 				}
 			}
 		}
@@ -1078,6 +1098,9 @@ func (s *AI) reply(d Delivery) {
 		}()
 	}
 	nextSummary := mergeRollingSummary(memSummary, text, result.Content)
+	// 从已有 scene_summary 记忆中取最新场景摘要文本（用于刷新 scene_state）
+	latestSceneSummaryText := extractSceneSummaryFromMemories(trimmedMemories)
+	nextSceneState := computeNextSceneStateFields(convState.RawPayload, latestSceneSummaryText)
 	s.upsertConversationState(ctx, conversationID, "idle", "free_chat", map[string]any{
 		"last_turn_id":  turnID,
 		"last_planner":  planner,
@@ -1090,6 +1113,7 @@ func (s *AI) reply(d Delivery) {
 			"reason":      emotion.Reason,
 		},
 		"rolling_summary": nextSummary,
+		"scene_state":     nextSceneState,
 	}, 4)
 }
 
@@ -1773,23 +1797,107 @@ func memoryQueryTextFromContent(content any) string {
 	}
 }
 
-func (s *AI) resolveRollingSummary(ctx context.Context, conversationID string) string {
+type conversationStateAll struct {
+	RollingSummary   string
+	SceneText        string
+	StickyRemaining  int
+	RawPayload       map[string]any
+}
+
+func (s *AI) resolveConversationStateAll(ctx context.Context, conversationID string) conversationStateAll {
+	zero := conversationStateAll{}
 	if s.SupaMemory == nil || strings.TrimSpace(conversationID) == "" {
-		return ""
+		return zero
 	}
 	row, err := s.SupaMemory.GetConversationState(ctx, conversationID)
 	if err != nil || row == nil || row.StatePayload == nil {
-		return ""
+		return zero
 	}
-	raw, ok := row.StatePayload["rolling_summary"]
+	payload := row.StatePayload
+	rollingSummary := ""
+	if raw, ok := payload["rolling_summary"]; ok {
+		if s, ok := raw.(string); ok {
+			rollingSummary = strings.TrimSpace(s)
+		}
+	}
+	sceneText, stickyRemaining := resolveSceneState(payload)
+	return conversationStateAll{
+		RollingSummary:  rollingSummary,
+		SceneText:       sceneText,
+		StickyRemaining: stickyRemaining,
+		RawPayload:      payload,
+	}
+}
+
+func (s *AI) resolveRollingSummary(ctx context.Context, conversationID string) string {
+	return s.resolveConversationStateAll(ctx, conversationID).RollingSummary
+}
+
+const sceneStateStickyDefault = 20
+
+// resolveSceneState 从 state_payload 读取当前场景状态文本和剩余 sticky 轮数。
+// sceneText 为空表示尚无场景状态，stickyRemaining <= 0 表示需要刷新。
+func resolveSceneState(payload map[string]any) (sceneText string, stickyRemaining int) {
+	if payload == nil {
+		return "", 0
+	}
+	raw, ok := payload["scene_state"]
 	if !ok {
-		return ""
+		return "", 0
 	}
-	summary, ok := raw.(string)
+	m, ok := raw.(map[string]any)
 	if !ok {
-		return ""
+		return "", 0
 	}
-	return strings.TrimSpace(summary)
+	text, _ := m["text"].(string)
+	remaining := 0
+	if v, ok := m["sticky_turns_remaining"]; ok {
+		switch n := v.(type) {
+		case float64:
+			remaining = int(n)
+		case int:
+			remaining = n
+		case int64:
+			remaining = int(n)
+		}
+	}
+	return strings.TrimSpace(text), remaining
+}
+
+// extractSceneSummaryFromMemories 从记忆列表中找最近一条 source=scene_summary 的内容。
+func extractSceneSummaryFromMemories(rows []supamemory.MemoryRow) string {
+	for _, row := range rows {
+		if strings.TrimSpace(row.Source) == "scene_summary" {
+			content := strings.TrimSpace(row.Content)
+			// 去掉 "SceneSummary@timestamp\n" 前缀
+			if idx := strings.Index(content, "\n"); idx > 0 && strings.HasPrefix(content, "SceneSummary@") {
+				content = strings.TrimSpace(content[idx+1:])
+			}
+			return content
+		}
+	}
+	return ""
+}
+
+// computeNextSceneStateFields 返回写入 state_payload 的 scene_state 字段。
+// 若当前 sticky > 0，则递减并保持 text 不变；否则用最新 scene_summary 重置。
+func computeNextSceneStateFields(prevPayload map[string]any, latestSceneSummary string) map[string]any {
+	sceneText, stickyRemaining := resolveSceneState(prevPayload)
+	if stickyRemaining > 0 && sceneText != "" {
+		return map[string]any{
+			"text":                   sceneText,
+			"sticky_turns_remaining": stickyRemaining - 1,
+		}
+	}
+	// sticky 耗尽或首次：用最新摘要重置
+	newText := strings.TrimSpace(latestSceneSummary)
+	if newText == "" {
+		newText = sceneText // 保留旧内容，别清空
+	}
+	return map[string]any{
+		"text":                   newText,
+		"sticky_turns_remaining": sceneStateStickyDefault,
+	}
 }
 
 func mergeRollingSummary(prevSummary, userText, replyText string) string {
@@ -1869,7 +1977,11 @@ func meetsLongTermMemoryLength(source, text string) bool {
 		return latin >= 40
 	}
 	if cjk > 0 {
-		return cjk+latin >= 12
+		// 场景叙事类用户消息通常 50+ 字符，降低门槛确保录入
+		if cjk+latin >= 50 {
+			return true
+		}
+		return cjk+latin >= 8
 	}
 	return latin >= 20
 }
@@ -1893,6 +2005,12 @@ func hasLongTermMemorySignal(source, text string) bool {
 	keywords := []string{
 		"偏好", "喜欢", "不喜欢", "习惯", "以后", "记住", "目标", "计划", "决定", "方案", "阶段", "关系", "称呼", "叫我", "我是", "我的", "希望", "不要", "需要", "正在", "项目", "任务", "约定", "承诺", "下一步", "推进", "确认",
 		"prefer", "preference", "remember", "goal", "plan", "decision", "project", "task", "next step",
+		// 场景/叙事/情感类信号
+		"走进", "来到", "回到", "离开", "坐在", "站在", "躺在", "靠在", "看着", "抱着",
+		"天气", "下雨", "下雪", "阳光", "夜晚", "早晨", "傍晚", "黄昏",
+		"房间", "窗边", "门口", "桌上", "床上", "沙发", "阳台",
+		"拥抱", "牵手", "微笑", "流泪", "叹气", "亲吻", "依偎",
+		"感觉", "觉得", "好像", "仿佛", "想起", "记得", "忘不了",
 	}
 	for _, keyword := range keywords {
 		if strings.Contains(lower, keyword) {
@@ -2043,6 +2161,83 @@ func bucketMemories(rows []supamemory.MemoryRow) memoryBucket {
 		}
 	}
 	return bucket
+}
+
+const ragMessagesMaxCount = 5
+const ragMessagesRetainRecent = 5
+
+// separatePlatformMessageRows 将记忆行分为 platform_message 类（可作完整消息注入）和其余类。
+func separatePlatformMessageRows(rows []supamemory.MemoryRow) (platformRows, otherRows []supamemory.MemoryRow) {
+	for _, row := range rows {
+		if strings.HasPrefix(strings.TrimSpace(row.Source), "platform_message:") {
+			platformRows = append(platformRows, row)
+		} else {
+			otherRows = append(otherRows, row)
+		}
+	}
+	return
+}
+
+// injectRAGMessagesBlock 将历史消息 RAG 结果作为完整消息块插入，
+// 插入位置在最近 ragMessagesRetainRecent 条消息之前（保留最近上下文不被干扰）。
+// 格式：system分隔 → [user/assistant messages] → system分隔
+func injectRAGMessagesBlock(messages []ai.Message, platformRows []supamemory.MemoryRow, maxCount int) []ai.Message {
+	if len(platformRows) == 0 || maxCount <= 0 {
+		return messages
+	}
+	// 取前 maxCount 条（已经按相似度排序）
+	if len(platformRows) > maxCount {
+		platformRows = platformRows[:maxCount]
+	}
+
+	// 把 RAG 行转为 ai.Message
+	ragMsgs := make([]ai.Message, 0, len(platformRows)+2)
+	ragMsgs = append(ragMsgs, ai.Message{Role: "system", Content: "以下是与当前话题相关的历史对话片段，仅供参考，若与当前对话冲突以当前为准："})
+	for _, row := range platformRows {
+		content := strings.TrimSpace(row.Content)
+		if content == "" {
+			continue
+		}
+		// Content 格式为 "role: text"，解析出 role
+		msgRole := "user"
+		if strings.HasPrefix(strings.ToLower(row.Source), "platform_message:assistant") {
+			msgRole = "assistant"
+		}
+		// 去掉 "user: " / "assistant: " 前缀（supamemory client 已拼接）
+		if idx := strings.Index(content, ": "); idx >= 0 && idx < 12 {
+			content = strings.TrimSpace(content[idx+2:])
+		}
+		ragMsgs = append(ragMsgs, ai.Message{Role: msgRole, Content: content})
+	}
+	ragMsgs = append(ragMsgs, ai.Message{Role: "system", Content: "以上为历史片段，以下为当前对话："})
+
+	// 找插入位置：system 消息之后，保留最近 ragMessagesRetainRecent 条消息
+	systemEnd := 0
+	for i, m := range messages {
+		if m.Role == "system" {
+			systemEnd = i + 1
+		} else {
+			break
+		}
+	}
+	// 保留最近 N 条（非 system）
+	nonSystem := make([]ai.Message, 0, len(messages))
+	for _, m := range messages[systemEnd:] {
+		nonSystem = append(nonSystem, m)
+	}
+	retainStart := 0
+	if len(nonSystem) > ragMessagesRetainRecent {
+		retainStart = len(nonSystem) - ragMessagesRetainRecent
+	}
+	recent := nonSystem[retainStart:]
+	older := nonSystem[:retainStart]
+
+	result := make([]ai.Message, 0, len(messages)+len(ragMsgs))
+	result = append(result, messages[:systemEnd]...)
+	result = append(result, older...)
+	result = append(result, ragMsgs...)
+	result = append(result, recent...)
+	return result
 }
 
 func buildMemoryPrompt(rows []supamemory.MemoryRow) string {
