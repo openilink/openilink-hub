@@ -279,6 +279,52 @@ func TestGetUsageBillingConfig_FromDictItems(t *testing.T) {
 	}
 }
 
+func TestCheckMonthlyQuota_BlocksFreeByDailyLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_subscriptions"):
+			_, _ = w.Write([]byte(`[{"plan_code":"free"}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_plan_limits"):
+			_, _ = w.Write([]byte(`[{"monthly_message_limit":1000,"features":{}}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_usage_counters"):
+			_, _ = w.Write([]byte(`[{"message_used":1}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/bl_dict_items"):
+			_, _ = w.Write([]byte(`[{"item_code":"free_daily_chat_limit","item_value":"10"}]`))
+		case strings.HasPrefix(r.URL.Path, "/rest/v1/rpc/get_user_daily_inbound_message_count"):
+			_, _ = w.Write([]byte(`[{"message_count":10}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:        srv.URL,
+		ServiceRoleKey: "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	quota, err := client.CheckMonthlyQuota(context.Background(), "1001")
+	if err != nil {
+		t.Fatalf("CheckMonthlyQuota: %v", err)
+	}
+	if quota == nil {
+		t.Fatal("quota should not be nil")
+	}
+	if quota.Allowed {
+		t.Fatal("quota should be blocked by free daily limit")
+	}
+	if quota.FreeDailyLimit != 10 {
+		t.Fatalf("free_daily_limit=%d", quota.FreeDailyLimit)
+	}
+	if quota.FreeDailyUsed != 10 {
+		t.Fatalf("free_daily_used=%d", quota.FreeDailyUsed)
+	}
+}
+
 func TestIsEmojiReplyEnabled(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -395,7 +395,9 @@ func (s *AI) reply(d Delivery) {
 				span.SetAttr("quota.limit", quota.MonthlyLimit)
 			}
 			notice := "本月聊天额度已用完，请升级订阅或下月再试。"
-			if quota.MonthlyLimit > 0 {
+			if strings.EqualFold(strings.TrimSpace(quota.PlanCode), "free") && quota.FreeDailyLimit > 0 && quota.FreeDailyUsed >= quota.FreeDailyLimit {
+				notice = "你今天的免费聊天次数已用完"
+			} else if quota.MonthlyLimit > 0 {
 				notice = fmt.Sprintf("本月聊天额度已用完（%d/%d），请升级订阅或下月再试。", quota.Used, quota.MonthlyLimit)
 			}
 			if _, sendErr := d.Provider.Send(ctx, provider.OutboundMessage{

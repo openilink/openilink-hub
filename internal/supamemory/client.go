@@ -223,6 +223,8 @@ type QuotaStatus struct {
 	PeriodMonth  string
 	MonthlyLimit int
 	Used         int
+	FreeDailyLimit int
+	FreeDailyUsed  int
 }
 
 func NewClient(cfg Config) (*Client, error) {
@@ -747,6 +749,11 @@ type usageCounterRow struct {
 	MessageUsed int `json:"message_used"`
 }
 
+type runtimeFlagRow struct {
+	ItemCode  string `json:"item_code"`
+	ItemValue string `json:"item_value"`
+}
+
 func (c *Client) CheckMonthlyQuota(ctx context.Context, userID string) (*QuotaStatus, error) {
 	if c == nil {
 		return nil, nil
@@ -789,13 +796,83 @@ func (c *Client) CheckMonthlyQuota(ctx context.Context, userID string) (*QuotaSt
 	if limit > 0 && used >= limit {
 		allowed = false
 	}
+
+	freeDailyLimit := 0
+	freeDailyUsed := 0
+	if normalizePlanCode(planCode) == "free" {
+		if dailyLimit, err := c.getFreeDailyChatLimit(ctx); err == nil && dailyLimit > 0 {
+			freeDailyLimit = dailyLimit
+			if dailyUsed, err := c.getUserDailyInboundMessageCount(ctx, userID, time.Now().UTC()); err == nil && dailyUsed > 0 {
+				freeDailyUsed = dailyUsed
+			}
+			if freeDailyUsed >= freeDailyLimit {
+				allowed = false
+			}
+		}
+	}
+
 	return &QuotaStatus{
-		Allowed:      allowed,
-		PlanCode:     planCode,
-		PeriodMonth:  periodMonth,
-		MonthlyLimit: limit,
-		Used:         used,
+		Allowed:        allowed,
+		PlanCode:       planCode,
+		PeriodMonth:    periodMonth,
+		MonthlyLimit:   limit,
+		Used:           used,
+		FreeDailyLimit: freeDailyLimit,
+		FreeDailyUsed:  freeDailyUsed,
 	}, nil
+}
+
+func (c *Client) getFreeDailyChatLimit(ctx context.Context) (int, error) {
+	if c == nil {
+		return 0, nil
+	}
+	q := url.Values{}
+	q.Set("dict_code", "eq.system_runtime_flags")
+	q.Set("item_code", "eq.free_daily_chat_limit")
+	q.Set("is_active", "eq.true")
+	q.Set("select", "item_code,item_value")
+	q.Set("limit", "1")
+	path := "/rest/v1/" + url.PathEscape(c.dictItemsTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	var rows []runtimeFlagRow
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	limit := parseAnyPositiveInt(rows[0].ItemValue)
+	if limit <= 0 {
+		return 0, nil
+	}
+	return limit, nil
+}
+
+func (c *Client) getUserDailyInboundMessageCount(ctx context.Context, userID string, dayUTC time.Time) (int, error) {
+	if c == nil {
+		return 0, nil
+	}
+	body, _ := json.Marshal(map[string]any{
+		"p_user_id": anyID(userID),
+		"p_day_utc": dayUTC.UTC().Format("2006-01-02"),
+	})
+	raw, err := c.do(ctx, http.MethodPost, "/rest/v1/rpc/get_user_daily_inbound_message_count", body, nil)
+	if err != nil {
+		return 0, err
+	}
+	var rows []struct {
+		MessageCount int `json:"message_count"`
+	}
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 || rows[0].MessageCount <= 0 {
+		return 0, nil
+	}
+	return rows[0].MessageCount, nil
 }
 
 func (c *Client) BumpMonthlyUsage(ctx context.Context, userID string, delta int) error {
