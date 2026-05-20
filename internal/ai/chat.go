@@ -38,7 +38,7 @@ const maxImageBytes = 20 * 1024 * 1024 // 20MB max for base64 encoding
 
 const defaultBaseURL = "https://api.openai.com/v1"
 const defaultModel = "gpt-4o-mini"
-const defaultMaxHistory = 20
+const defaultMaxHistory = 40
 const MaxToolRounds = 5
 
 // Message supports text, tool_calls, and tool results.

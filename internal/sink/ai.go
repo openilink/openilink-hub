@@ -34,7 +34,7 @@ const memoryPromptMaxRows = 10
 const memoryPromptContentMaxRunes = 240
 const memoryQueryHistoryMaxMessages = 6
 const memoryQueryMaxRunes = 600
-const rollingSummaryMaxRunes = 800
+const rollingSummaryMaxRunes = 1600
 
 // BotModelSyncer allows the AI sink to sync an in-memory bot's model after a
 // /model switch without importing the bot package (which would create a cycle).
@@ -1804,10 +1804,10 @@ func mergeRollingSummary(prevSummary, userText, replyText string) string {
 		parts = append(parts, prev)
 	}
 	if u != "" {
-		parts = append(parts, "用户:"+truncateRune(u, 80))
+		parts = append(parts, "用户:"+truncateRune(u, 160))
 	}
 	if r != "" {
-		parts = append(parts, "助手:"+truncateRune(r, 80))
+		parts = append(parts, "助手:"+truncateRune(r, 160))
 	}
 	merged := strings.Join(parts, " | ")
 	return truncateRune(merged, rollingSummaryMaxRunes)
