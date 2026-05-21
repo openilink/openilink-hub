@@ -349,6 +349,7 @@ func (s *AI) reply(d Delivery) {
 	channelCode := normalizeChannelCode(d.Provider.Name())
 	channelPrompt := buildChannelPrompt(channelCode)
 	cfg.SystemPrompt = composeSystemWithChannelPrompt(cfg.SystemPrompt, channelPrompt)
+	cfg.SystemPrompt = composeSystemWithTimeContext(cfg.SystemPrompt)
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_start", map[string]any{
 		"bot_id":          d.BotDBID,
 		"provider_bot_id": d.Message.Recipient,
@@ -1596,6 +1597,54 @@ func composeSystemWithChannelPrompt(systemPrompt, channelPrompt string) string {
 	default:
 		return ch
 	}
+}
+
+var timePeriodMap = []struct {
+	min, max int
+	period   string
+	scene    string
+}{
+	{0, 5, "凌晨", "夜深了，大多数人在休息"},
+	{6, 7, "清晨", "早起的时间"},
+	{8, 10, "上午", "上午时段"},
+	{11, 12, "中午", "午饭时间"},
+	{13, 16, "下午", "下午时段"},
+	{17, 18, "傍晚", "快要吃晚饭了"},
+	{19, 21, "晚上", "晚上休闲时间"},
+	{22, 23, "深夜", "夜深了"},
+}
+
+func buildTimeContextBlock() string {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return ""
+	}
+	now := time.Now().In(loc)
+	weekdays := []string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
+	hour := now.Hour()
+	period := "未知"
+	scene := ""
+	for _, entry := range timePeriodMap {
+		if hour >= entry.min && hour <= entry.max {
+			period = entry.period
+			scene = entry.scene
+			break
+		}
+	}
+	return fmt.Sprintf("【当前时间】\n%d年%02d月%02d日 %s %s%d点左右（%s）\n自然感知时间流逝，不要刻意报时，但对话氛围要与时段吻合。",
+		now.Year(), now.Month(), now.Day(), weekdays[now.Weekday()], period, hour, scene)
+}
+
+func composeSystemWithTimeContext(systemPrompt string) string {
+	base := strings.TrimSpace(systemPrompt)
+	block := buildTimeContextBlock()
+	if block == "" {
+		return base
+	}
+	if base == "" {
+		return block
+	}
+	return base + "\n\n" + block
 }
 
 func injectUserPromptMessage(messages []ai.Message, userPrompt string) []ai.Message {
