@@ -1622,6 +1622,7 @@ func buildTimeContextBlock() string {
 	now := time.Now().In(loc)
 	weekdays := []string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
 	hour := now.Hour()
+	minute := now.Minute()
 	period := "未知"
 	scene := ""
 	for _, entry := range timePeriodMap {
@@ -1631,8 +1632,8 @@ func buildTimeContextBlock() string {
 			break
 		}
 	}
-	return fmt.Sprintf("【当前时间】\n%d年%02d月%02d日 %s %s%d点左右（%s）\n自然感知时间流逝，不要刻意报时，但对话氛围要与时段吻合。",
-		now.Year(), now.Month(), now.Day(), weekdays[now.Weekday()], period, hour, scene)
+	return fmt.Sprintf("【当前时间】\n%d年%02d月%02d日 %s %s%d:%02d（%s）\n自然感知时间流逝，不要刻意报时，但对话氛围要与时段吻合。用户问时间时如实告知。",
+		now.Year(), now.Month(), now.Day(), weekdays[now.Weekday()], period, hour, minute, scene)
 }
 
 func composeSystemWithTimeContext(systemPrompt string) string {
