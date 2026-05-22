@@ -1559,7 +1559,7 @@ func (s *AI) stopTyping(d Delivery, ticket string) {
 func (s *AI) sendErrorNotice(d Delivery, recipient string) {
 	if _, sendErr := d.Provider.Send(context.Background(), provider.OutboundMessage{
 		Recipient: recipient,
-		Text:      "抱歉，刚刚回复开小差了，请再试一次，我马上接上你。",
+		Text:      "哎呀我刚刚嘴瓢了，再来一次，这回给你稳稳接上。",
 	}); sendErr != nil {
 		slog.Error("ai error notice send failed", "bot", d.BotDBID, "err", sendErr)
 	}
