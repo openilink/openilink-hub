@@ -582,16 +582,10 @@ func (s *AI) reply(d Delivery) {
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
 
-	// First-conversation welcome image: send a random image if no assistant history exists
-	if s.SupaMemory != nil {
-		hasAssistant := false
-		for _, m := range messages {
-			if m.Role == "assistant" {
-				hasAssistant = true
-				break
-			}
-		}
-		if !hasAssistant {
+	// First-conversation welcome image: send only on the very first binding (no prior outbound messages in Supabase)
+	if s.SupaMemory != nil && promptMeta.UserID != "" && promptMeta.RoleID != "" {
+		hasOutbound, _ := s.SupaMemory.HasOutboundPlatformMessages(ctx, promptMeta.UserID, promptMeta.RoleID)
+		if !hasOutbound {
 			go s.sendWelcomeImageIfAvailable(context.Background(), d, sender)
 		}
 	}

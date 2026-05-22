@@ -1071,6 +1071,36 @@ func (c *Client) IsEmojiReplyEnabled(ctx context.Context, userID, roleID string)
 	return rows[0].EmojiReplyEnabled, nil
 }
 
+// HasOutboundPlatformMessages checks if any outbound platform messages exist for a user+role pair.
+func (c *Client) HasOutboundPlatformMessages(ctx context.Context, userID, roleID string) (bool, error) {
+	if c == nil {
+		return false, nil
+	}
+	userID = strings.TrimSpace(userID)
+	roleID = strings.TrimSpace(roleID)
+	if userID == "" || roleID == "" {
+		return false, nil
+	}
+	q := url.Values{}
+	q.Set("user_id", "eq."+userID)
+	q.Set("role_id", "eq."+roleID)
+	q.Set("direction", "eq.outbound")
+	q.Set("select", "id")
+	q.Set("limit", "1")
+	path := "/rest/v1/" + url.PathEscape(c.platformMessagesTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return false, err
+	}
+	var rows []struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return false, err
+	}
+	return len(rows) > 0, nil
+}
+
 // ListDictItemValues returns all active item_value strings for the given dict_code.
 func (c *Client) ListDictItemValues(ctx context.Context, dictCode string) ([]string, error) {
 	if c == nil {
