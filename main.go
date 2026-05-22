@@ -215,6 +215,7 @@ func main() {
 		UsageBillingV2Enabled:    cfg.UsageBillingV2Enabled,
 		UsageBillingCharsPerUnit: cfg.UsageBillingCharsPerUnit,
 	}
+	aiSink.SyncWelcomeImages()
 	mgr := bot.NewManager(s, hub, aiSink, objStore, cfg.RPOrigin)
 	mgr.SetWechatFinalizeCallback(cfg.AdminFinalizeURL, cfg.AdminFinalizeSecret)
 	aiSink.BotManager = mgr

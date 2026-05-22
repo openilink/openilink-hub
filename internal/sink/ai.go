@@ -1,10 +1,14 @@
 package sink
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
+	_ "image/png"
 	"io"
 	"log/slog"
 	"math/rand/v2"
@@ -55,6 +59,8 @@ type AI struct {
 	promptCache              map[string]cachedRuntimePrompt
 	UsageBillingV2Enabled    bool
 	UsageBillingCharsPerUnit int
+
+	welcomeImagesDir string
 }
 
 type runtimePromptMeta struct {
@@ -586,7 +592,7 @@ func (s *AI) reply(d Delivery) {
 			}
 		}
 		if !hasAssistant {
-			s.sendWelcomeImageIfAvailable(ctx, d, sender)
+			go s.sendWelcomeImageIfAvailable(context.Background(), d, sender)
 		}
 	}
 
@@ -1565,64 +1571,147 @@ func (s *AI) sendErrorNotice(d Delivery, recipient string) {
 	}
 }
 
-// sendWelcomeImageIfAvailable fetches a random welcome image URL from bl_dict_items
-// (dict_code=welcome_images_first), downloads the image bytes, and sends it to the user.
+const welcomeImageDirDefault = "/var/lib/oih/welcome_images"
+const welcomeImageJPEGQuality = 80
+
+// sendWelcomeImageIfAvailable picks a random local welcome image and sends it.
 func (s *AI) sendWelcomeImageIfAvailable(ctx context.Context, d Delivery, sender string) {
-	if s.SupaMemory == nil {
+	dir := s.resolveWelcomeImageDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
 		return
 	}
-	urls, err := s.SupaMemory.ListDictItemValues(ctx, "welcome_images_first")
-	if err != nil || len(urls) == 0 {
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			files = append(files, e.Name())
+		}
+	}
+	if len(files) == 0 {
 		return
 	}
-	randomURL := urls[rand.IntN(len(urls))]
-	imgData, contentType, err := downloadImageURL(ctx, randomURL)
-	if err != nil {
-		slog.Warn("welcome image download failed", "bot", d.BotDBID, "url", randomURL, "err", err)
+	chosen := files[rand.IntN(len(files))]
+	data, err := os.ReadFile(dir + "/" + chosen)
+	if err != nil || len(data) == 0 {
+		slog.Warn("welcome image read failed", "file", chosen, "err", err)
 		return
-	}
-	fileName := "welcome.jpg"
-	if strings.HasPrefix(contentType, "image/png") {
-		fileName = "welcome.png"
-	} else if strings.HasPrefix(contentType, "image/gif") {
-		fileName = "welcome.gif"
-	} else if strings.HasPrefix(contentType, "image/webp") {
-		fileName = "welcome.webp"
 	}
 	if _, sendErr := d.Provider.Send(ctx, provider.OutboundMessage{
 		Recipient: sender,
-		Data:      imgData,
-		FileName:  fileName,
+		Data:      data,
+		FileName:  chosen,
 	}); sendErr != nil {
 		slog.Warn("welcome image send failed", "bot", d.BotDBID, "err", sendErr)
 	}
 }
 
-// downloadImageURL fetches image bytes from a URL with a short timeout.
-func downloadImageURL(ctx context.Context, rawURL string) ([]byte, string, error) {
+func (s *AI) resolveWelcomeImageDir() string {
+	if s.welcomeImagesDir != "" {
+		return s.welcomeImagesDir
+	}
+	return welcomeImageDirDefault
+}
+
+// SyncWelcomeImages downloads welcome images from bl_dict_items to local disk at startup.
+// Only downloads files not already present locally. All images are compressed to JPEG.
+func (s *AI) SyncWelcomeImages() {
+	if s.SupaMemory == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	dir := s.resolveWelcomeImageDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		slog.Warn("welcome image dir create failed", "dir", dir, "err", err)
+		return
+	}
+
+	urls, err := s.SupaMemory.ListDictItemValues(ctx, "welcome_images_first")
+	if err != nil || len(urls) == 0 {
+		slog.Warn("welcome image sync: no URLs from dict", "err", err)
+		return
+	}
+
+	existing := make(map[string]bool)
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if !e.IsDir() {
+			existing[e.Name()] = true
+		}
+	}
+
+	downloaded := 0
+	for _, rawURL := range urls {
+		fn := welcomeImageFileName(rawURL)
+		if fn == "" || existing[fn] {
+			continue
+		}
+		data, dlErr := downloadAndCompressImage(ctx, rawURL)
+		if dlErr != nil {
+			slog.Warn("welcome image download failed", "url", rawURL, "err", dlErr)
+			continue
+		}
+		if wErr := os.WriteFile(dir+"/"+fn, data, 0o644); wErr != nil {
+			slog.Warn("welcome image write failed", "file", fn, "err", wErr)
+			continue
+		}
+		downloaded++
+	}
+	total := len(existing) + downloaded
+	slog.Info("welcome images ready", "downloaded", downloaded, "total", total, "dir", dir)
+}
+
+// welcomeImageFileName derives a stable .jpg filename from a URL path.
+func welcomeImageFileName(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Path == "" {
+		return ""
+	}
+	parts := strings.Split(strings.TrimRight(u.Path, "/"), "/")
+	base := parts[len(parts)-1]
+	// Strip original extension, all files saved as .jpg after compression
+	if idx := strings.LastIndex(base, "."); idx > 0 {
+		base = base[:idx]
+	}
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, base)
+	if safe == "" {
+		safe = "img"
+	}
+	return safe + ".jpg"
+}
+
+// downloadAndCompressImage downloads an image and re-encodes it as compressed JPEG.
+func downloadAndCompressImage(ctx context.Context, rawURL string) ([]byte, error) {
 	dlCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("unexpected status %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageBytes))
-	if err != nil {
-		return nil, "", err
+	body := io.LimitReader(resp.Body, maxImageBytes)
+	img, _, decErr := image.Decode(body)
+	if decErr != nil {
+		return nil, fmt.Errorf("image decode: %w", decErr)
 	}
-	ct := resp.Header.Get("Content-Type")
-	if ct == "" {
-		ct = http.DetectContentType(data)
+	var buf bytes.Buffer
+	if encErr := jpeg.Encode(&buf, img, &jpeg.Options{Quality: welcomeImageJPEGQuality}); encErr != nil {
+		return nil, fmt.Errorf("jpeg encode: %w", encErr)
 	}
-	return data, ct, nil
+	return buf.Bytes(), nil
 }
 
 func (s *AI) resolveGlobalConfig() store.AIConfig {
