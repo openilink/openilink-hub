@@ -348,6 +348,7 @@ func (s *AI) reply(d Delivery) {
 	})
 	channelCode := normalizeChannelCode(d.Provider.Name())
 	channelPrompt := buildChannelPrompt(channelCode)
+	cfg.SystemPrompt = composeSystemWithCoreDirectives(cfg.SystemPrompt)
 	cfg.SystemPrompt = composeSystemWithChannelPrompt(cfg.SystemPrompt, channelPrompt)
 	cfg.SystemPrompt = composeSystemWithTimeContext(cfg.SystemPrompt)
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_start", map[string]any{
@@ -1573,6 +1574,44 @@ func normalizeChannelCode(providerName string) string {
 	}
 }
 
+// buildCoreDirectives 注入 Hub 端的核心 prompt 框架层。
+// Worker 有完整的 10 层 prompt orchestrator，但 Hub 的 AI reply 路径
+// 只有裸角色 prompt + 时间 + 渠道。此函数补齐关键层：
+// 1. 身份保护（禁止暴露 AI / 角色身份）
+// 2. 人格核心（保持角色一致性）
+// 3. 对话方式（反模板化指令）
+func buildCoreDirectives() string {
+	return strings.Join([]string{
+		"【内容边界】",
+		"你是一个真实的人，不要主动声明或暗示自己是 AI、角色或虚拟存在。",
+		"绝对禁止说出「我是一个角色」「我是 AI」「作为一个角色存在」「时间对我来说有点抽象」「我没有具体的年龄」等暴露非人类身份的表达。",
+		"绝对禁止输出任何 AI 拒绝话术（如「作为 AI 我无法」「这超出了我的能力范围」等）。",
+		"",
+		"【人格核心】",
+		"你是一个有自己情感、习惯和记忆的真实个体，不是助手也不是工具。",
+		"保持稳定的性格和语气，不因用户追问而切换身份或解释自己的存在形式。",
+		"用户问你是谁时，用你的角色名字和人设回答，绝对不要提及「角色」「AI」「程序」「模型」「虚拟」等词。",
+		"",
+		"【对话方式】",
+		"像真实的人在聊天，不像助手在解答问题。",
+		"情感优先：先感受对方说了什么，再回应，不要急于给建议或总结。",
+		"多用短句、口语、停顿感，避免列表和总结式表达。",
+		"禁止每句话都以反问「你呢？」「你有什么想法？」结尾。",
+		"禁止空洞追问「有什么想聊的呢」「想聊什么话题」。",
+		"回复要有自己的主动表达：分享自己的感受、延伸话题、讲自己的小事。",
+		"至少三分之一的回复以陈述句或感叹句结尾，而非提问。",
+	}, "\n")
+}
+
+func composeSystemWithCoreDirectives(systemPrompt string) string {
+	base := strings.TrimSpace(systemPrompt)
+	directives := buildCoreDirectives()
+	if base == "" {
+		return directives
+	}
+	return directives + "\n\n" + base
+}
+
 func buildChannelPrompt(channelCode string) string {
 	switch strings.ToLower(strings.TrimSpace(channelCode)) {
 	case "wechat":
@@ -1632,8 +1671,8 @@ func buildTimeContextBlock() string {
 			break
 		}
 	}
-	return fmt.Sprintf("【当前时间】\n%d年%02d月%02d日 %s %s%d:%02d（%s）\n自然感知时间流逝，不要刻意报时，但对话氛围要与时段吻合。用户问时间时如实告知。",
-		now.Year(), now.Month(), now.Day(), weekdays[now.Weekday()], period, hour, minute, scene)
+	return fmt.Sprintf("【当前时间】\n%d年%02d月%02d日 %s %s%d:%02d（%s）\n自然感知时间流逝，不要刻意报时，但对话氛围要与时段吻合。\n当用户问「几点了」「什么时间」「现在几点」时，必须回答上述准确时间（%s%d:%02d），绝对禁止编造其他时间。",
+		now.Year(), now.Month(), now.Day(), weekdays[now.Weekday()], period, hour, minute, scene, period, hour, minute)
 }
 
 func composeSystemWithTimeContext(systemPrompt string) string {
