@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -574,6 +575,21 @@ func (s *AI) reply(d Delivery) {
 
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+
+	// First-conversation welcome image: send a random image if no assistant history exists
+	if s.SupaMemory != nil {
+		hasAssistant := false
+		for _, m := range messages {
+			if m.Role == "assistant" {
+				hasAssistant = true
+				break
+			}
+		}
+		if !hasAssistant {
+			s.sendWelcomeImageIfAvailable(ctx, d, sender)
+		}
+	}
+
 	// Anti-repetition: deduplicate and collapse near-duplicate assistant messages
 	messages = deduplicateConsecutiveAssistantMessages(messages)
 	messages = collapseRepeatedAssistantMessages(messages)
@@ -1547,6 +1563,66 @@ func (s *AI) sendErrorNotice(d Delivery, recipient string) {
 	}); sendErr != nil {
 		slog.Error("ai error notice send failed", "bot", d.BotDBID, "err", sendErr)
 	}
+}
+
+// sendWelcomeImageIfAvailable fetches a random welcome image URL from bl_dict_items
+// (dict_code=welcome_images_first), downloads the image bytes, and sends it to the user.
+func (s *AI) sendWelcomeImageIfAvailable(ctx context.Context, d Delivery, sender string) {
+	if s.SupaMemory == nil {
+		return
+	}
+	urls, err := s.SupaMemory.ListDictItemValues(ctx, "welcome_images_first")
+	if err != nil || len(urls) == 0 {
+		return
+	}
+	randomURL := urls[rand.IntN(len(urls))]
+	imgData, contentType, err := downloadImageURL(ctx, randomURL)
+	if err != nil {
+		slog.Warn("welcome image download failed", "bot", d.BotDBID, "url", randomURL, "err", err)
+		return
+	}
+	fileName := "welcome.jpg"
+	if strings.HasPrefix(contentType, "image/png") {
+		fileName = "welcome.png"
+	} else if strings.HasPrefix(contentType, "image/gif") {
+		fileName = "welcome.gif"
+	} else if strings.HasPrefix(contentType, "image/webp") {
+		fileName = "welcome.webp"
+	}
+	if _, sendErr := d.Provider.Send(ctx, provider.OutboundMessage{
+		Recipient: sender,
+		Data:      imgData,
+		FileName:  fileName,
+	}); sendErr != nil {
+		slog.Warn("welcome image send failed", "bot", d.BotDBID, "err", sendErr)
+	}
+}
+
+// downloadImageURL fetches image bytes from a URL with a short timeout.
+func downloadImageURL(ctx context.Context, rawURL string) ([]byte, string, error) {
+	dlCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(dlCtx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxImageBytes))
+	if err != nil {
+		return nil, "", err
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" {
+		ct = http.DetectContentType(data)
+	}
+	return data, ct, nil
 }
 
 func (s *AI) resolveGlobalConfig() store.AIConfig {

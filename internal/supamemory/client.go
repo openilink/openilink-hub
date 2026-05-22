@@ -1071,6 +1071,37 @@ func (c *Client) IsEmojiReplyEnabled(ctx context.Context, userID, roleID string)
 	return rows[0].EmojiReplyEnabled, nil
 }
 
+// ListDictItemValues returns all active item_value strings for the given dict_code.
+func (c *Client) ListDictItemValues(ctx context.Context, dictCode string) ([]string, error) {
+	if c == nil {
+		return nil, nil
+	}
+	q := url.Values{}
+	q.Set("dict_code", "eq."+dictCode)
+	q.Set("is_active", "eq.true")
+	q.Set("select", "item_value")
+	q.Set("order", "sort_order.asc,created_at.asc")
+	path := "/rest/v1/" + url.PathEscape(c.dictItemsTable) + "?" + q.Encode()
+	body, err := c.do(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ItemValue string `json:"item_value"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		v := strings.TrimSpace(row.ItemValue)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out, nil
+}
+
 func (c *Client) ListEmojiAssets(ctx context.Context) ([]EmojiAsset, error) {
 	if c == nil {
 		return nil, nil
