@@ -574,6 +574,23 @@ func (s *AI) reply(d Delivery) {
 
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+	// Anti-repetition: deduplicate and collapse near-duplicate assistant messages
+	messages = deduplicateConsecutiveAssistantMessages(messages)
+	messages = collapseRepeatedAssistantMessages(messages)
+	isToxicHistory := detectToxicHistoryMessages(messages)
+	if isToxicHistory {
+		cfg.SystemPrompt = cfg.SystemPrompt + "\n\n" + toxicHistoryRecoveryPrompt
+		// Depth injection: insert recovery prompt right before the last user message
+		if len(messages) >= 2 {
+			injMsg := ai.Message{Role: "system", Content: toxicHistoryRecoveryPrompt}
+			out := make([]ai.Message, 0, len(messages)+1)
+			out = append(out, messages[:len(messages)-1]...)
+			out = append(out, injMsg)
+			out = append(out, messages[len(messages)-1])
+			messages = out
+		}
+		slog.Info("ai: toxic history detected, injected recovery prompt", "bot", d.BotDBID, "sender", sender)
+	}
 	memoryQuery := buildMemoryQueryFromMessages(messages, currentText)
 	memories := s.resolveMemories(ctx, cfg, promptMeta, memoryQuery)
 	trimmedMemories := trimMemoriesForPhase2(memories, memoryPromptMaxRows)
@@ -866,6 +883,33 @@ func (s *AI) reply(d Delivery) {
 	s.setTokenUsage(span, d.RootSpan, totalPrompt, totalCompletion, totalTokens, totalCached, totalReasoning)
 
 	s.stopTyping(d, typingTicket)
+
+	// Auto-swipe: if result repeats recent assistant messages, retry once with anti-repetition prompt
+	if result.Content != "" && len(result.ToolCalls) == 0 && isRepetitionOfRecentMessages(result.Content, messages) {
+		slog.Info("ai: repetition detected in output, retrying with anti-repetition injection", "bot", d.BotDBID, "sender", sender)
+		retryCfg := cfg
+		retryCfg.SystemPrompt = cfg.SystemPrompt + "\n\n" + antiRepetitionInjection
+		retryCtx, cancelRetry := context.WithTimeout(ctx, completionTimeout)
+		retryResult, retryErr := ai.CompleteMessages(retryCtx, retryCfg, messages, tools)
+		cancelRetry()
+		if retryErr == nil && retryResult.Content != "" && !isRepetitionOfRecentMessages(retryResult.Content, messages) {
+			result = retryResult
+			if result.Usage != nil {
+				totalPrompt += result.Usage.PromptTokens
+				totalCompletion += result.Usage.CompletionTokens
+				totalTokens += result.Usage.TotalTokens
+				totalCached += result.Usage.CachedTokens
+				totalReasoning += result.Usage.ReasoningTokens
+			}
+		}
+		s.writeRuntimeAudit(d, "openilink_hub_ai_repetition_auto_swipe", map[string]any{
+			"bot_id":          d.BotDBID,
+			"user_id":         promptMeta.UserID,
+			"role_id":         promptMeta.RoleID,
+			"sender":          sender,
+			"retry_recovered": retryErr == nil && retryResult != nil && !isRepetitionOfRecentMessages(retryResult.Content, messages),
+		})
+	}
 
 	reply := result.Content
 	thinking := result.Thinking
@@ -1600,6 +1644,8 @@ func buildCoreDirectives() string {
 		"禁止空洞追问「有什么想聊的呢」「想聊什么话题」。",
 		"回复要有自己的主动表达：分享自己的感受、延伸话题、讲自己的小事。",
 		"至少三分之一的回复以陈述句或感叹句结尾，而非提问。",
+		"遇到不认识的人名、不理解的词语或模糊表达时，像正常人一样直接追问（例如「xx是谁呀？」「你说的是什么意思？」），绝对不要假装理解并强行回应。",
+		"严禁连续两次回复使用相同的句式结构、相同的开头词或相同的表达模式。每次回复都要有变化。",
 	}, "\n")
 }
 
@@ -1889,10 +1935,10 @@ func memoryQueryTextFromContent(content any) string {
 }
 
 type conversationStateAll struct {
-	RollingSummary   string
-	SceneText        string
-	StickyRemaining  int
-	RawPayload       map[string]any
+	RollingSummary  string
+	SceneText       string
+	StickyRemaining int
+	RawPayload      map[string]any
 }
 
 func (s *AI) resolveConversationStateAll(ctx context.Context, conversationID string) conversationStateAll {
@@ -3093,3 +3139,240 @@ func (s *AI) resolveEmojiReply(ctx context.Context, d Delivery, promptMeta runti
 	info.URL = candidate.URL
 	return candidate, info
 }
+
+// ---------------------------------------------------------------------------
+// Anti-repetition helpers (context cleanup + output check)
+// ---------------------------------------------------------------------------
+
+const (
+	fuzzyDedupThreshold           = 0.6
+	repetitionCheckWindow         = 3
+	repetitionSimilarityThreshold = 0.6
+	toxicClusterMinSize           = 2
+	toxicMinAssistantCount        = 3
+)
+
+// ngramSimilarityGo computes tri-gram Jaccard-like similarity between two strings.
+func ngramSimilarityGo(a, b string, n int) float64 {
+	norm := func(s string) []rune {
+		var out []rune
+		for _, r := range s {
+			if !unicode.IsSpace(r) {
+				out = append(out, r)
+			}
+		}
+		if len(out) > 300 {
+			return out[:300]
+		}
+		return out
+	}
+	ra := norm(a)
+	rb := norm(b)
+	if len(ra) == 0 || len(rb) == 0 {
+		return 0
+	}
+	if string(ra) == string(rb) {
+		return 1
+	}
+	grams := func(runes []rune) map[string]struct{} {
+		s := make(map[string]struct{})
+		for i := 0; i <= len(runes)-n; i++ {
+			s[string(runes[i:i+n])] = struct{}{}
+		}
+		return s
+	}
+	ga := grams(ra)
+	gb := grams(rb)
+	if len(ga) == 0 || len(gb) == 0 {
+		return 0
+	}
+	overlap := 0
+	for g := range ga {
+		if _, ok := gb[g]; ok {
+			overlap++
+		}
+	}
+	maxSize := len(ga)
+	if len(gb) > maxSize {
+		maxSize = len(gb)
+	}
+	return float64(overlap) / float64(maxSize)
+}
+
+// messageTextContent extracts plain text from ai.Message.Content (string or multimodal parts).
+func messageTextContent(m ai.Message) string {
+	switch v := m.Content.(type) {
+	case string:
+		return v
+	case nil:
+		return ""
+	default:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		var parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text,omitempty"`
+		}
+		if json.Unmarshal(data, &parts) != nil {
+			return ""
+		}
+		var texts []string
+		for _, p := range parts {
+			if t := strings.TrimSpace(p.Text); t != "" {
+				texts = append(texts, t)
+			}
+		}
+		return strings.Join(texts, "\n")
+	}
+}
+
+// deduplicateConsecutiveAssistantMessages removes consecutive assistant messages
+// with high n-gram similarity (keeps the later one).
+func deduplicateConsecutiveAssistantMessages(messages []ai.Message) []ai.Message {
+	if len(messages) <= 1 {
+		return messages
+	}
+	result := []ai.Message{messages[0]}
+	for i := 1; i < len(messages); i++ {
+		cur := messages[i]
+		prev := result[len(result)-1]
+		if cur.Role == "assistant" && prev.Role == "assistant" {
+			ct := messageTextContent(cur)
+			pt := messageTextContent(prev)
+			if ct != "" && pt != "" && ngramSimilarityGo(ct, pt, 3) >= fuzzyDedupThreshold {
+				result[len(result)-1] = cur // keep newer
+				continue
+			}
+		}
+		result = append(result, cur)
+	}
+	return result
+}
+
+// collapseRepeatedAssistantMessages removes near-duplicate assistant messages
+// across the entire history, keeping only the last in each cluster.
+func collapseRepeatedAssistantMessages(messages []ai.Message) []ai.Message {
+	type indexedMsg struct {
+		origIdx int
+		content string
+	}
+	var assistants []indexedMsg
+	for i, m := range messages {
+		if m.Role == "assistant" {
+			t := messageTextContent(m)
+			if strings.TrimSpace(t) != "" {
+				assistants = append(assistants, indexedMsg{origIdx: i, content: t})
+			}
+		}
+	}
+	if len(assistants) < 3 {
+		return messages
+	}
+	removeIdx := make(map[int]bool)
+	used := make(map[int]bool)
+	for i := 0; i < len(assistants); i++ {
+		if used[i] {
+			continue
+		}
+		group := []int{i}
+		for j := i + 1; j < len(assistants); j++ {
+			if used[j] {
+				continue
+			}
+			if ngramSimilarityGo(assistants[i].content, assistants[j].content, 3) >= fuzzyDedupThreshold {
+				group = append(group, j)
+				used[j] = true
+			}
+		}
+		if len(group) >= 2 {
+			for k := 0; k < len(group)-1; k++ {
+				removeIdx[assistants[group[k]].origIdx] = true
+			}
+		}
+	}
+	if len(removeIdx) == 0 {
+		return messages
+	}
+	out := make([]ai.Message, 0, len(messages)-len(removeIdx))
+	for i, m := range messages {
+		if !removeIdx[i] {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// detectToxicHistoryMessages checks if the message list contains a cluster of
+// near-duplicate assistant messages, indicating a repetition loop.
+func detectToxicHistoryMessages(messages []ai.Message) bool {
+	var assistantTexts []string
+	for _, m := range messages {
+		if m.Role == "assistant" {
+			t := messageTextContent(m)
+			if strings.TrimSpace(t) != "" {
+				assistantTexts = append(assistantTexts, t)
+			}
+		}
+	}
+	if len(assistantTexts) < toxicMinAssistantCount {
+		return false
+	}
+	maxCluster := 0
+	visited := make(map[int]bool)
+	for i := 0; i < len(assistantTexts); i++ {
+		if visited[i] {
+			continue
+		}
+		count := 1
+		for j := i + 1; j < len(assistantTexts); j++ {
+			if visited[j] {
+				continue
+			}
+			if ngramSimilarityGo(assistantTexts[i], assistantTexts[j], 3) >= fuzzyDedupThreshold {
+				count++
+				visited[j] = true
+			}
+		}
+		if count > maxCluster {
+			maxCluster = count
+		}
+	}
+	return maxCluster >= toxicClusterMinSize
+}
+
+// isRepetitionOfRecentMessages checks if newText is too similar to any of the
+// last N assistant messages in history.
+func isRepetitionOfRecentMessages(newText string, messages []ai.Message) bool {
+	if strings.TrimSpace(newText) == "" {
+		return false
+	}
+	var recent []string
+	for i := len(messages) - 1; i >= 0 && len(recent) < repetitionCheckWindow; i-- {
+		if messages[i].Role == "assistant" {
+			t := messageTextContent(messages[i])
+			if strings.TrimSpace(t) != "" {
+				recent = append(recent, t)
+			}
+		}
+	}
+	for _, t := range recent {
+		if ngramSimilarityGo(newText, t, 3) >= repetitionSimilarityThreshold {
+			return true
+		}
+	}
+	return false
+}
+
+const toxicHistoryRecoveryPrompt = "【紧急：对话循环修复】\n" +
+	"系统检测到你之前的回复陷入了重复循环（多次输出几乎相同的内容）。\n" +
+	"请立即停止重复之前的内容，完全忽略历史中的重复回复模式。\n" +
+	"现在请只关注用户最新发送的这条消息，用全新的思路直接回答。\n" +
+	"严禁复制或改写之前的任何回复。"
+
+const antiRepetitionInjection = "【系统强制指令】\n" +
+	"你上一次的回复与之前的历史回复高度雷同，已被系统拦截。\n" +
+	"你必须用完全不同的表达方式、不同的角度、不同的句式来回应用户。\n" +
+	"禁止复制、改写、转述之前任何一条回复的内容。\n" +
+	"直接针对用户最新消息，给出全新的回应。"
