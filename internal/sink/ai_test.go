@@ -1009,3 +1009,75 @@ func TestComposeSystemWithEmotionPolicy(t *testing.T) {
 		t.Fatalf("missing deny: %q", got)
 	}
 }
+
+
+func TestIsBackchannelMessage(t *testing.T) {
+	positives := []string{
+		// Chinese
+		"嗯", "嗯嗯", "嗯呢", "哦", "噢", "好", "好的", "好呀", "好吧", "好嘞", "好哒", "好滴",
+		"行", "行吧", "对", "对的", "是的", "知道了", "了解", "收到", "明白", "可以", "没问题",
+		"哈哈", "哈哈哈", "呵呵", "嘿嘿", "嘻嘻", "呜呜", "啊", "哇", "唉", "额", "卧槽",
+		"然后呢", "是吗", "真的吗", "所以呢", "为什么", "怎么说", "接着呢", "后来呢",
+		"算了", "随便", "无所谓", "都行", "不知道", "没想法", "再说吧", "随意",
+		// English
+		"yeah", "yep", "sure", "ok", "okay", "got it", "i see", "fine",
+		"wow", "haha", "hahaha", "lol", "omg", "nice", "cool", "emmm", "emm", "umm",
+		"and then?", "really?", "go on", "no way", "for real?",
+		"whatever", "idk", "dunno", "nah", "meh",
+		// Japanese
+		"うん", "うんうん", "ええ", "はい", "そう", "なるほど", "わかった", "そっか",
+		"すごい", "マジ", "へー", "笑",
+		"それで", "ほんと?", "なんで?",
+		"まあ", "別に", "知らない", "わからない", "いいや",
+	}
+	for _, p := range positives {
+		if !isBackchannelMessage(p) {
+			t.Errorf("expected backchannel for %q", p)
+		}
+	}
+	negatives := []string{
+		"今天天气怎么样",
+		"我想去吃火锅",
+		"帮我写一段代码",
+		"这个项目进展如何",
+		"",
+		"   ",
+		"嗯嗯嗯嗯嗯嗯嗯嗯嗯",
+		"Can you help me with this?",
+		"I want to learn programming",
+		"今日の天気はどうですか",
+	}
+	for _, n := range negatives {
+		if isBackchannelMessage(n) {
+			t.Errorf("expected NOT backchannel for %q", n)
+		}
+	}
+}
+
+func TestBuildMemoryQueryFromMessages_Backchannel(t *testing.T) {
+	messages := []ai.Message{
+		{Role: "user", Content: "我最近在学吉他"},
+		{Role: "assistant", Content: "学吉他很有意思啊，你学了多久了？指法练习是比较枯燥的阶段"},
+		{Role: "user", Content: "嗯"},
+	}
+	query := buildMemoryQueryFromMessages(messages, "嗯")
+	if !strings.Contains(query, "assistant:") {
+		t.Errorf("backchannel query should include last assistant content, got: %s", query)
+	}
+	if strings.HasSuffix(strings.TrimSpace(query), "user: 嗯") {
+		t.Errorf("backchannel query should NOT end with user backchannel text, got: %s", query)
+	}
+}
+
+func TestLastAssistantContent(t *testing.T) {
+	messages := []ai.Message{
+		{Role: "system", Content: "system prompt"},
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "你好呀"},
+		{Role: "user", Content: "嗯"},
+	}
+	got := lastAssistantContent(messages)
+	if got != "你好呀" {
+		t.Errorf("expected '你好呀', got %q", got)
+	}
+}

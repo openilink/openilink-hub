@@ -607,6 +607,20 @@ func (s *AI) reply(d Delivery) {
 		}
 		slog.Info("ai: toxic history detected, injected recovery prompt", "bot", d.BotDBID, "sender", sender)
 	}
+	// Backchannel detection: inject context continuation prompt
+	isBC := isBackchannelMessage(currentText)
+	if isBC && !isToxicHistory {
+		cfg.SystemPrompt = cfg.SystemPrompt + "\n\n" + backchannelContextPrompt
+		if len(messages) >= 2 {
+			injMsg := ai.Message{Role: "system", Content: backchannelContextPrompt}
+			out := make([]ai.Message, 0, len(messages)+1)
+			out = append(out, messages[:len(messages)-1]...)
+			out = append(out, injMsg)
+			out = append(out, messages[len(messages)-1])
+			messages = out
+		}
+		slog.Info("ai: backchannel detected, injected context continuation prompt", "bot", d.BotDBID, "sender", sender)
+	}
 	memoryQuery := buildMemoryQueryFromMessages(messages, currentText)
 	memories := s.resolveMemories(ctx, cfg, promptMeta, memoryQuery)
 	trimmedMemories := trimMemoriesForPhase2(memories, memoryPromptMaxRows)
@@ -2038,6 +2052,32 @@ func (s *AI) canRecordLongTermMemory(meta runtimePromptMeta) bool {
 }
 
 func buildMemoryQueryFromMessages(messages []ai.Message, currentText string) string {
+	// Backchannel enhancement: use last assistant content as primary query
+	if isBackchannelMessage(currentText) {
+		if lastAst := lastAssistantContent(messages); lastAst != "" {
+			segments := make([]string, 0, memoryQueryHistoryMaxMessages+1)
+			for i := len(messages) - 1; i >= 0 && len(segments) < memoryQueryHistoryMaxMessages; i-- {
+				role := strings.TrimSpace(messages[i].Role)
+				if role != "user" && role != "assistant" {
+					continue
+				}
+				text := memoryQueryTextFromContent(messages[i].Content)
+				if text == "" {
+					continue
+				}
+				segments = append(segments, role+": "+text)
+			}
+			for i, j := 0, len(segments)-1; i < j; i, j = i+1, j-1 {
+				segments[i], segments[j] = segments[j], segments[i]
+			}
+			astTrunc := lastAst
+			if len([]rune(astTrunc)) > 180 {
+				astTrunc = string([]rune(astTrunc)[:180])
+			}
+			segments = append(segments, "assistant: "+astTrunc)
+			return truncateRune(strings.Join(segments, "\n"), memoryQueryMaxRunes)
+		}
+	}
 	segments := make([]string, 0, memoryQueryHistoryMaxMessages+1)
 	for i := len(messages) - 1; i >= 0 && len(segments) < memoryQueryHistoryMaxMessages; i-- {
 		role := strings.TrimSpace(messages[i].Role)
@@ -3535,3 +3575,79 @@ const antiRepetitionInjection = "【系统强制指令】\n" +
 	"你必须用完全不同的表达方式、不同的角度、不同的句式来回应用户。\n" +
 	"禁止复制、改写、转述之前任何一条回复的内容。\n" +
 	"直接针对用户最新消息，给出全新的回应。"
+
+
+// --- Backchannel detection (aligned with Worker backchannel.ts, multi-language) ---
+
+const backchannelCJKMaxLength = 8
+const backchannelENMaxLength = 15
+const backchannelENMaxWords = 3
+
+// Chinese patterns
+var zhAcknowledgment = regexp.MustCompile(`^(嗯+|嗯呢|哦+|噢+|好的?|好呀|好吧|好嘞|好哒|好滴|行吧?|对的?|是的?|知道了?|了解|收到|明白|可以|没问题)$`)
+var zhEmotional = regexp.MustCompile(`^((哈){2,}|(呵){2,}|(嘿){2,}|(嘻){2,}|(呜){2,}|啊+|哇+|唉+|额+|卧槽)$`)
+var zhContinuation = regexp.MustCompile(`^(然后呢|是吗|真的吗|所以呢|为什么|怎么说|接着呢|后来呢|真的假的|不会吧|这样啊|原来如此)$`)
+var zhHesitation = regexp.MustCompile(`^(算了|随便|无所谓|都行|不知道|没想法|再说吧|随意)$`)
+var zhSingleChar = regexp.MustCompile(`^[嗯哦啊呃额哼唉哇嘻嘿呵噢嘛吧呢啦呀哒]$`)
+
+// English patterns
+var enAcknowledgment = regexp.MustCompile(`(?i)^(yeah|yep|yup|yes|sure|right|ok|okay|got it|i see|alright|fine|noted|understood|copy that|fair enough|makes sense|mm-?hmm|mhm|uh-?huh)$`)
+var enEmotional = regexp.MustCompile(`(?i)^(wow|(ha){2,}|(he){2,}|lol|lmao|omg|oh no|damn|nice|cool|awesome|great|whoa|geez|yikes|emmm*|emm|umm+)$`)
+var enContinuation = regexp.MustCompile(`(?i)^(and then\??|really\??|so\??|go on|then what\??|how come\??|why\??|no way|for real\??|seriously\??|what happened\??)$`)
+var enHesitation = regexp.MustCompile(`(?i)^(whatever|idk|dunno|i don'?t know|nevermind|never mind|nah|meh|i guess)$`)
+
+// Japanese patterns (aizuchi)
+var jaAcknowledgment = regexp.MustCompile(`^((うん)+|ええ|はい|そう|そうだね|なるほど|わかった|了解|りょ|おけ|おっけー?|そっか)$`)
+var jaEmotional = regexp.MustCompile(`^((わあ)+|すごい|やば+い?|えー+|へー+|ふーん|マジ|うわ+|(あは)+|笑)$`)
+var jaContinuation = regexp.MustCompile(`^(それで[?？]?|で[?？]?|マジで[?？]?|ほんと[?？]?|本当[?？]?|なんで[?？]?|どうして[?？]?|続き[は]?[?？]?)$`)
+var jaHesitation = regexp.MustCompile(`^(まあ|別に|どうでも|知らない|わからない|いいや|うーん+)$`)
+
+func isBackchannelMessage(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	runeLen := len([]rune(trimmed))
+	wordCount := len(strings.Fields(trimmed))
+
+	// CJK-length patterns (Chinese + Japanese + single char)
+	if runeLen <= backchannelCJKMaxLength {
+		if zhAcknowledgment.MatchString(trimmed) || zhEmotional.MatchString(trimmed) ||
+			zhContinuation.MatchString(trimmed) || zhHesitation.MatchString(trimmed) ||
+			zhSingleChar.MatchString(trimmed) {
+			return true
+		}
+		if jaAcknowledgment.MatchString(trimmed) || jaEmotional.MatchString(trimmed) ||
+			jaContinuation.MatchString(trimmed) || jaHesitation.MatchString(trimmed) {
+			return true
+		}
+	}
+
+	// English-length patterns
+	if runeLen <= backchannelENMaxLength && wordCount <= backchannelENMaxWords {
+		if enAcknowledgment.MatchString(trimmed) || enEmotional.MatchString(trimmed) ||
+			enContinuation.MatchString(trimmed) || enHesitation.MatchString(trimmed) {
+			return true
+		}
+	}
+
+	return false
+}
+
+const backchannelContextPrompt = "【上下文延续指令】\n" +
+	"用户刚才发送的是一个简短的语气词/回应，表示在听你说或认可你的内容。\n" +
+	"请务必延续你上一轮回复的话题和情绪氛围，自然展开或分享新的细节。\n" +
+	"严禁：转换话题、问\"你还想聊什么\"、重复上一轮的内容、生成泛化空洞回复。"
+
+// lastAssistantContent returns the content of the last non-empty assistant message.
+func lastAssistantContent(messages []ai.Message) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			t := messageTextContent(messages[i])
+			if strings.TrimSpace(t) != "" {
+				return t
+			}
+		}
+	}
+	return ""
+}
