@@ -3612,22 +3612,23 @@ const backchannelENMaxLength = 15
 const backchannelENMaxWords = 3
 
 // Chinese patterns
-var zhAcknowledgment = regexp.MustCompile(`^(嗯+|嗯呢|哦+|噢+|好的?|好呀|好吧|好嘞|好哒|好滴|行吧?|对的?|是的?|知道了?|了解|收到|明白|可以|没问题)$`)
-var zhEmotional = regexp.MustCompile(`^((哈){2,}|(呵){2,}|(嘿){2,}|(嘻){2,}|(呜){2,}|啊+|哇+|唉+|额+|卧槽)$`)
-var zhContinuation = regexp.MustCompile(`^(然后呢|是吗|真的吗|所以呢|为什么|怎么说|接着呢|后来呢|真的假的|不会吧|这样啊|原来如此)$`)
+var zhAcknowledgment = regexp.MustCompile(`^(嗯+|嗯呢|哦+|噢+|好[的啊呀吧嘞哒滴]?|行[吧啊呀]?|对[的啊呀]?|是[的啊呀嘛]?|知道了?|了解|收到|明白|可以|没问题|没错|确实|的确)$`)
+var zhEmotional = regexp.MustCompile(`^((哈){2,}|(呵){2,}|(嘿){2,}|(嘻){2,}|(呜){2,}|啊+|哇+|唉+|额+|卧槽|天呐|我去|我靠)$`)
+var zhContinuation = regexp.MustCompile(`^(然后呢|是吗|真的吗|所以呢|为什么|怎么说|接着呢|后来呢|真的假的|不会吧|这样啊|原来如此|你说[吧啊呀]?|说[吧啊呀]|讲[吧啊呀]|你讲[吧啊呀]?|继续[吧啊呀说讲]?|你继续|来[吧啊呀]|开始[吧啊呀]?|快说|听你[的说]|说来听听)$`)
 var zhHesitation = regexp.MustCompile(`^(算了|随便|无所谓|都行|不知道|没想法|再说吧|随意)$`)
 var zhSingleChar = regexp.MustCompile(`^[嗯哦啊呃额哼唉哇嘻嘿呵噢嘛吧呢啦呀哒]$`)
+var zhComboContinuation = regexp.MustCompile(`^[听好嗯行对噢哦][，,]\s*(你说|你讲|继续|说[吧啊呀]?|讲[吧啊呀]?|来[吧啊]?|开始)$`)
 
 // English patterns
-var enAcknowledgment = regexp.MustCompile(`(?i)^(yeah|yep|yup|yes|sure|right|ok|okay|got it|i see|alright|fine|noted|understood|copy that|fair enough|makes sense|mm-?hmm|mhm|uh-?huh)$`)
-var enEmotional = regexp.MustCompile(`(?i)^(wow|(ha){2,}|(he){2,}|lol|lmao|omg|oh no|damn|nice|cool|awesome|great|whoa|geez|yikes|emmm*|emm|umm+)$`)
-var enContinuation = regexp.MustCompile(`(?i)^(and then\??|really\??|so\??|go on|then what\??|how come\??|why\??|no way|for real\??|seriously\??|what happened\??)$`)
+var enAcknowledgment = regexp.MustCompile(`(?i)^(yeah|yep|yup|yes|sure|right|ok|okay|got it|i see|alright|fine|noted|understood|copy that|fair enough|makes sense|mm-?hmm|mhm|uh-?huh|totally|absolutely|exactly|indeed|definitely|precisely|for sure|of course|true|that'?s right|that'?s true|correct|agreed)$`)
+var enEmotional = regexp.MustCompile(`(?i)^(wow|woo+|ooh+|(ha){2,}|(he){2,}|lol|lmao|omg|oh no|oh my|damn|dang|nice|cool|awesome|great|whoa|geez|yikes|ugh|oof|sheesh|bruh|emmm*|emm|umm+)$`)
+var enContinuation = regexp.MustCompile(`(?i)^(and then\??|really\??|so\??|go on|go ahead|then what\??|how come\??|why\??|no way|for real\??|seriously\??|what happened\??|tell me|continue|keep going|carry on|i'?m listening|shoot|do tell|and\??)$`)
 var enHesitation = regexp.MustCompile(`(?i)^(whatever|idk|dunno|i don'?t know|nevermind|never mind|nah|meh|i guess)$`)
 
 // Japanese patterns (aizuchi)
-var jaAcknowledgment = regexp.MustCompile(`^((うん)+|ええ|はい|そう|そうだね|なるほど|わかった|了解|りょ|おけ|おっけー?|そっか)$`)
-var jaEmotional = regexp.MustCompile(`^((わあ)+|すごい|やば+い?|えー+|へー+|ふーん|マジ|うわ+|(あは)+|笑)$`)
-var jaContinuation = regexp.MustCompile(`^(それで[?？]?|で[?？]?|マジで[?？]?|ほんと[?？]?|本当[?？]?|なんで[?？]?|どうして[?？]?|続き[は]?[?？]?)$`)
+var jaAcknowledgment = regexp.MustCompile(`^((うん)+|ええ|はい|そう|そうだね|なるほど|わかった|了解|りょ|おけ|おっけー?|そっか|たしかに|確かに|だよね|ですよね|その通り)$`)
+var jaEmotional = regexp.MustCompile(`^((わあ)+|すごい|やば+い?|えー+|へー+|ふーん|マジ|うわ+|(あは)+|笑|うそ[ー!！]?|やった[ー!！]?|最高)$`)
+var jaContinuation = regexp.MustCompile(`^(それで[?？]?|で[?？]?|マジで[?？]?|ほんと[?？]?|本当[?？]?|なんで[?？]?|どうして[?？]?|続き[は]?[?？]?|話して|教えて|続けて|言って|聞かせて|どうぞ)$`)
 var jaHesitation = regexp.MustCompile(`^(まあ|別に|どうでも|知らない|わからない|いいや|うーん+)$`)
 
 func isBackchannelMessage(text string) bool {
@@ -3641,7 +3642,8 @@ func isBackchannelMessage(text string) bool {
 	// CJK-length patterns (Chinese + Japanese + single char)
 	if runeLen <= backchannelCJKMaxLength {
 		if zhAcknowledgment.MatchString(trimmed) || zhEmotional.MatchString(trimmed) ||
-			zhContinuation.MatchString(trimmed) || zhHesitation.MatchString(trimmed) ||
+			zhContinuation.MatchString(trimmed) || zhComboContinuation.MatchString(trimmed) ||
+				zhHesitation.MatchString(trimmed) ||
 			zhSingleChar.MatchString(trimmed) {
 			return true
 		}
