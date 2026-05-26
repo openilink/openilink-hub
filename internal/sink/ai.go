@@ -1012,13 +1012,24 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	if emojiAsset != nil {
-		_, emojiSendErr := d.Provider.Send(ctx, provider.OutboundMessage{
-			Recipient: sender,
-			Text:      emojiAsset.URL,
-		})
-		if emojiSendErr != nil {
-			slog.Warn("ai emoji send failed", "bot", d.BotDBID, "url", emojiAsset.URL, "err", emojiSendErr)
-		}
+		emojiURL := emojiAsset.URL
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			imgData, fetchErr := fetchEmojiImageViaProxy(bgCtx, emojiURL)
+			if fetchErr != nil {
+				slog.Warn("ai emoji fetch failed, fallback to text", "bot", d.BotDBID, "url", emojiURL, "err", fetchErr)
+				d.Provider.Send(bgCtx, provider.OutboundMessage{Recipient: sender, Text: emojiURL})
+				return
+			}
+			if _, sendErr := d.Provider.Send(bgCtx, provider.OutboundMessage{
+				Recipient: sender,
+				Data:      imgData,
+				FileName:  "emoji.webp",
+			}); sendErr != nil {
+				slog.Warn("ai emoji image send failed", "bot", d.BotDBID, "url", emojiURL, "err", sendErr)
+			}
+		}()
 	}
 
 	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_sent", map[string]any{
@@ -3191,20 +3202,27 @@ func parseMessageCreatedAtSec(msg store.Message) int64 {
 }
 
 func pickEmojiAssetByLang(assets []supamemory.EmojiAsset, lang string) *supamemory.EmojiAsset {
-	var fallback *supamemory.EmojiAsset
-	for i := range assets {
-		asset := assets[i]
+	var exact []supamemory.EmojiAsset
+	var defaults []supamemory.EmojiAsset
+	for _, asset := range assets {
 		if strings.TrimSpace(asset.URL) == "" {
 			continue
 		}
 		if strings.EqualFold(strings.TrimSpace(asset.Lang), lang) {
-			return &asset
-		}
-		if fallback == nil && strings.EqualFold(strings.TrimSpace(asset.Lang), "default") {
-			fallback = &asset
+			exact = append(exact, asset)
+		} else if strings.EqualFold(strings.TrimSpace(asset.Lang), "default") {
+			defaults = append(defaults, asset)
 		}
 	}
-	return fallback
+	pool := exact
+	if len(pool) == 0 {
+		pool = defaults
+	}
+	if len(pool) == 0 {
+		return nil
+	}
+	picked := pool[rand.IntN(len(pool))]
+	return &picked
 }
 
 func resolveEmojiDecision(input struct {
@@ -3587,7 +3605,6 @@ const antiRepetitionInjection = "【系统强制指令】\n" +
 	"禁止复制、改写、转述之前任何一条回复的内容。\n" +
 	"直接针对用户最新消息，给出全新的回应。"
 
-
 // --- Backchannel detection (aligned with Worker backchannel.ts, multi-language) ---
 
 const backchannelCJKMaxLength = 8
@@ -3661,4 +3678,23 @@ func lastAssistantContent(messages []ai.Message) string {
 		}
 	}
 	return ""
+}
+
+// fetchEmojiImageViaProxy downloads an emoji image via wsrv.nl proxy,
+// compressing to 256px WebP (~20-50KB) for fast delivery.
+func fetchEmojiImageViaProxy(ctx context.Context, rawURL string) ([]byte, error) {
+	proxyURL := "https://wsrv.nl/?url=" + url.QueryEscape(rawURL) + "&w=256&output=webp&q=80"
+	req, err := http.NewRequestWithContext(ctx, "GET", proxyURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("wsrv proxy returned %d", resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 512*1024)) // 512KB limit
 }
