@@ -88,7 +88,7 @@ func extractPublicCredentials(prov string, creds json.RawMessage) json.RawMessag
 	return nil
 }
 
-const contextTokenMaxAge = 7 * 24 * time.Hour
+const contextTokenMaxAge = 24 * time.Hour
 
 // checkSendStatus is a pure function that determines send capability from pre-fetched data.
 func checkSendStatus(status string, hasFreshToken bool) (bool, string) {
