@@ -436,6 +436,7 @@ func TestResolveEmojiDecision(t *testing.T) {
 		LatestUserEmojiURL       string
 		CandidateEmojiURL        string
 		NowSec                   int64
+		TurnsSinceLastEmoji      int
 	}{
 		EmojiEnabled:             true,
 		Text:                     "来个表情包",
@@ -444,6 +445,7 @@ func TestResolveEmojiDecision(t *testing.T) {
 		LatestUserEmojiURL:       "",
 		CandidateEmojiURL:        "https://cdn.example.com/a.webp",
 		NowSec:                   now,
+		TurnsSinceLastEmoji:      10,
 	}
 
 	decision := resolveEmojiDecision(base)
@@ -1009,7 +1011,6 @@ func TestComposeSystemWithEmotionPolicy(t *testing.T) {
 		t.Fatalf("missing deny: %q", got)
 	}
 }
-
 
 func TestIsBackchannelMessage(t *testing.T) {
 	positives := []string{

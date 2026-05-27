@@ -985,6 +985,11 @@ func (s *AI) reply(d Delivery) {
 		emojiInfo.TriggerMode = "policy"
 	}
 
+	if emojiAsset != nil && !isEmojiImageURL(emojiAsset.URL) {
+		reply = reply + "\n" + emojiAsset.URL
+		emojiAsset = nil
+	}
+
 	if span != nil {
 		span.SetAttr("reply.content", reply)
 	}
@@ -2413,10 +2418,17 @@ func deriveEmotionPolicy(text, prevState, plannerTone string) emotionPolicy {
 		AllowEmoji: true,
 		Reason:     "default",
 	}
-	if shouldSuppressEmojiReply(text) || containsSeriousKeyword(lower) {
+	if shouldSuppressEmojiReply(text) {
 		policy.State = "serious"
 		policy.ToneTarget = "严谨克制"
 		policy.AllowEmoji = false
+		policy.Reason = "serious_topic"
+		return policy
+	}
+	if containsSeriousKeyword(lower) {
+		policy.State = "serious"
+		policy.ToneTarget = "严谨克制"
+		policy.AllowEmoji = true
 		policy.Reason = "serious_topic"
 		return policy
 	}
@@ -2442,7 +2454,7 @@ func containsSeriousKeyword(lowerText string) bool {
 	if lowerText == "" {
 		return false
 	}
-	keywords := []string{"退款", "投诉", "账号", "安全", "风险", "报错", "故障", "紧急", "事故", "订单"}
+	keywords := []string{"退款", "投诉", "账号", "安全", "风险", "报错", "故障", "紧急", "事故", "订单", "封禁", "封号"}
 	for _, keyword := range keywords {
 		if strings.Contains(lowerText, keyword) {
 			return true
@@ -3138,7 +3150,7 @@ func shouldSuppressEmojiReply(text string) bool {
 	if t == "" {
 		return false
 	}
-	keywords := []string{"支付", "退款", "订单", "账号", "密码", "登录", "投诉", "举报", "安全", "风控", "盗号"}
+	keywords := []string{"支付", "退款", "订单", "密码", "投诉", "举报", "风控", "盗号", "封禁", "封号"}
 	for _, k := range keywords {
 		if strings.Contains(t, k) {
 			return true
@@ -3225,6 +3237,57 @@ func pickEmojiAssetByLang(assets []supamemory.EmojiAsset, lang string) *supamemo
 	return &picked
 }
 
+func detectEmotionForEmoji(text string) string {
+	t := strings.ToLower(strings.TrimSpace(text))
+	if t == "" {
+		return "calm"
+	}
+	if strings.ContainsAny(t, "崩溃故障投诉风险严重紧急报错失败封禁封号") {
+		return "serious"
+	}
+	for _, k := range []string{"难过", "伤心", "失落", "沮丧", "不开心"} {
+		if strings.Contains(t, k) {
+			return "sad"
+		}
+	}
+	for _, k := range []string{"太好了", "哈哈", "开心", "激动", "兴奋", "lol", "lmao"} {
+		if strings.Contains(t, k) {
+			return "excited"
+		}
+	}
+	for _, k := range []string{"不知道", "不确定", "担心", "焦虑", "不会"} {
+		if strings.Contains(t, k) {
+			return "warm"
+		}
+	}
+	return "calm"
+}
+
+func shouldNaturalEmojiReply(emotionState string, turnsSinceLastEmoji int) bool {
+	if emotionState == "serious" || emotionState == "sad" {
+		return false
+	}
+	if turnsSinceLastEmoji < 3 {
+		return false
+	}
+	base := 0.10
+	if emotionState == "excited" {
+		base = 0.25
+	} else if emotionState == "warm" {
+		base = 0.18
+	}
+	boost := float64(turnsSinceLastEmoji-3) * 0.03
+	if boost > 0.15 {
+		boost = 0.15
+	}
+	return rand.Float64() < base+boost
+}
+
+func isEmojiImageURL(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://")
+}
+
 func resolveEmojiDecision(input struct {
 	EmojiEnabled             bool
 	Text                     string
@@ -3233,6 +3296,7 @@ func resolveEmojiDecision(input struct {
 	LatestUserEmojiURL       string
 	CandidateEmojiURL        string
 	NowSec                   int64
+	TurnsSinceLastEmoji      int
 }) emojiDecision {
 	if !input.EmojiEnabled {
 		return emojiDecision{Enabled: false, Reason: "role_disabled", TriggerMode: "none", IncludeEmoji: false}
@@ -3242,12 +3306,19 @@ func resolveEmojiDecision(input struct {
 	}
 	force := shouldForceEmojiReply(input.Text)
 	smart := !force && shouldSmartEmojiReply(input.Text)
+	emotionForNatural := "calm"
 	if !force && !smart {
+		emotionForNatural = detectEmotionForEmoji(input.Text)
+	}
+	natural := !force && !smart && shouldNaturalEmojiReply(emotionForNatural, input.TurnsSinceLastEmoji)
+	if !force && !smart && !natural {
 		return emojiDecision{Enabled: true, Reason: "not_triggered", TriggerMode: "none", IncludeEmoji: false}
 	}
-	mode := "smart"
+	mode := "natural"
 	if force {
 		mode = "force"
+	} else if smart {
+		mode = "smart"
 	}
 	if input.LatestConversationEmojiS > 0 && (input.NowSec-input.LatestConversationEmojiS) < int64(emojiConversationCooldown/time.Second) {
 		left := int(int64(emojiConversationCooldown/time.Second) - (input.NowSec - input.LatestConversationEmojiS))
@@ -3278,10 +3349,13 @@ func resolveEmojiDecision(input struct {
 			IncludeEmoji: false,
 		}
 	}
+	reason := "natural_trigger"
 	if force {
-		return emojiDecision{Enabled: true, Reason: "force_trigger", TriggerMode: "force", IncludeEmoji: true}
+		reason = "force_trigger"
+	} else if smart {
+		reason = "smart_trigger"
 	}
-	return emojiDecision{Enabled: true, Reason: "smart_trigger", TriggerMode: "smart", IncludeEmoji: true}
+	return emojiDecision{Enabled: true, Reason: reason, TriggerMode: mode, IncludeEmoji: true}
 }
 
 func (s *AI) resolveEmojiReply(ctx context.Context, d Delivery, promptMeta runtimePromptMeta, currentText string) (*supamemory.EmojiAsset, emojiReplyInfo) {
@@ -3339,6 +3413,14 @@ func (s *AI) resolveEmojiReply(ctx context.Context, d Delivery, promptMeta runti
 		}
 	}
 
+	turnsSinceLastEmoji := len(history)
+	for i := len(history) - 1; i >= 0; i-- {
+		if extractFirstImageURL(history[i].ItemList) != "" {
+			turnsSinceLastEmoji = len(history) - 1 - i
+			break
+		}
+	}
+
 	decision := resolveEmojiDecision(struct {
 		EmojiEnabled             bool
 		Text                     string
@@ -3347,6 +3429,7 @@ func (s *AI) resolveEmojiReply(ctx context.Context, d Delivery, promptMeta runti
 		LatestUserEmojiURL       string
 		CandidateEmojiURL        string
 		NowSec                   int64
+		TurnsSinceLastEmoji      int
 	}{
 		EmojiEnabled:             enabled,
 		Text:                     currentText,
@@ -3355,6 +3438,7 @@ func (s *AI) resolveEmojiReply(ctx context.Context, d Delivery, promptMeta runti
 		LatestUserEmojiURL:       latestUserEmojiURL,
 		CandidateEmojiURL:        candidate.URL,
 		NowSec:                   nowSec,
+		TurnsSinceLastEmoji:      turnsSinceLastEmoji,
 	})
 
 	info.Reason = decision.Reason
@@ -3643,7 +3727,7 @@ func isBackchannelMessage(text string) bool {
 	if runeLen <= backchannelCJKMaxLength {
 		if zhAcknowledgment.MatchString(trimmed) || zhEmotional.MatchString(trimmed) ||
 			zhContinuation.MatchString(trimmed) || zhComboContinuation.MatchString(trimmed) ||
-				zhHesitation.MatchString(trimmed) ||
+			zhHesitation.MatchString(trimmed) ||
 			zhSingleChar.MatchString(trimmed) {
 			return true
 		}
