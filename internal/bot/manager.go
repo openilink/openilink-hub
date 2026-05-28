@@ -331,7 +331,23 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 		return
 	}
 	msgID := result.ID
-	go m.tryFinalizeWechatPrebind(inst, msg)
+	// Synchronous: finalize must complete before AI processing so that
+	// resolveRuntimePrompt can find the binding/route for role prompt.
+	// For non-first messages (no pending binding) this returns instantly.
+	justFinalized := m.tryFinalizeWechatPrebind(inst, msg)
+	if justFinalized {
+		// First message triggered binding finalization — reply with a
+		// vague welcome instead of running the AI (which would lack
+		// the role context that was just created moments ago).
+		slog.Info("wechat prebind finalized: sending welcome instead of AI reply",
+			"bot", inst.DBID, "msg", msgID)
+		inst.Send(context.Background(), provider.OutboundMessage{
+			Recipient:    msg.Sender,
+			Text:         "你好呀～有什么想聊的尽管说~",
+			ContextToken: msg.ContextToken,
+		})
+		return
+	}
 
 	// Create OTel-style tracer for this message
 	tracer := store.NewTracer(m.store, inst.DBID)
@@ -689,12 +705,12 @@ func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p par
 	m.aiSink.Handle(d)
 }
 
-func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundMessage) {
+func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundMessage) bool {
 	if m == nil || m.store == nil || inst == nil {
-		return
+		return false
 	}
 	if strings.TrimSpace(msg.Sender) == "" && strings.TrimSpace(msg.ContextToken) == "" {
-		return
+		return false
 	}
 	m.mu.RLock()
 	finalizeURL := strings.TrimSpace(m.wechatFinalizeURL)
@@ -702,20 +718,20 @@ func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundM
 	client := m.httpClient
 	m.mu.RUnlock()
 	if finalizeURL == "" || finalizeSecret == "" || client == nil {
-		return
+		return false
 	}
 
 	botMeta, err := m.store.GetBot(inst.DBID)
 	if err != nil || botMeta == nil {
-		return
+		return false
 	}
 	providerBotID := strings.TrimSpace(botMeta.ProviderID)
 	if providerBotID == "" {
-		return
+		return false
 	}
 	pending, err := m.store.GetLatestPendingWechatBinding(inst.DBID, providerBotID, time.Now())
 	if err != nil || pending == nil {
-		return
+		return false
 	}
 
 	finalizeEventID := fmt.Sprintf("finalize_%d_%s", msg.Timestamp, msg.ExternalID)
@@ -736,7 +752,7 @@ func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundM
 	defer finalizeCancel()
 	req, err := http.NewRequestWithContext(finalizeCtx, http.MethodPost, finalizeURL, bytes.NewReader(raw))
 	if err != nil {
-		return
+		return false
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+finalizeSecret)
@@ -746,14 +762,15 @@ func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundM
 	resp, err := finalizeClient.Do(req)
 	if err != nil {
 		_ = m.store.MarkWechatPendingBindingRetry(pending.ID, finalizeEventID, "FINALIZE_HTTP_FAILED:"+err.Error(), time.Now())
-		return
+		return false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		_, _ = m.store.FinalizeWechatPendingBinding(pending.ID, strings.TrimSpace(msg.ContextToken), finalizeEventID, time.Now())
-		return
+		return true
 	}
 	_ = m.store.MarkWechatPendingBindingRetry(pending.ID, finalizeEventID, fmt.Sprintf("FINALIZE_HTTP_%d", resp.StatusCode), time.Now())
+	return false
 }
 
 // processMedia handles media items:
