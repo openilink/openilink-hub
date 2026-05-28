@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -51,6 +52,23 @@ func (s *Server) appTokenAuth(next http.Handler) http.Handler {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if token == "" {
 			botAPIError(w, "empty token", http.StatusUnauthorized)
+			return
+		}
+
+		// Service token bypass: accept ADMIN_SYNC_SHARED_SECRET as service credential
+		serviceSecret := strings.TrimSpace(os.Getenv("ADMIN_SYNC_SHARED_SECRET"))
+		if serviceSecret != "" && token == serviceSecret {
+			synthInst := &store.AppInstallation{
+				ID:       "service-bypass",
+				AppID:    "service",
+				BotID:    "",
+				AppToken: token,
+				Enabled:  true,
+				Scopes:   json.RawMessage(`["message:send","message:read"]`),
+				Tools:    json.RawMessage(`[]`),
+			}
+			ctx := context.WithValue(r.Context(), installationKey, synthInst)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 

@@ -1,13 +1,13 @@
 package bot
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,17 +26,17 @@ const maxConcurrentDownloads = 5
 
 // Manager manages all active bot instances.
 type Manager struct {
-	mu        sync.RWMutex
-	instances map[string]*Instance
-	store     store.Store
-	hub       *relay.Hub
-	aiSink    *sink.AI                // AI sink (bot-level)
-	storage   storage.Store           // optional, for media files
-	baseURL   string                  // Hub origin for proxy URLs
-	dlSem     chan struct{}           // semaphore for concurrent media downloads
-	appDisp   *appdelivery.Dispatcher // app event delivery
-	appWSHub  *appdelivery.WSHub      // app WebSocket connections
-	pushHub   *push.Hub               // browser push WebSocket
+	mu                   sync.RWMutex
+	instances            map[string]*Instance
+	store                store.Store
+	hub                  *relay.Hub
+	aiSink               *sink.AI                // AI sink (bot-level)
+	storage              storage.Store           // optional, for media files
+	baseURL              string                  // Hub origin for proxy URLs
+	dlSem                chan struct{}           // semaphore for concurrent media downloads
+	appDisp              *appdelivery.Dispatcher // app event delivery
+	appWSHub             *appdelivery.WSHub      // app WebSocket connections
+	pushHub              *push.Hub               // browser push WebSocket
 	wechatFinalizeURL    string
 	wechatFinalizeSecret string
 	httpClient           *http.Client
@@ -732,14 +732,18 @@ func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundM
 		body["context_token"] = token
 	}
 	raw, _ := json.Marshal(body)
-	req, err := http.NewRequest(http.MethodPost, finalizeURL, bytes.NewReader(raw))
+	finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer finalizeCancel()
+	req, err := http.NewRequestWithContext(finalizeCtx, http.MethodPost, finalizeURL, bytes.NewReader(raw))
 	if err != nil {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+finalizeSecret)
 
-	resp, err := client.Do(req)
+	// Use a dedicated client with longer timeout for finalize (multiple Supabase calls).
+	finalizeClient := &http.Client{Timeout: 15 * time.Second}
+	resp, err := finalizeClient.Do(req)
 	if err != nil {
 		_ = m.store.MarkWechatPendingBindingRetry(pending.ID, finalizeEventID, "FINALIZE_HTTP_FAILED:"+err.Error(), time.Now())
 		return
