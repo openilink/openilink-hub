@@ -331,16 +331,12 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 		return
 	}
 	msgID := result.ID
-	// Synchronous: finalize must complete before AI processing so that
-	// resolveRuntimePrompt can find the binding/route for role prompt.
-	// For non-first messages (no pending binding) this returns instantly.
-	justFinalized := m.tryFinalizeWechatPrebind(inst, msg)
-	if justFinalized {
-		// First message triggered binding finalization — reply with a
-		// vague welcome instead of running the AI (which would lack
-		// the role context that was just created moments ago).
-		slog.Info("wechat prebind finalized: sending welcome instead of AI reply",
+	// Check locally (SQLite, fast) whether this is a first-bind message.
+	// If yes: send vague welcome, fire async finalize, skip AI.
+	if m.hasPendingWechatPrebind(inst, msg) {
+		slog.Info("wechat prebind detected: sending welcome, finalize async",
 			"bot", inst.DBID, "msg", msgID)
+		go m.tryFinalizeWechatPrebind(inst, msg)
 		inst.Send(context.Background(), provider.OutboundMessage{
 			Recipient:    msg.Sender,
 			Text:         "你好呀～有什么想聊的尽管说~",
@@ -703,6 +699,26 @@ func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p par
 		}
 	}()
 	m.aiSink.Handle(d)
+}
+
+// hasPendingWechatPrebind checks local SQLite for a pending wechat binding (fast, no HTTP).
+func (m *Manager) hasPendingWechatPrebind(inst *Instance, msg provider.InboundMessage) bool {
+	if m == nil || m.store == nil || inst == nil {
+		return false
+	}
+	if strings.TrimSpace(msg.Sender) == "" && strings.TrimSpace(msg.ContextToken) == "" {
+		return false
+	}
+	botMeta, err := m.store.GetBot(inst.DBID)
+	if err != nil || botMeta == nil {
+		return false
+	}
+	providerBotID := strings.TrimSpace(botMeta.ProviderID)
+	if providerBotID == "" {
+		return false
+	}
+	pending, err := m.store.GetLatestPendingWechatBinding(inst.DBID, providerBotID, time.Now())
+	return err == nil && pending != nil
 }
 
 func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundMessage) bool {
