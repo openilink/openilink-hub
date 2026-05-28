@@ -461,7 +461,9 @@ PUT /bot/v1/app/tools
 Authorization: Bearer {app_token}
 ```
 
-Dynamically update the **app-level** tools/commands at runtime. Requires `tools:write` scope. Only works for local apps (not marketplace or builtin). App-level tools are shared across all installations of the app.
+Dynamically update the **app-level** tools/commands at runtime. Requires `tools:write` scope. App-level tools are shared across all installations of the app.
+
+For **marketplace / builtin** apps the AppDef is immutable, so this call is transparently routed to the per-installation tools instead (see `PUT /bot/v1/installation/tools`). The response will include `"scope": "installation"` in that case; for local apps it returns `"scope": "app"`. This means existing app clients can keep using this endpoint regardless of whether they are installed from the marketplace.
 
 | Field | Required | Description |
 |---|---|---|

@@ -371,7 +371,13 @@ func base64Decode(s string) ([]byte, string, error) {
 
 // handleBotAPIUpdateTools handles PUT /bot/v1/app/tools.
 // App dynamically updates its own tools. Requires tools:write scope.
-// Only works for local apps (registry="").
+//
+// For local apps (registry=""), updates the app-level tools shared by all
+// installations. For marketplace/builtin apps the AppDef is immutable, so we
+// transparently fall back to per-installation tools — the natural place for
+// per-user tool registration (e.g. each Runner installation has its own
+// commands). This keeps existing marketplace app clients working without
+// requiring them to know about the app-vs-installation distinction.
 func (s *Server) handleBotAPIUpdateTools(w http.ResponseWriter, r *http.Request) {
 	inst := installationFromContext(r.Context())
 	if inst == nil {
@@ -385,14 +391,12 @@ func (s *Server) handleBotAPIUpdateTools(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get app and verify it's a local app (not marketplace/builtin)
+	// Look up the app to decide whether to write app-level or installation-level
+	// tools. We treat a missing app as a real error (shouldn't happen since the
+	// installation references it).
 	app, err := s.Store.GetApp(inst.AppID)
 	if err != nil {
 		botAPIError(w, "app not found", http.StatusNotFound)
-		return
-	}
-	if app.Registry != "" {
-		botAPIError(w, "marketplace and builtin apps cannot be modified via API", http.StatusForbidden)
 		return
 	}
 
@@ -411,17 +415,28 @@ func (s *Server) handleBotAPIUpdateTools(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Update the app's tools
-	if err := s.Store.UpdateAppTools(app.ID, req.Tools); err != nil {
-		botAPIError(w, "update failed", http.StatusInternalServerError)
-		return
+	// Marketplace/builtin apps can't mutate the shared AppDef — redirect to
+	// per-installation tools instead.
+	scope := "app"
+	if app.Registry != "" {
+		scope = "installation"
+		if err := s.Store.UpdateInstallationTools(inst.ID, req.Tools); err != nil {
+			botAPIError(w, "update failed", http.StatusInternalServerError)
+			return
+		}
+		slog.Info("marketplace app tools update redirected to installation",
+			"app_id", app.ID, "app_slug", app.Slug, "installation_id", inst.ID,
+			"registry", app.Registry, "tool_count", len(toolsCheck))
+	} else {
+		if err := s.Store.UpdateAppTools(app.ID, req.Tools); err != nil {
+			botAPIError(w, "update failed", http.StatusInternalServerError)
+			return
+		}
+		slog.Info("app tools updated via bot API", "app_id", app.ID, "app_slug", app.Slug, "tool_count", len(toolsCheck))
 	}
 
-	// Log the update
-	slog.Info("app tools updated via bot API", "app_id", app.ID, "app_slug", app.Slug, "tool_count", len(toolsCheck))
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "tool_count": len(toolsCheck)})
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "tool_count": len(toolsCheck), "scope": scope})
 }
 
 // handleBotAPIUpdateInstallationTools handles PUT /bot/v1/installation/tools.
