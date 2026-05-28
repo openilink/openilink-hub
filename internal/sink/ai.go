@@ -1986,7 +1986,46 @@ func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID
 	}
 	meta.RoleID = strings.TrimSpace(bctx.RoleID)
 	meta.UserID = strings.TrimSpace(bctx.UserID)
+
+	// Retry binding query when user_id/role_id is empty — race condition
+	// where binding was just created but not yet visible in DB.
 	if meta.UserID == "" || meta.RoleID == "" {
+		const bindingRetryMax = 2
+		const bindingRetryInterval = 500 * time.Millisecond
+		for attempt := 1; attempt <= bindingRetryMax; attempt++ {
+			time.Sleep(bindingRetryInterval)
+			var retryCtx *supamemory.BindingContext
+			var retryErr error
+			if contextToken != "" {
+				retryCtx, retryErr = s.SupaMemory.ResolveBindingContext(ctx, providerBotID, contextToken)
+			}
+			if (retryErr != nil || retryCtx == nil) && sender != "" && sender != contextToken {
+				retryCtx, retryErr = s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
+			}
+			if retryErr != nil || retryCtx == nil {
+				continue
+			}
+			retryUserID := strings.TrimSpace(retryCtx.UserID)
+			retryRoleID := strings.TrimSpace(retryCtx.RoleID)
+			if retryUserID != "" && retryRoleID != "" {
+				meta.UserID = retryUserID
+				meta.RoleID = retryRoleID
+				slog.Info("resolveRuntimePrompt: binding resolved after retry",
+					"attempt", attempt,
+					"user_id", retryUserID,
+					"role_id", retryRoleID,
+					"provider_bot_id", providerBotID,
+				)
+				break
+			}
+		}
+	}
+	if meta.UserID == "" || meta.RoleID == "" {
+		slog.Warn("resolveRuntimePrompt: binding context empty after retries",
+			"provider_bot_id", providerBotID,
+			"context_token", contextToken,
+			"sender", sender,
+		)
 		cfg.SystemPrompt = globalPrompt
 		return cfg, meta
 	}
@@ -2713,6 +2752,13 @@ func (s *AI) writePlatformMessage(ctx context.Context, meta runtimePromptMeta, i
 		in.RoleID = strings.TrimSpace(meta.RoleID)
 	}
 	if strings.TrimSpace(in.UserID) == "" || strings.TrimSpace(in.RoleID) == "" {
+		slog.Warn("writePlatformMessage skipped: empty user_id or role_id",
+			"direction", in.Direction,
+			"role", in.Role,
+			"external_chat_id", in.ExternalChatID,
+			"external_user_id", in.ExternalUserID,
+			"content_len", len(in.Content),
+		)
 		return
 	}
 	if err := s.SupaMemory.WritePlatformMessage(ctx, in); err != nil {
