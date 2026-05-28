@@ -1474,6 +1474,9 @@ func TestBotAPI_UpdateTools(t *testing.T) {
 		if body["tool_count"] != float64(2) {
 			t.Errorf("tool_count = %v, want 2", body["tool_count"])
 		}
+		if body["scope"] != "app" {
+			t.Errorf("scope = %v, want app", body["scope"])
+		}
 
 		// Verify tools were actually updated
 		updated, err := env.store.GetApp(app.ID)
@@ -1538,7 +1541,9 @@ func TestBotAPI_UpdateTools(t *testing.T) {
 		}
 		var appTools []map[string]any
 		if len(updatedApp.Tools) > 0 {
-			json.Unmarshal(updatedApp.Tools, &appTools)
+			if err := json.Unmarshal(updatedApp.Tools, &appTools); err != nil {
+				t.Fatalf("unmarshal app tools: %v", err)
+			}
 		}
 		if len(appTools) != 0 {
 			t.Errorf("marketplace app tools should not be modified, got %s", string(updatedApp.Tools))
@@ -1550,7 +1555,9 @@ func TestBotAPI_UpdateTools(t *testing.T) {
 			t.Fatalf("GetInstallation: %v", err)
 		}
 		var instTools []map[string]any
-		json.Unmarshal(updatedInst.Tools, &instTools)
+		if err := json.Unmarshal(updatedInst.Tools, &instTools); err != nil {
+			t.Fatalf("unmarshal installation tools: %v", err)
+		}
 		if len(instTools) != 1 || instTools[0]["name"] != "test" {
 			t.Errorf("installation tools = %v, want [{name:test}]", instTools)
 		}

@@ -471,7 +471,7 @@ For **marketplace / builtin** apps the AppDef is immutable, so this call is tran
 
 Response:
 ```json
-{"ok": true, "tool_count": 5}
+{"ok": true, "tool_count": 5, "scope": "app"}
 ```
 
 ### Update Installation Tools
