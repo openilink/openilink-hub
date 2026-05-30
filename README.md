@@ -50,6 +50,11 @@ docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest     # GHCR
 
 > 默认用 SQLite，不用装数据库，不用配任何东西。想用 PostgreSQL？设个 `DATABASE_URL` 就行。
 
+<a id="windows"></a>
+> **Windows 用户**：原生 Windows 不支持，请用以下任一方式：
+> - **Docker（推荐）**：`docker run -d -p 9800:9800 openilink/openilink-hub:latest`
+> - **WSL2**：在 WSL 的 Ubuntu/Debian 里按上面的 Linux 方式跑
+
 ---
 
 ## 这是什么？

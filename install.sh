@@ -27,7 +27,11 @@ detect_os() {
     case "$(uname -s)" in
         Linux*)  echo "linux" ;;
         Darwin*) echo "darwin" ;;
-        *)       error "Unsupported OS: $(uname -s). Only Linux and macOS are supported." ;;
+        MINGW*|MSYS*|CYGWIN*|Windows_NT|Windows*)
+            error "Windows native install is not supported. Run inside WSL2, or use Docker:
+    docker run -d -p 9800:9800 openilink/openilink-hub:latest
+See https://github.com/${REPO}#windows for details." ;;
+        *)       error "Unsupported OS: $(uname -s). Supported: Linux, macOS (or Docker on any platform)." ;;
     esac
 }
 
