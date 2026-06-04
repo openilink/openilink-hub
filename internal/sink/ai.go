@@ -621,6 +621,22 @@ func (s *AI) reply(d Delivery) {
 		}
 		slog.Info("ai: backchannel detected, injected context continuation prompt", "bot", d.BotDBID, "sender", sender)
 	}
+	// Short-reply-to-question detection: when user gives a short answer to a previous question
+	if !isBC && !isToxicHistory && len([]rune(currentText)) <= 8 {
+		if lastAst := lastAssistantContent(messages); lastAst != "" && isQuestionLikeText(lastAst) {
+			shortReplyPrompt := "【上下文延续指令】\n你上一句问了\"" + truncateRunes(lastAst, 60) + "\"，用户回答了：\"" + currentText + "\"。\n请基于用户的回答自然延续对话，不要忽略你之前的提问，不要转换话题。"
+			cfg.SystemPrompt = cfg.SystemPrompt + "\n\n" + shortReplyPrompt
+			if len(messages) >= 2 {
+				injMsg := ai.Message{Role: "system", Content: shortReplyPrompt}
+				out := make([]ai.Message, 0, len(messages)+1)
+				out = append(out, messages[:len(messages)-1]...)
+				out = append(out, injMsg)
+				out = append(out, messages[len(messages)-1])
+				messages = out
+			}
+			slog.Info("ai: short reply to question detected", "bot", d.BotDBID, "sender", sender, "lastQuestion", truncateRunes(lastAst, 40))
+		}
+	}
 	memoryQuery := buildMemoryQueryFromMessages(messages, currentText)
 	memories := s.resolveMemories(ctx, cfg, promptMeta, memoryQuery)
 	trimmedMemories := trimMemoriesForPhase2(memories, memoryPromptMaxRows)
@@ -3748,6 +3764,7 @@ var zhContinuation = regexp.MustCompile(`^(然后呢|是吗|真的吗|所以呢|
 var zhHesitation = regexp.MustCompile(`^(算了|随便|无所谓|都行|不知道|没想法|再说吧|随意)$`)
 var zhSingleChar = regexp.MustCompile(`^[嗯哦啊呃额哼唉哇嘻嘿呵噢嘛吧呢啦呀哒]$`)
 var zhComboContinuation = regexp.MustCompile(`^[听好嗯行对噢哦][，,]\s*(你说|你讲|继续|说[吧啊呀]?|讲[吧啊呀]?|来[吧啊]?|开始)$`)
+var zhShortState = regexp.MustCompile(`^(累[了啊呀死]?|困[了啊呀死]?|饿[了啊呀死]?|渴[了啊呀]?|烦[了啊呀死]?|无聊[了啊呀]?|开心|难过|伤心|高兴|生气|害怕|紧张|想你|想[了啊呀]|不想|不要|不好|不行|没有|有[啊呀的]?|没[啊呀]|还行|还好|一般|凑合|马马虎虎|挺好[的啊]?|不错[啊呀]?|当然[了啊]?|必须[的啊]?)$`)
 
 // English patterns
 var enAcknowledgment = regexp.MustCompile(`(?i)^(yeah|yep|yup|yes|sure|right|ok|okay|got it|i see|alright|fine|noted|understood|copy that|fair enough|makes sense|mm-?hmm|mhm|uh-?huh|totally|absolutely|exactly|indeed|definitely|precisely|for sure|of course|true|that'?s right|that'?s true|correct|agreed)$`)
@@ -3773,7 +3790,7 @@ func isBackchannelMessage(text string) bool {
 	if runeLen <= backchannelCJKMaxLength {
 		if zhAcknowledgment.MatchString(trimmed) || zhEmotional.MatchString(trimmed) ||
 			zhContinuation.MatchString(trimmed) || zhComboContinuation.MatchString(trimmed) ||
-			zhHesitation.MatchString(trimmed) ||
+			zhHesitation.MatchString(trimmed) || zhShortState.MatchString(trimmed) ||
 			zhSingleChar.MatchString(trimmed) {
 			return true
 		}
@@ -3798,6 +3815,24 @@ const backchannelContextPrompt = "【上下文延续指令】\n" +
 	"用户刚才发送的是一个简短的语气词/回应，表示在听你说或认可你的内容。\n" +
 	"请务必延续你上一轮回复的话题和情绪氛围，自然展开或分享新的细节。\n" +
 	"严禁：转换话题、问\"你还想聊什么\"、重复上一轮的内容、生成泛化空洞回复。"
+
+var questionLikeRe = regexp.MustCompile(`[?？]$|(?:吗|呢|嘛|吧)[？?。！!]?$|(?:不|没).{0,4}(?:不|没)[？?]?$|(?:怎么样|如何|什么|哪里|谁|多少|几)[？?。]?$`)
+
+func isQuestionLikeText(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	return questionLikeRe.MatchString(trimmed)
+}
+
+func truncateRunes(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes])
+}
 
 // lastAssistantContent returns the content of the last non-empty assistant message.
 func lastAssistantContent(messages []ai.Message) string {
