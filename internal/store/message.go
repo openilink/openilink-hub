@@ -49,6 +49,14 @@ type MessageStore interface {
 	GetLatestContextToken(botID string) string
 	HasFreshContextToken(botID string, maxAge time.Duration) bool
 	BatchHasFreshContextToken(botIDs []string, maxAge time.Duration) map[string]bool
+	// GetLatestContextTokenForRecipient returns the latest non-empty context_token
+	// from the conversation with the given recipient (the WeChat user identified by
+	// recipient as from_user_id/to_user_id). Falls back to bot-scoped latest when
+	// recipient is empty. Prevents cross-contact token mixing on proactive sends.
+	GetLatestContextTokenForRecipient(botID, recipient string) string
+	// HasFreshContextTokenForRecipient reports whether the conversation with the
+	// given recipient has a fresh (within maxAge) non-empty context_token.
+	HasFreshContextTokenForRecipient(botID, recipient string, maxAge time.Duration) bool
 	UpdateMediaStatus(botID, status string, keys json.RawMessage) error
 	UpdateMediaStatusByID(id int64, status string, keys json.RawMessage) error
 	UpdateMessagePayload(id int64, payload json.RawMessage) error

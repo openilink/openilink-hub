@@ -38,6 +38,10 @@ func (m *mockMessageStore) HasFreshContextToken(_ string, _ time.Duration) bool 
 func (m *mockMessageStore) BatchHasFreshContextToken(_ []string, _ time.Duration) map[string]bool {
 	return nil
 }
+func (m *mockMessageStore) GetLatestContextTokenForRecipient(_, _ string) string { return "" }
+func (m *mockMessageStore) HasFreshContextTokenForRecipient(_, _ string, _ time.Duration) bool {
+	return false
+}
 func (m *mockMessageStore) UpdateMediaStatus(_, _ string, _ json.RawMessage) error { return nil }
 func (m *mockMessageStore) UpdateMediaStatusByID(_ int64, _ string, _ json.RawMessage) error {
 	return nil

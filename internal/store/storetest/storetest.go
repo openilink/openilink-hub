@@ -695,6 +695,34 @@ func TestMessageCRUD(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("GetLatestContextTokenForRecipient", func(t *testing.T) {
+		// Known recipient (sender1 sent ctx_token_1) resolves its token.
+		if token := s.GetLatestContextTokenForRecipient(b.ID, "sender1"); token != "ctx_token_1" {
+			t.Errorf("recipient sender1 token = %q, want %q", token, "ctx_token_1")
+		}
+		// Unknown recipient gets no token (prevents cross-contact mixing).
+		if token := s.GetLatestContextTokenForRecipient(b.ID, "unknown_recipient"); token != "" {
+			t.Errorf("unknown recipient token = %q, want empty", token)
+		}
+		// Empty recipient falls back to bot-scoped latest.
+		if token := s.GetLatestContextTokenForRecipient(b.ID, ""); token != "ctx_token_1" {
+			t.Errorf("empty recipient fallback token = %q, want %q", token, "ctx_token_1")
+		}
+	})
+
+	t.Run("HasFreshContextTokenForRecipient", func(t *testing.T) {
+		if !s.HasFreshContextTokenForRecipient(b.ID, "sender1", 1*time.Hour) {
+			t.Error("expected fresh token for recipient sender1")
+		}
+		if s.HasFreshContextTokenForRecipient(b.ID, "unknown_recipient", 1*time.Hour) {
+			t.Error("unknown recipient should not have fresh token")
+		}
+		// Empty recipient falls back to bot-scoped freshness.
+		if !s.HasFreshContextTokenForRecipient(b.ID, "", 1*time.Hour) {
+			t.Error("empty recipient should fall back to bot-scoped fresh token")
+		}
+	})
+
 	t.Run("UpdateMediaStatus", func(t *testing.T) {
 		// Insert a message with media_status='downloading'
 		msgID := int64(3001)

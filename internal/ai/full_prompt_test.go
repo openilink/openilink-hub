@@ -32,6 +32,10 @@ func (h *historyStore) ListMessagesBySender(string, string, int) ([]store.Messag
 func (h *historyStore) GetMessagesSince(string, int64, int) ([]store.Message, error) { return nil, nil }
 func (h *historyStore) GetLatestContextToken(string) string                          { return "" }
 func (h *historyStore) HasFreshContextToken(string, time.Duration) bool              { return false }
+func (h *historyStore) GetLatestContextTokenForRecipient(string, string) string      { return "" }
+func (h *historyStore) HasFreshContextTokenForRecipient(string, string, time.Duration) bool {
+	return false
+}
 func (h *historyStore) BatchHasFreshContextToken([]string, time.Duration) map[string]bool {
 	return nil
 }

@@ -263,6 +263,15 @@ func (s *Store) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration)
 	return result
 }
 
+func (s *Store) GetLatestContextTokenForRecipient(botID, recipient string) string {
+	// Mock store: always return a valid token so send never fails on missing token.
+	return "mock-context-token"
+}
+
+func (s *Store) HasFreshContextTokenForRecipient(botID, recipient string, maxAge time.Duration) bool {
+	return true
+}
+
 func (s *Store) GetMessage(int64) (*store.Message, error)                          { return nil, errNotImplemented }
 func (s *Store) ListMessages(string, int, int64) ([]store.Message, error)          { return nil, nil }
 func (s *Store) ListMessagesBySender(string, string, int) ([]store.Message, error) { return nil, nil }
