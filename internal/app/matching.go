@@ -5,9 +5,25 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/openilink/openilink-hub/internal/store"
 )
+
+// SplitFirstField splits s into its first whitespace-delimited field and the
+// trimmed remainder. Unlike strings.SplitN(s, " ", 2) it treats any Unicode
+// whitespace as a separator — notably U+2005 (FOUR-PER-EM SPACE), which WeChat
+// inserts right after an @mention, and the full-width space U+3000. Without this
+// "@handle text" would parse the handle as "handle text" and fail to route.
+func SplitFirstField(s string) (first, rest string) {
+	i := strings.IndexFunc(s, unicode.IsSpace)
+	if i < 0 {
+		return s, ""
+	}
+	_, size := utf8.DecodeRuneInString(s[i:])
+	return s[:i], strings.TrimSpace(s[i+size:])
+}
 
 // ParseMention extracts handle, command, and text from @handle messages.
 // Returns handle, command (with / prefix or empty), remaining text.
@@ -21,21 +37,15 @@ func ParseMention(content string) (handle, command, text string) {
 	if !strings.HasPrefix(content, "@") {
 		return "", "", ""
 	}
-	parts := strings.SplitN(content[1:], " ", 2)
-	handle = strings.ToLower(parts[0])
+	handleRaw, remaining := SplitFirstField(content[1:])
+	handle = strings.ToLower(handleRaw)
 	if handle == "" {
 		return "", "", ""
 	}
-	remaining := ""
-	if len(parts) > 1 {
-		remaining = strings.TrimSpace(parts[1])
-	}
 	if strings.HasPrefix(remaining, "/") {
-		cmdParts := strings.SplitN(remaining[1:], " ", 2)
-		command = "/" + strings.ToLower(cmdParts[0])
-		if len(cmdParts) > 1 {
-			text = strings.TrimSpace(cmdParts[1])
-		}
+		cmd, rest := SplitFirstField(remaining[1:])
+		command = "/" + strings.ToLower(cmd)
+		text = rest
 		return handle, command, text
 	}
 	return handle, "", remaining
@@ -147,12 +157,12 @@ func parseCommand(content string) (string, string) {
 
 	// Skip leading @mention if present.
 	if strings.HasPrefix(content, "@") {
-		idx := strings.IndexByte(content, ' ')
-		if idx < 0 {
+		_, rest := SplitFirstField(content[1:])
+		if rest == "" {
 			// Just a mention, no command.
 			return "", ""
 		}
-		content = strings.TrimSpace(content[idx+1:])
+		content = rest
 	}
 
 	// Must start with "/" to be a command.
@@ -160,17 +170,11 @@ func parseCommand(content string) (string, string) {
 		return "", ""
 	}
 
-	// Split into command and args.
-	content = content[1:] // strip leading "/"
-	parts := strings.SplitN(content, " ", 2)
-	command := strings.ToLower(parts[0])
+	// Split into command and args (strip leading "/").
+	command, args := SplitFirstField(content[1:])
+	command = strings.ToLower(command)
 	if command == "" {
 		return "", ""
-	}
-
-	args := ""
-	if len(parts) > 1 {
-		args = strings.TrimSpace(parts[1])
 	}
 
 	return command, args

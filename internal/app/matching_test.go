@@ -436,6 +436,41 @@ func TestParseMention(t *testing.T) {
 	}
 }
 
+// TestParseMention_UnicodeWhitespace verifies that handles still parse when the
+// separator after @handle is not an ASCII space. WeChat inserts U+2005 (FOUR-PER-EM
+// SPACE) right after an @mention, and some clients use a full-width space (U+3000).
+func TestParseMention_UnicodeWhitespace(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		handle  string
+		command string
+		text    string
+	}{
+		{"four-per-em space (WeChat @)", "@echo-work hello", "echo-work", "", "hello"},
+		{"full-width space", "@echo-work　hello", "echo-work", "", "hello"},
+		{"four-per-em then command", "@echo-work /echo hi", "echo-work", "/echo", "hi"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handle, command, text := ParseMention(tt.input)
+			if handle != tt.handle || command != tt.command || text != tt.text {
+				t.Errorf("ParseMention(%q) = (%q, %q, %q), want (%q, %q, %q)",
+					tt.input, handle, command, text, tt.handle, tt.command, tt.text)
+			}
+		})
+	}
+}
+
+// TestParseCommand_UnicodeWhitespace locks the second parsing path: a U+2005
+// separator between an @mention and the following /command must still parse.
+func TestParseCommand_UnicodeWhitespace(t *testing.T) {
+	cmd, args := parseCommand("@echo-work /deploy prod")
+	if cmd != "deploy" || args != "prod" {
+		t.Errorf("parseCommand(@echo-work\\u2005/deploy prod) = (%q, %q), want (deploy, prod)", cmd, args)
+	}
+}
+
 // ==================== MatchHandle tests ====================
 
 func TestMatchHandle_Success(t *testing.T) {

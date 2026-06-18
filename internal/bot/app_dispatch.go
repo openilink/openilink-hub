@@ -77,15 +77,11 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 	if !strings.HasPrefix(trimmed, "@") {
 		return false
 	}
-	parts := strings.SplitN(trimmed[1:], " ", 2)
-	handle := strings.ToLower(parts[0])
+	// Split on any Unicode whitespace — WeChat inserts U+2005 after @mentions.
+	handleRaw, text := appdelivery.SplitFirstField(trimmed[1:])
+	handle := strings.ToLower(handleRaw)
 	if handle == "" {
 		return false
-	}
-
-	text := ""
-	if len(parts) > 1 {
-		text = strings.TrimSpace(parts[1])
 	}
 
 	installation, err := m.appDisp.Store.GetInstallationByHandle(inst.DBID, handle)
@@ -97,12 +93,8 @@ func (m *Manager) tryDeliverMention(inst *Instance, msg provider.InboundMessage,
 	rootSpan.AddEvent("match_handle", map[string]any{"handle": handle, "app.name": installation.AppName})
 
 	if strings.HasPrefix(text, "/") {
-		cmdParts := strings.SplitN(text[1:], " ", 2)
-		command := strings.ToLower(cmdParts[0])
-		cmdArgs := ""
-		if len(cmdParts) > 1 {
-			cmdArgs = strings.TrimSpace(cmdParts[1])
-		}
+		cmd, cmdArgs := appdelivery.SplitFirstField(text[1:])
+		command := strings.ToLower(cmd)
 		event := appdelivery.NewEvent("command", map[string]any{
 			"command": command, "text": cmdArgs,
 			"sender": map[string]any{"id": msg.Sender, "role": "user"},

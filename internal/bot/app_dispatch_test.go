@@ -344,3 +344,57 @@ func TestDeliverToApps_BuiltinHandlerWhenNoWS(t *testing.T) {
 		t.Error("builtin handler was not called when no WS connection was active")
 	}
 }
+
+// TestTryDeliverMention_UnicodeWhitespace locks the third parsing path: an
+// @handle followed by WeChat's U+2005 separator must still route to the
+// installation. This is the root cause behind issue #248 — @handle "didn't
+// work" in WeChat (which inserts U+2005 after a mention) so users fell back to /.
+func TestTryDeliverMention_UnicodeWhitespace(t *testing.T) {
+	const (
+		botID  = "bot-mention-u2005"
+		appID  = "app-mention-u2005"
+		instID = "inst-mention-u2005"
+	)
+
+	ms := memstore.New()
+	ms.AddInstallation(&store.AppInstallation{
+		ID:      instID,
+		AppID:   appID,
+		BotID:   botID,
+		Handle:  "echo-work",
+		AppSlug: "echo",
+		Enabled: true,
+	})
+
+	hub := appdelivery.NewWSHub()
+	sendCh := make(chan []byte, 4)
+	hub.Register(instID, &appdelivery.WSConn{InstID: instID, BotID: botID, Send: sendCh})
+
+	m := newTestManager(ms, hub)
+	tracer, root := newTestTracer(botID)
+	// "@echo-work" + U+2005 (FOUR-PER-EM SPACE) + "hello".
+	content := "@echo-work hello"
+	msg, p := textMessage("user-1", content)
+
+	if !m.tryDeliverMention(&Instance{DBID: botID}, msg, p, content, tracer, root) {
+		t.Fatal("tryDeliverMention returned false — @handle with U+2005 failed to route")
+	}
+
+	select {
+	case data := <-sendCh:
+		var env map[string]any
+		if err := json.Unmarshal(data, &env); err != nil {
+			t.Fatalf("unmarshal ws payload: %v", err)
+		}
+		ev, _ := env["event"].(map[string]any)
+		if ev["type"] != "message.text" {
+			t.Errorf("event type = %v, want message.text", ev["type"])
+		}
+		evData, _ := ev["data"].(map[string]any)
+		if evData["content"] != "hello" {
+			t.Errorf("content = %v, want %q", evData["content"], "hello")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out: mention event was not delivered after U+2005 split")
+	}
+}
