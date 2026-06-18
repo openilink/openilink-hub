@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -179,6 +180,74 @@ type fakeBuiltinHandler struct{ called bool }
 func (h *fakeBuiltinHandler) HandleEvent(_ *store.AppInstallation, _ *appdelivery.Event) error {
 	h.called = true
 	return nil
+}
+
+// fakeProvider captures the last outbound message for assertions.
+type fakeProvider struct {
+	sentText string
+	sentTo   string
+}
+
+func (f *fakeProvider) Name() string                                       { return "fake" }
+func (f *fakeProvider) Start(context.Context, provider.StartOptions) error { return nil }
+func (f *fakeProvider) Stop()                                              {}
+func (f *fakeProvider) Send(_ context.Context, msg provider.OutboundMessage) (string, error) {
+	f.sentText = msg.Text
+	f.sentTo = msg.Recipient
+	return "client-1", nil
+}
+func (f *fakeProvider) SendTyping(context.Context, string, string, bool) error { return nil }
+func (f *fakeProvider) GetConfig(context.Context, string, string) (*provider.BotConfig, error) {
+	return &provider.BotConfig{}, nil
+}
+func (f *fakeProvider) DownloadMedia(context.Context, *provider.Media) ([]byte, error) {
+	return nil, nil
+}
+func (f *fakeProvider) DownloadVoice(context.Context, *provider.Media, int) ([]byte, error) {
+	return nil, nil
+}
+func (f *fakeProvider) Status() string { return "connected" }
+
+// TestChannelTag covers the channel-reply prefix (issue #248): prefer handle,
+// fall back to app name, empty when neither is set, and never an "@" prefix.
+func TestChannelTag(t *testing.T) {
+	cases := []struct {
+		name string
+		inst *store.AppInstallation
+		want string
+	}{
+		{"handle preferred over app name", &store.AppInstallation{Handle: "openclaw", AppName: "OpenClaw"}, "【openclaw】 "},
+		{"fall back to app name", &store.AppInstallation{AppName: "OpenClaw"}, "【OpenClaw】 "},
+		{"empty when no name", &store.AppInstallation{}, ""},
+		{"nil installation", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := channelTag(tc.inst); got != tc.want {
+				t.Errorf("channelTag = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSendAppResult_ChannelTagPrefix verifies a webhook app's text reply is
+// prefixed with its channel tag before being sent to the user (issue #248).
+func TestSendAppResult_ChannelTagPrefix(t *testing.T) {
+	ms := memstore.New()
+	fp := &fakeProvider{}
+	m := newTestManager(ms, appdelivery.NewWSHub())
+	inst := &Instance{DBID: "bot-tag", Provider: fp}
+	installation := &store.AppInstallation{ID: "i1", Handle: "openclaw", AppName: "OpenClaw"}
+	tracer, root := newTestTracer("bot-tag")
+
+	m.sendAppResult(inst, installation, "user-9", &appdelivery.DeliveryResult{Reply: "hello there"}, tracer, root)
+
+	if want := "【openclaw】 hello there"; fp.sentText != want {
+		t.Errorf("sent text = %q, want %q", fp.sentText, want)
+	}
+	if fp.sentTo != "user-9" {
+		t.Errorf("sent to = %q, want %q", fp.sentTo, "user-9")
+	}
 }
 
 // newTestManager builds a minimal Manager for app_dispatch tests.

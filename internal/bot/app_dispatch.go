@@ -196,7 +196,7 @@ func (m *Manager) deliverEventToApp(inst *Instance, installation *store.AppInsta
 		} else {
 			span.EndWithError("no result")
 		}
-		m.sendAppResult(inst, sender, result, tracer, rootSpan)
+		m.sendAppResult(inst, installation, sender, result, tracer, rootSpan)
 	}
 }
 
@@ -236,8 +236,27 @@ func (m *Manager) tryDeliverCommand(inst *Instance, msg provider.InboundMessage,
 	return true
 }
 
+// channelTag returns a short display prefix identifying which channel/app
+// produced a reply, so users can tell replies apart when several channels are
+// active (issue #248). It prefers the channel handle (falling back to the app
+// name) and deliberately does NOT use an "@" prefix: an echoed "@handle" reply
+// could be re-parsed by mention routing and loop, whereas "【handle】" is inert.
+func channelTag(installation *store.AppInstallation) string {
+	if installation == nil {
+		return ""
+	}
+	name := installation.Handle
+	if name == "" {
+		name = installation.AppName
+	}
+	if name == "" {
+		return ""
+	}
+	return "【" + name + "】 "
+}
+
 // sendAppResult sends a reply from an App via the bot and stores it as outbound.
-func (m *Manager) sendAppResult(inst *Instance, to string, result *appdelivery.DeliveryResult, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
+func (m *Manager) sendAppResult(inst *Instance, installation *store.AppInstallation, to string, result *appdelivery.DeliveryResult, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
 	if result == nil || result.ReplyAsync {
 		return
 	}
@@ -262,12 +281,13 @@ func (m *Manager) sendAppResult(inst *Instance, to string, result *appdelivery.D
 		if result.Reply == "" {
 			return
 		}
+		text := channelTag(installation) + result.Reply
 		span := tracer.StartChild(rootSpan, "send_reply", store.SpanKindClient, map[string]any{
 			"reply.type":    "text",
 			"reply.to":      to,
-			"reply.content": result.Reply,
+			"reply.content": text,
 		})
-		m.sendAppText(ctx, inst, to, contextToken, result.Reply)
+		m.sendAppText(ctx, inst, to, contextToken, text)
 		span.End()
 	}
 }

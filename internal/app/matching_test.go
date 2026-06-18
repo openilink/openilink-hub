@@ -562,3 +562,16 @@ func TestMatchEvent_MultipleInstallations(t *testing.T) {
 		t.Errorf("matched[0].ID = %q, want %q", matched[0].ID, "i1")
 	}
 }
+
+// TestChannelTaggedReplyIsInert guards issue #248 Part 2: the channel-reply
+// prefix uses 【handle】 rather than @handle precisely so that if such a reply
+// ever echoes back as inbound it is NOT re-parsed as a mention or command
+// (which would risk a routing loop).
+func TestChannelTaggedReplyIsInert(t *testing.T) {
+	if h, c, txt := ParseMention("【openclaw】 hello"); h != "" || c != "" || txt != "" {
+		t.Errorf("ParseMention(【openclaw】...) = (%q, %q, %q), want all empty", h, c, txt)
+	}
+	if cmd, _ := parseCommand("【openclaw】 /deploy prod"); cmd != "" {
+		t.Errorf("parseCommand(【openclaw】 /deploy) cmd = %q, want empty", cmd)
+	}
+}
