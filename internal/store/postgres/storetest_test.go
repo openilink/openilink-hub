@@ -34,6 +34,7 @@ func testPGStore(t *testing.T) *postgres.DB {
 
 	// Truncate all tables (faster than DELETE, resets sequences)
 	db.Exec(`TRUNCATE
+		admin_sync_inbox, sync_outbox, prompt_profiles,
 		app_api_logs, app_event_logs, app_oauth_codes, app_installations,
 		apps, trace_spans, webhook_logs, messages, channels, bots,
 		plugin_installs, plugin_versions, plugins,

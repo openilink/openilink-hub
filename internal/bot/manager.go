@@ -1,12 +1,15 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,17 +26,20 @@ const maxConcurrentDownloads = 5
 
 // Manager manages all active bot instances.
 type Manager struct {
-	mu        sync.RWMutex
-	instances map[string]*Instance
-	store     store.Store
-	hub       *relay.Hub
-	aiSink    *sink.AI            // AI sink (bot-level)
-	storage   storage.Store       // optional, for media files
-	baseURL   string              // Hub origin for proxy URLs
-	dlSem     chan struct{}        // semaphore for concurrent media downloads
-	appDisp   *appdelivery.Dispatcher // app event delivery
-	appWSHub  *appdelivery.WSHub      // app WebSocket connections
-	pushHub   *push.Hub               // browser push WebSocket
+	mu                   sync.RWMutex
+	instances            map[string]*Instance
+	store                store.Store
+	hub                  *relay.Hub
+	aiSink               *sink.AI                // AI sink (bot-level)
+	storage              storage.Store           // optional, for media files
+	baseURL              string                  // Hub origin for proxy URLs
+	dlSem                chan struct{}           // semaphore for concurrent media downloads
+	appDisp              *appdelivery.Dispatcher // app event delivery
+	appWSHub             *appdelivery.WSHub      // app WebSocket connections
+	pushHub              *push.Hub               // browser push WebSocket
+	wechatFinalizeURL    string
+	wechatFinalizeSecret string
+	httpClient           *http.Client
 }
 
 func NewManager(s store.Store, hub *relay.Hub, aiSink *sink.AI, st storage.Store, baseURL string) *Manager {
@@ -46,7 +52,17 @@ func NewManager(s store.Store, hub *relay.Hub, aiSink *sink.AI, st storage.Store
 		baseURL:   baseURL,
 		dlSem:     make(chan struct{}, maxConcurrentDownloads),
 		appDisp:   appdelivery.NewDispatcher(s),
+		httpClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
 	}
+}
+
+func (m *Manager) SetWechatFinalizeCallback(url, secret string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.wechatFinalizeURL = url
+	m.wechatFinalizeSecret = secret
 }
 
 // SetPushHub sets the browser push WebSocket hub.
@@ -315,6 +331,19 @@ func (m *Manager) onInbound(inst *Instance, msg provider.InboundMessage) {
 		return
 	}
 	msgID := result.ID
+	// Check locally (SQLite, fast) whether this is a first-bind message.
+	// If yes: send vague welcome, fire async finalize, skip AI.
+	if m.hasPendingWechatPrebind(inst, msg) {
+		slog.Info("wechat prebind detected: sending welcome, finalize async",
+			"bot", inst.DBID, "msg", msgID)
+		go m.tryFinalizeWechatPrebind(inst, msg)
+		inst.Send(context.Background(), provider.OutboundMessage{
+			Recipient:    msg.Sender,
+			Text:         "你好呀～有什么想聊的尽管说~",
+			ContextToken: msg.ContextToken,
+		})
+		return
+	}
 
 	// Create OTel-style tracer for this message
 	tracer := store.NewTracer(m.store, inst.DBID)
@@ -457,7 +486,7 @@ func (m *Manager) buildDBMessage(botDBID string, channelID *string, msg provider
 		ToUserID:     msg.Recipient,
 		CreateTimeMs: &msg.Timestamp,
 		SessionID:    msg.SessionID,
-		GroupID:       msg.GroupID,
+		GroupID:      msg.GroupID,
 		MessageState: msg.MessageState,
 		ItemList:     itemList,
 		ContextToken: msg.ContextToken,
@@ -647,7 +676,6 @@ func (m *Manager) downloadMedia(inst *Instance, msg provider.InboundMessage, msg
 	slog.Info("media download done", "bot", inst.DBID, "msg", msg.ExternalID, "status", status)
 }
 
-
 // deliverToAI runs the AI sink at bot level, independent of channel matching.
 func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p parsedMessage, msgID int64, tracer *store.Tracer, rootSpan *store.SpanBuilder) {
 	if m.aiSink == nil || !inst.AIEnabled {
@@ -671,6 +699,94 @@ func (m *Manager) deliverToAI(inst *Instance, msg provider.InboundMessage, p par
 		}
 	}()
 	m.aiSink.Handle(d)
+}
+
+// hasPendingWechatPrebind checks local SQLite for a pending wechat binding (fast, no HTTP).
+func (m *Manager) hasPendingWechatPrebind(inst *Instance, msg provider.InboundMessage) bool {
+	if m == nil || m.store == nil || inst == nil {
+		return false
+	}
+	if strings.TrimSpace(msg.Sender) == "" && strings.TrimSpace(msg.ContextToken) == "" {
+		return false
+	}
+	botMeta, err := m.store.GetBot(inst.DBID)
+	if err != nil || botMeta == nil {
+		return false
+	}
+	providerBotID := strings.TrimSpace(botMeta.ProviderID)
+	if providerBotID == "" {
+		return false
+	}
+	pending, err := m.store.GetLatestPendingWechatBinding(inst.DBID, providerBotID, time.Now())
+	return err == nil && pending != nil
+}
+
+func (m *Manager) tryFinalizeWechatPrebind(inst *Instance, msg provider.InboundMessage) bool {
+	if m == nil || m.store == nil || inst == nil {
+		return false
+	}
+	if strings.TrimSpace(msg.Sender) == "" && strings.TrimSpace(msg.ContextToken) == "" {
+		return false
+	}
+	m.mu.RLock()
+	finalizeURL := strings.TrimSpace(m.wechatFinalizeURL)
+	finalizeSecret := strings.TrimSpace(m.wechatFinalizeSecret)
+	client := m.httpClient
+	m.mu.RUnlock()
+	if finalizeURL == "" || finalizeSecret == "" || client == nil {
+		return false
+	}
+
+	botMeta, err := m.store.GetBot(inst.DBID)
+	if err != nil || botMeta == nil {
+		return false
+	}
+	providerBotID := strings.TrimSpace(botMeta.ProviderID)
+	if providerBotID == "" {
+		return false
+	}
+	pending, err := m.store.GetLatestPendingWechatBinding(inst.DBID, providerBotID, time.Now())
+	if err != nil || pending == nil {
+		return false
+	}
+
+	finalizeEventID := fmt.Sprintf("finalize_%d_%s", msg.Timestamp, msg.ExternalID)
+	pendingBindingID := strings.TrimSpace(pending.BindingID)
+	body := map[string]any{
+		"event_id":           finalizeEventID,
+		"event_time":         msg.Timestamp,
+		"pending_binding_id": pendingBindingID,
+		"binding_id":         pendingBindingID,
+		"bot_id":             providerBotID,
+		"from_user_id":       strings.TrimSpace(msg.Sender),
+	}
+	if token := strings.TrimSpace(msg.ContextToken); token != "" {
+		body["context_token"] = token
+	}
+	raw, _ := json.Marshal(body)
+	finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer finalizeCancel()
+	req, err := http.NewRequestWithContext(finalizeCtx, http.MethodPost, finalizeURL, bytes.NewReader(raw))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+finalizeSecret)
+
+	// Use a dedicated client with longer timeout for finalize (multiple Supabase calls).
+	finalizeClient := &http.Client{Timeout: 15 * time.Second}
+	resp, err := finalizeClient.Do(req)
+	if err != nil {
+		_ = m.store.MarkWechatPendingBindingRetry(pending.ID, finalizeEventID, "FINALIZE_HTTP_FAILED:"+err.Error(), time.Now())
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		_, _ = m.store.FinalizeWechatPendingBinding(pending.ID, strings.TrimSpace(msg.ContextToken), finalizeEventID, time.Now())
+		return true
+	}
+	_ = m.store.MarkWechatPendingBindingRetry(pending.ID, finalizeEventID, fmt.Sprintf("FINALIZE_HTTP_%d", resp.StatusCode), time.Now())
+	return false
 }
 
 // processMedia handles media items:
@@ -810,7 +926,6 @@ func mediaContentType(itemType string) string {
 		return "application/octet-stream"
 	}
 }
-
 
 func convertRelayItem(item provider.MessageItem) relay.MessageItem {
 	ri := relay.MessageItem{

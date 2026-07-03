@@ -29,6 +29,9 @@ func RunAll(t *testing.T, s store.Store) {
 	t.Run("AppLog", func(t *testing.T) { TestAppLogCRUD(t, s) })
 	t.Run("Session", func(t *testing.T) { TestSessionCRUD(t, s) })
 	t.Run("AppLifecycle", func(t *testing.T) { TestAppLifecycle(t, s) })
+	t.Run("PromptProfile", func(t *testing.T) { TestPromptProfileLifecycle(t, s) })
+	t.Run("WechatPendingBinding", func(t *testing.T) { TestWechatPendingBindingLifecycle(t, s) })
+	t.Run("SyncOutbox", func(t *testing.T) { TestSyncOutbox(t, s) })
 }
 
 // ---------------------------------------------------------------------------
@@ -689,6 +692,34 @@ func TestMessageCRUD(t *testing.T, s store.Store) {
 		}
 		if result["nonexistent"] {
 			t.Error("nonexistent bot should not have fresh context token")
+		}
+	})
+
+	t.Run("GetLatestContextTokenForRecipient", func(t *testing.T) {
+		// Known recipient (sender1 sent ctx_token_1) resolves its token.
+		if token := s.GetLatestContextTokenForRecipient(b.ID, "sender1"); token != "ctx_token_1" {
+			t.Errorf("recipient sender1 token = %q, want %q", token, "ctx_token_1")
+		}
+		// Unknown recipient gets no token (prevents cross-contact mixing).
+		if token := s.GetLatestContextTokenForRecipient(b.ID, "unknown_recipient"); token != "" {
+			t.Errorf("unknown recipient token = %q, want empty", token)
+		}
+		// Empty recipient falls back to bot-scoped latest.
+		if token := s.GetLatestContextTokenForRecipient(b.ID, ""); token != "ctx_token_1" {
+			t.Errorf("empty recipient fallback token = %q, want %q", token, "ctx_token_1")
+		}
+	})
+
+	t.Run("HasFreshContextTokenForRecipient", func(t *testing.T) {
+		if !s.HasFreshContextTokenForRecipient(b.ID, "sender1", 1*time.Hour) {
+			t.Error("expected fresh token for recipient sender1")
+		}
+		if s.HasFreshContextTokenForRecipient(b.ID, "unknown_recipient", 1*time.Hour) {
+			t.Error("unknown recipient should not have fresh token")
+		}
+		// Empty recipient falls back to bot-scoped freshness.
+		if !s.HasFreshContextTokenForRecipient(b.ID, "", 1*time.Hour) {
+			t.Error("empty recipient should fall back to bot-scoped fresh token")
 		}
 	})
 

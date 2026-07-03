@@ -127,6 +127,10 @@ func (s *Server) SetupUpstreamHandler() relay.UpstreamHandler {
 				MessageType: 2,
 				ItemList:    itemList,
 			})
+			s.writePlatformOutboundMessage(context.Background(), conn.BotID, "", data.Recipient, ctxToken, data.Text, itemList, clientID, map[string]any{
+				"source":       "openilink_hub_relay_ws",
+				"message_type": "text",
+			})
 			conn.Send(relay.NewAck(env.ReqID, true, clientID, ""))
 
 		case "send_typing":

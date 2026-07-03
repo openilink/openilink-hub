@@ -110,6 +110,14 @@ func (s *Server) checkSendability(botID, status string) (bool, string) {
 	return checkSendStatus(status, hasFresh)
 }
 
+// checkSendabilityForRecipient is like checkSendability but scopes the context_token
+// freshness check to the conversation with the given recipient when it is non-empty.
+// This prevents a fresh token from contact B from authorizing a send to contact A.
+func (s *Server) checkSendabilityForRecipient(botID, recipient, status string) (bool, string) {
+	hasFresh := s.Store.HasFreshContextTokenForRecipient(botID, recipient, contextTokenMaxAge)
+	return checkSendStatus(status, hasFresh)
+}
+
 func (s *Server) handleBindStart(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
 

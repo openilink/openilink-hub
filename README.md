@@ -31,6 +31,47 @@
 
 ---
 
+## 本地提示词同步与异步镜像配置
+
+新增能力：支持 `admin-worker` 下发绑定提示词快照到本地 `prompt_profiles`，并通过 outbox 异步镜像到 Supabase。
+
+关键环境变量：
+
+- `ADMIN_SYNC_SHARED_SECRET`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SCHEMA`（默认 `public`）
+- `OUTBOX_BATCH_SIZE`（默认 `100`）
+- `OUTBOX_POLL_INTERVAL_MS`（默认 `500`）
+- `OUTBOX_MAX_RETRIES`（默认 `10`）
+- `AI_FULL_PROMPT_MAX_BYTES`（默认 `8192`）
+- `USAGE_BILLING_V2_ENABLED`（默认 `false`，仅开启后按“文本长度+文件类型”折算聊天扣费）
+- `USAGE_BILLING_TEXT_CHARS_PER_UNIT`（默认 `180`，仅在 `USAGE_BILLING_V2_ENABLED=true` 时生效）
+
+更多说明：
+
+- `docs/binding-prompt-sync.md`
+- `docs/full-prompt-flow.md`
+
+### AI 模型语言路由（新增）
+
+当 Bot 未手动指定 `ai_model` 时，Hub 会按消息语言自动选模型：
+
+1. 中文（`zh-CN`）默认：`deepseek/deepseek-v3.2`
+2. 非中文默认：`ai21/jamba-large-1.7`
+
+可通过全局配置覆盖（环境变量优先，其次数据库配置）：
+
+- `AI_MODEL_ZH` / `ai.model_zh`
+- `AI_MODEL_NON_ZH` / `ai.model_non_zh`
+- `AI_FALLBACK_MODEL_ZH` / `ai.fallback_model_zh`
+- `AI_FALLBACK_MODEL_NON_ZH` / `ai.fallback_model_non_zh`
+
+兼容规则：
+
+1. 若 Bot 通过 `/model` 或后台设置了 `ai_model`，优先使用该模型（跳过语言路由）。
+2. 若未设置语言专用 fallback，则回退到 `AI_FALLBACK_MODEL` / `ai.fallback_model`。
+
 ## 快速开始
 
 ```bash

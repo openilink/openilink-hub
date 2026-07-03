@@ -135,7 +135,13 @@ func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	result := map[string]string{
 		"base_url":         dbConf["ai.base_url"],
 		"api_key":          maskSecret(dbConf["ai.api_key"]),
+		"completion_timeout_sec": dbConf["ai.completion_timeout_sec"],
 		"model":            dbConf["ai.model"],
+		"model_zh":         dbConf["ai.model_zh"],
+		"model_non_zh":     dbConf["ai.model_non_zh"],
+		"fallback_model":   dbConf["ai.fallback_model"],
+		"fallback_model_zh":     dbConf["ai.fallback_model_zh"],
+		"fallback_model_non_zh": dbConf["ai.fallback_model_non_zh"],
 		"system_prompt":    dbConf["ai.system_prompt"],
 		"max_history":      dbConf["ai.max_history"],
 		"hide_thinking":    dbConf["ai.hide_thinking"],
@@ -153,14 +159,20 @@ func (s *Server) handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 // PUT /api/admin/config/ai — set global AI config
 func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BaseURL         string `json:"base_url"`
-		APIKey          string `json:"api_key"`
-		Model           string `json:"model"`
-		SystemPrompt    string `json:"system_prompt"`
-		MaxHistory      string `json:"max_history"`
-		HideThinking    string `json:"hide_thinking"`
-		StripMarkdown   string `json:"strip_markdown"`
-		AvailableModels string `json:"available_models"`
+		BaseURL         string  `json:"base_url"`
+		APIKey          string  `json:"api_key"`
+		CompletionTimeoutSec string `json:"completion_timeout_sec"`
+		Model           string  `json:"model"`
+		ModelZH         string  `json:"model_zh"`
+		ModelNonZH      string  `json:"model_non_zh"`
+		FallbackModel   string  `json:"fallback_model"`
+		FallbackModelZH    string  `json:"fallback_model_zh"`
+		FallbackModelNonZH string  `json:"fallback_model_non_zh"`
+		SystemPrompt    string  `json:"system_prompt"`
+		MaxHistory      string  `json:"max_history"`
+		HideThinking    string  `json:"hide_thinking"`
+		StripMarkdown   string  `json:"strip_markdown"`
+		AvailableModels string  `json:"available_models"`
 		CustomHeaders   *string `json:"custom_headers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -177,8 +189,26 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 			s.Store.SetConfig("ai.api_key", req.APIKey)
 		}
 	}
+	if req.CompletionTimeoutSec != "" {
+		s.Store.SetConfig("ai.completion_timeout_sec", req.CompletionTimeoutSec)
+	}
 	if req.Model != "" {
 		s.Store.SetConfig("ai.model", req.Model)
+	}
+	if req.ModelZH != "" {
+		s.Store.SetConfig("ai.model_zh", req.ModelZH)
+	}
+	if req.ModelNonZH != "" {
+		s.Store.SetConfig("ai.model_non_zh", req.ModelNonZH)
+	}
+	if req.FallbackModel != "" {
+		s.Store.SetConfig("ai.fallback_model", req.FallbackModel)
+	}
+	if req.FallbackModelZH != "" {
+		s.Store.SetConfig("ai.fallback_model_zh", req.FallbackModelZH)
+	}
+	if req.FallbackModelNonZH != "" {
+		s.Store.SetConfig("ai.fallback_model_non_zh", req.FallbackModelNonZH)
 	}
 	// These can be set to empty to clear
 	s.Store.SetConfig("ai.system_prompt", req.SystemPrompt)
@@ -211,7 +241,13 @@ func (s *Server) handleSetAIConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteAIConfig(w http.ResponseWriter, r *http.Request) {
 	s.Store.DeleteConfig("ai.base_url")
 	s.Store.DeleteConfig("ai.api_key")
+	s.Store.DeleteConfig("ai.completion_timeout_sec")
 	s.Store.DeleteConfig("ai.model")
+	s.Store.DeleteConfig("ai.model_zh")
+	s.Store.DeleteConfig("ai.model_non_zh")
+	s.Store.DeleteConfig("ai.fallback_model")
+	s.Store.DeleteConfig("ai.fallback_model_zh")
+	s.Store.DeleteConfig("ai.fallback_model_non_zh")
 	s.Store.DeleteConfig("ai.system_prompt")
 	s.Store.DeleteConfig("ai.max_history")
 	s.Store.DeleteConfig("ai.hide_thinking")

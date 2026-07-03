@@ -95,14 +95,15 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if the bot can send (context_token freshness)
-	if canSend, reason := s.checkSendability(inst.BotID, botInst.Status()); !canSend {
+	// Check if the bot can send (context_token freshness, scoped to recipient when known)
+	if canSend, reason := s.checkSendabilityForRecipient(inst.BotID, req.To, botInst.Status()); !canSend {
 		botAPIError(w, reason, http.StatusConflict)
 		return
 	}
 
-	// Auto-fill context_token from latest message if not available
-	contextToken := s.Store.GetLatestContextToken(inst.BotID)
+	// Auto-fill context_token from latest message with the same recipient (falls back
+	// to bot-scoped latest when recipient is empty) to avoid cross-contact token mixing.
+	contextToken := s.Store.GetLatestContextTokenForRecipient(inst.BotID, req.To)
 
 	// Build outbound message
 	outMsg := provider.OutboundMessage{
@@ -116,6 +117,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Media message: resolve data from base64, url, or content
 		var mediaData []byte
+		mediaURL := normalizeMediaURL(req.URL, req.Content)
 		if req.Base64 != "" {
 			var decErr error
 			var mime string
@@ -127,10 +129,10 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 			if mime != "" && req.FileName == "" {
 				req.FileName = defaultFileNameFromMIME(mime)
 			}
-		} else if req.URL != "" {
+		} else if mediaURL != "" {
 			var dlErr error
 			var mime string
-			mediaData, mime, dlErr = downloadURL(r.Context(), req.URL)
+			mediaData, mime, dlErr = downloadURL(r.Context(), mediaURL)
 			if dlErr != nil {
 				botAPIError(w, "download failed: "+dlErr.Error(), http.StatusBadGateway)
 				return
@@ -189,7 +191,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		item["file_name"] = outMsg.FileName
 	}
 	itemList, _ := json.Marshal([]any{item})
-	s.Store.SaveMessage(&store.Message{
+	dbMsg := &store.Message{
 		BotID:       inst.BotID,
 		Direction:   "outbound",
 		ToUserID:    req.To,
@@ -197,6 +199,12 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		ItemList:    itemList,
 		MediaStatus: mediaStatus,
 		MediaKeys:   mediaKeys,
+	}
+	_, _ = s.Store.SaveMessage(dbMsg)
+	s.writePlatformOutboundMessage(r.Context(), inst.BotID, "", req.To, contextToken, outMsg.Text, itemList, clientID, map[string]any{
+		"app_name":    inst.AppName,
+		"message_type": itemType,
+		"media_status": mediaStatus,
 	})
 
 	// Append span to message trace if trace_id links to an existing trace
@@ -224,6 +232,26 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		"client_id": clientID,
 		"trace_id":  traceID,
 	})
+}
+
+func normalizeMediaURL(rawURL, content string) string {
+	url := strings.TrimSpace(rawURL)
+	if url != "" {
+		return url
+	}
+	candidate := strings.TrimSpace(content)
+	if candidate == "" {
+		return ""
+	}
+	u, err := neturl.Parse(candidate)
+	if err != nil {
+		return ""
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if (scheme != "http" && scheme != "https") || strings.TrimSpace(u.Hostname()) == "" {
+		return ""
+	}
+	return candidate
 }
 
 // handleBotAPIContacts handles GET /bot/v1/contacts.

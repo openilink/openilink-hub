@@ -7,6 +7,10 @@ type Store interface {
 	UserStore
 	BotStore
 	MessageStore
+	PromptProfileStore
+	WechatPendingBindingStore
+	SyncOutboxStore
+	AdminSyncInboxStore
 	ChannelStore
 	AppStore
 	RegistryStore

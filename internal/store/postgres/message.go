@@ -138,6 +138,36 @@ func (db *DB) HasFreshContextToken(botID string, maxAge time.Duration) bool {
 	return exists
 }
 
+func (db *DB) GetLatestContextTokenForRecipient(botID, recipient string) string {
+	if recipient == "" {
+		return db.GetLatestContextToken(botID)
+	}
+	var token string
+	db.QueryRow(
+		`SELECT context_token FROM messages
+		 WHERE bot_id = $1 AND context_token != ''
+		   AND (from_user_id = $2 OR to_user_id = $2)
+		 ORDER BY id DESC LIMIT 1`,
+		botID, recipient,
+	).Scan(&token)
+	return token
+}
+
+func (db *DB) HasFreshContextTokenForRecipient(botID, recipient string, maxAge time.Duration) bool {
+	if recipient == "" {
+		return db.HasFreshContextToken(botID, maxAge)
+	}
+	var exists bool
+	db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM messages
+		 WHERE bot_id = $1 AND context_token != ''
+		   AND (from_user_id = $2 OR to_user_id = $2)
+		   AND created_at > $3::timestamptz - ($4 * INTERVAL '1 second'))`,
+		botID, recipient, db.now(), int(maxAge.Seconds()),
+	).Scan(&exists)
+	return exists
+}
+
 func (db *DB) UpdateMediaStatus(botID, status string, keys json.RawMessage) error {
 	if keys == nil {
 		keys = json.RawMessage(`{}`)

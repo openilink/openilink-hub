@@ -23,7 +23,7 @@ func (m *mockMessageStore) ListChannelMessages(channelID, sender string, limit i
 func (m *mockMessageStore) SaveMessage(_ *store.Message) (store.SaveResult, error) {
 	return store.SaveResult{}, nil
 }
-func (m *mockMessageStore) GetMessage(_ int64) (*store.Message, error)     { return nil, nil }
+func (m *mockMessageStore) GetMessage(_ int64) (*store.Message, error) { return nil, nil }
 func (m *mockMessageStore) ListMessages(_ string, _ int, _ int64) ([]store.Message, error) {
 	return nil, nil
 }
@@ -33,12 +33,16 @@ func (m *mockMessageStore) ListMessagesBySender(_, _ string, _ int) ([]store.Mes
 func (m *mockMessageStore) GetMessagesSince(_ string, _ int64, _ int) ([]store.Message, error) {
 	return nil, nil
 }
-func (m *mockMessageStore) GetLatestContextToken(_ string) string                        { return "" }
-func (m *mockMessageStore) HasFreshContextToken(_ string, _ time.Duration) bool          { return false }
+func (m *mockMessageStore) GetLatestContextToken(_ string) string               { return "" }
+func (m *mockMessageStore) HasFreshContextToken(_ string, _ time.Duration) bool { return false }
 func (m *mockMessageStore) BatchHasFreshContextToken(_ []string, _ time.Duration) map[string]bool {
 	return nil
 }
-func (m *mockMessageStore) UpdateMediaStatus(_, _ string, _ json.RawMessage) error   { return nil }
+func (m *mockMessageStore) GetLatestContextTokenForRecipient(_, _ string) string { return "" }
+func (m *mockMessageStore) HasFreshContextTokenForRecipient(_, _ string, _ time.Duration) bool {
+	return false
+}
+func (m *mockMessageStore) UpdateMediaStatus(_, _ string, _ json.RawMessage) error { return nil }
 func (m *mockMessageStore) UpdateMediaStatusByID(_ int64, _ string, _ json.RawMessage) error {
 	return nil
 }
@@ -704,4 +708,111 @@ func TestCompleteWithRealAPI(t *testing.T) {
 		t.Fatal("got empty reply")
 	}
 	t.Logf("AI reply: %s", result.Content)
+}
+
+func TestComplete_FallbackModelOnFailure(t *testing.T) {
+	var firstModel, secondModel string
+	var callCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		n := callCount.Add(1)
+		if n == 1 {
+			firstModel = req.Model
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"primary model failed"}}`))
+			return
+		}
+		secondModel = req.Model
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "fallback ok"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{
+		BaseURL:       srv.URL,
+		APIKey:        "test-key",
+		Model:         "primary-model",
+		FallbackModel: "backup-model",
+	}
+	result, err := Complete(context.Background(), cfg, &mockMessageStore{}, "ch1", "user1", "Hi", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if callCount.Load() != 2 {
+		t.Fatalf("api calls = %d, want 2", callCount.Load())
+	}
+	if firstModel != "primary-model" {
+		t.Fatalf("first model = %q, want primary-model", firstModel)
+	}
+	if secondModel != "backup-model" {
+		t.Fatalf("second model = %q, want backup-model", secondModel)
+	}
+	if result.Content != "fallback ok" {
+		t.Fatalf("content = %q, want fallback ok", result.Content)
+	}
+}
+
+func TestContinueWithToolResults_FallbackModelOnFailure(t *testing.T) {
+	var callCount atomic.Int32
+	var firstModel, secondModel string
+	messages := []Message{{Role: "user", Content: "test"}}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		n := callCount.Add(1)
+		if n == 1 {
+			firstModel = req.Model
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`bad gateway`))
+			return
+		}
+		secondModel = req.Model
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "continued"}, "finish_reason": "stop"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := store.AIConfig{
+		BaseURL:       srv.URL,
+		APIKey:        "test-key",
+		Model:         "primary-model",
+		FallbackModel: "backup-model",
+	}
+
+	result, outMessages, err := ContinueWithToolResults(
+		context.Background(),
+		cfg,
+		messages,
+		[]ToolCallResult{{ID: "call_1", Name: "cmd.echo", Content: "ok"}},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("ContinueWithToolResults: %v", err)
+	}
+	if callCount.Load() != 2 {
+		t.Fatalf("api calls = %d, want 2", callCount.Load())
+	}
+	if firstModel != "primary-model" {
+		t.Fatalf("first model = %q, want primary-model", firstModel)
+	}
+	if secondModel != "backup-model" {
+		t.Fatalf("second model = %q, want backup-model", secondModel)
+	}
+	if result.Content != "continued" {
+		t.Fatalf("content = %q, want continued", result.Content)
+	}
+	if len(outMessages) == 0 {
+		t.Fatal("expected appended messages")
+	}
 }

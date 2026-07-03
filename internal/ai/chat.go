@@ -38,16 +38,16 @@ const maxImageBytes = 20 * 1024 * 1024 // 20MB max for base64 encoding
 
 const defaultBaseURL = "https://api.openai.com/v1"
 const defaultModel = "gpt-4o-mini"
-const defaultMaxHistory = 20
+const defaultMaxHistory = 40
 const MaxToolRounds = 5
 
 // Message supports text, tool_calls, and tool results.
 type Message struct {
 	Role       string     `json:"role"`
-	Content    any        `json:"content,omitempty"`     // string or null
-	ToolCalls  []toolCall `json:"tool_calls,omitempty"`  // assistant response
+	Content    any        `json:"content,omitempty"`      // string or null
+	ToolCalls  []toolCall `json:"tool_calls,omitempty"`   // assistant response
 	ToolCallID string     `json:"tool_call_id,omitempty"` // tool result
-	Name       string     `json:"name,omitempty"`        // tool result function name
+	Name       string     `json:"name,omitempty"`         // tool result function name
 }
 
 type toolCall struct {
@@ -74,9 +74,9 @@ type ToolFunction struct {
 }
 
 type chatRequest struct {
-	Model    string        `json:"model"`
+	Model    string    `json:"model"`
 	Messages []Message `json:"messages"`
-	Tools    []Tool        `json:"tools,omitempty"`
+	Tools    []Tool    `json:"tools,omitempty"`
 }
 
 type chatUsage struct {
@@ -167,7 +167,11 @@ func CompleteMessages(ctx context.Context, cfg store.AIConfig, messages []Messag
 	if model == "" {
 		model = defaultModel
 	}
-	return callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools, cfg.CustomHeaders)
+	result, err := callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools, cfg.CustomHeaders)
+	if err == nil || strings.TrimSpace(cfg.FallbackModel) == "" || strings.TrimSpace(cfg.FallbackModel) == model {
+		return result, err
+	}
+	return callAPI(ctx, baseURL, cfg.APIKey, strings.TrimSpace(cfg.FallbackModel), messages, tools, cfg.CustomHeaders)
 }
 
 // ContinueWithToolResults feeds tool results back to the LLM and gets the next response.
@@ -206,6 +210,10 @@ func ContinueWithToolResults(ctx context.Context, cfg store.AIConfig, messages [
 	}
 
 	result, err := callAPI(ctx, baseURL, cfg.APIKey, model, messages, tools, cfg.CustomHeaders)
+	if err == nil || strings.TrimSpace(cfg.FallbackModel) == "" || strings.TrimSpace(cfg.FallbackModel) == model {
+		return result, messages, err
+	}
+	result, err = callAPI(ctx, baseURL, cfg.APIKey, strings.TrimSpace(cfg.FallbackModel), messages, tools, cfg.CustomHeaders)
 	return result, messages, err
 }
 
@@ -357,10 +365,10 @@ func callAPI(ctx context.Context, baseURL, apiKey, model string, messages []Mess
 
 // reservedHeaders are HTTP headers that must not be overridden by custom config.
 var reservedHeaders = map[string]bool{
-	"authorization":    true,
-	"content-type":     true,
-	"content-length":   true,
-	"host":             true,
+	"authorization":     true,
+	"content-type":      true,
+	"content-length":    true,
+	"host":              true,
 	"transfer-encoding": true,
 }
 

@@ -11,7 +11,13 @@ type AIConfig struct {
 	Source        string            `json:"source,omitempty"`
 	BaseURL       string            `json:"base_url,omitempty"`
 	APIKey        string            `json:"api_key,omitempty"`
+	CompletionTimeoutSec int        `json:"completion_timeout_sec,omitempty"`
 	Model         string            `json:"model,omitempty"`
+	ModelZH       string            `json:"model_zh,omitempty"`
+	ModelNonZH    string            `json:"model_non_zh,omitempty"`
+	FallbackModel string            `json:"fallback_model,omitempty"`
+	FallbackModelZH    string       `json:"fallback_model_zh,omitempty"`
+	FallbackModelNonZH string       `json:"fallback_model_non_zh,omitempty"`
 	SystemPrompt  string            `json:"system_prompt,omitempty"`
 	MaxHistory    int               `json:"max_history,omitempty"`
 	HideThinking  bool              `json:"hide_thinking,omitempty"`
