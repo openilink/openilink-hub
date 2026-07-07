@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/openilink/openilink-hub/internal/auth"
-	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/provider"
 	ilinkProvider "github.com/openilink/openilink-hub/internal/provider/ilink"
+	"github.com/openilink/openilink-hub/internal/store"
 )
 
 // --- iLink scan login ---
@@ -208,6 +210,7 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 	}
 
 	s.BotManager.StartBot(context.Background(), bot)
+	s.bootstrapPromptProfile(bot, creds.BotID, creds.ILinkUserID)
 
 	// Login: create session — send token via WS (can't set cookie on WS)
 	sessionToken, _ := auth.CreateSession(s.Store, user.ID)
@@ -215,4 +218,45 @@ func (s *Server) completeScanLogin(result *provider.BindPollResult, sendEvent fu
 	resp := map[string]any{"status": "connected", "bot_id": bot.ID, "session_token": sessionToken, "is_new": isNew}
 	j, _ := json.Marshal(resp)
 	sendEvent("status", string(j))
+}
+
+func (s *Server) bootstrapPromptProfile(bot *store.Bot, providerBotID, senderUserID string) {
+	if s == nil || bot == nil || s.SupaMemory == nil {
+		return
+	}
+	senderUserID = strings.TrimSpace(senderUserID)
+	if senderUserID == "" {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		bctx, err := s.SupaMemory.ResolveBindingContext(ctx, providerBotID, senderUserID)
+		if err != nil || bctx == nil || bctx.Prompt == nil {
+			if err != nil {
+				slog.Warn("scan bootstrap prompt: resolve supabase context failed", "bot", bot.ID, "err", err)
+			}
+			return
+		}
+		p := bctx.Prompt
+		if store.IsBlankPrompt(p.FullPrompt) {
+			return
+		}
+		_, _, err = s.Store.UpsertPromptProfile(store.PromptProfileUpsertInput{
+			BotID:           bot.ID,
+			SenderUserID:    senderUserID,
+			BindingID:       p.BindingID,
+			SystemPrompt:    p.SystemPrompt,
+			UserPrompt:      p.UserPrompt,
+			FullPrompt:      p.FullPrompt,
+			PromptVersion:   p.PromptVersion,
+			SourceUpdatedAt: p.SourceUpdatedAt,
+			Status:          store.PromptProfileStatusActive,
+		})
+		if err != nil {
+			slog.Warn("scan bootstrap prompt: upsert local profile failed", "bot", bot.ID, "sender", senderUserID, "err", err)
+			return
+		}
+	}()
 }

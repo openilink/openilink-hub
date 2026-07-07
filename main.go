@@ -12,21 +12,23 @@ import (
 	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
-	appdelivery "github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/api"
+	appdelivery "github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/auth"
 	"github.com/openilink/openilink-hub/internal/bot"
 	"github.com/openilink/openilink-hub/internal/builtin"
 	"github.com/openilink/openilink-hub/internal/config"
 	"github.com/openilink/openilink-hub/internal/daemon"
 	"github.com/openilink/openilink-hub/internal/push"
+	"github.com/openilink/openilink-hub/internal/registry"
 	"github.com/openilink/openilink-hub/internal/relay"
 	"github.com/openilink/openilink-hub/internal/sink"
+	"github.com/openilink/openilink-hub/internal/storage"
 	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/store/postgres"
 	"github.com/openilink/openilink-hub/internal/store/sqlite"
-	"github.com/openilink/openilink-hub/internal/registry"
-	"github.com/openilink/openilink-hub/internal/storage"
+	"github.com/openilink/openilink-hub/internal/supamemory"
+	syncworker "github.com/openilink/openilink-hub/internal/sync"
 
 	// Register providers
 	_ "github.com/openilink/openilink-hub/internal/provider/ilink"
@@ -141,6 +143,29 @@ func main() {
 		Version:      version,
 	}
 
+	var runtimeSupa *supamemory.Client
+	if cfg.SupabaseURL != "" && cfg.SupabaseServiceRoleKey != "" && cfg.SupabaseMemoryEnabled {
+		runtimeSupa, err = supamemory.NewClient(supamemory.Config{
+			BaseURL:        cfg.SupabaseURL,
+			ServiceRoleKey: cfg.SupabaseServiceRoleKey,
+			Schema:         cfg.SupabaseSchema,
+			MemoryEnabled:  cfg.SupabaseMemoryEnabled,
+			MemoryTopK:     cfg.SupabaseMemoryTopK,
+			MemoryTable:    cfg.SupabaseMemoryTable,
+			MemoryMatchRPC: cfg.SupabaseMemoryMatchRPC,
+			BindingsTable:  cfg.SupabaseBindingsTable,
+			RoutesTable:    cfg.SupabaseRoutesTable,
+			BotsTable:      cfg.SupabaseBotsTable,
+			ProfilesTable:  cfg.SupabaseProfilesTable,
+			AuditLogsTable: cfg.SupabaseAuditLogsTable,
+			EmbeddingModel: cfg.SupabaseEmbeddingModel,
+		})
+		if err != nil {
+			slog.Warn("runtime supabase memory disabled", "err", err)
+		}
+	}
+	srv.SupaMemory = runtimeSupa
+
 	// Storage (optional): S3 > local FS > proxy fallback
 	var objStore storage.Store
 	if cfg.StorageEndpoint != "" {
@@ -179,8 +204,9 @@ func main() {
 
 	hub := relay.NewHub(srv.SetupUpstreamHandler())
 	appDisp := appdelivery.NewDispatcher(s)
-	aiSink := &sink.AI{Store: s, AppDisp: appDisp, Storage: objStore}
+	aiSink := &sink.AI{Store: s, AppDisp: appDisp, Storage: objStore, SupaMemory: runtimeSupa}
 	mgr := bot.NewManager(s, hub, aiSink, objStore, cfg.RPOrigin)
+	mgr.SetWechatFinalizeCallback(cfg.AdminFinalizeURL, cfg.AdminFinalizeSecret)
 	aiSink.BotManager = mgr
 	srv.BotManager = mgr
 	srv.Hub = hub
@@ -189,10 +215,27 @@ func main() {
 	mgr.SetAppWSHub(srv.AppWSHub)
 	mgr.SetPushHub(srv.PushHub)
 
+	var outboxWorker *syncworker.OutboxWorker
+	if cfg.SupabaseURL != "" && cfg.SupabaseServiceRoleKey != "" {
+		supabaseClient, err := syncworker.NewHTTPSupabaseClient(cfg.SupabaseURL, cfg.SupabaseServiceRoleKey, cfg.SupabaseSchema)
+		if err != nil {
+			slog.Error("supabase client init failed", "err", err)
+		} else {
+			wcfg := syncworker.ParseOutboxConfig(cfg.OutboxBatchSize, cfg.OutboxPollIntervalMS, cfg.OutboxMaxRetries)
+			outboxWorker = syncworker.NewOutboxWorker(s, supabaseClient, wcfg)
+			slog.Info("outbox worker configured", "batch_size", wcfg.BatchSize, "poll_interval", wcfg.PollInterval, "max_retries", wcfg.MaxRetries)
+		}
+	} else {
+		slog.Info("outbox worker disabled: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+	}
+
 	// Start all saved bots
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	mgr.StartAll(ctx)
+	if outboxWorker != nil {
+		go outboxWorker.Run(ctx)
+	}
 
 	// Periodic cleanup
 	go func() {

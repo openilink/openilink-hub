@@ -31,6 +31,26 @@
 
 ---
 
+## 本地提示词同步与异步镜像配置
+
+新增能力：支持 `admin-worker` 下发绑定提示词快照到本地 `prompt_profiles`，并通过 outbox 异步镜像到 Supabase。
+
+关键环境变量：
+
+- `ADMIN_SYNC_SHARED_SECRET`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SCHEMA`（默认 `public`）
+- `OUTBOX_BATCH_SIZE`（默认 `100`）
+- `OUTBOX_POLL_INTERVAL_MS`（默认 `500`）
+- `OUTBOX_MAX_RETRIES`（默认 `10`）
+- `AI_FULL_PROMPT_MAX_BYTES`（默认 `8192`）
+
+更多说明：
+
+- `docs/binding-prompt-sync.md`
+- `docs/full-prompt-flow.md`
+
 ## 快速开始
 
 ```bash

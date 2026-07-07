@@ -37,8 +37,8 @@ func (db *DB) CreateBot(userID, name, provider, providerID string, credentials j
 		credentials = json.RawMessage(`{}`)
 	}
 	_, err := db.Exec(
-		`INSERT INTO bots (id, user_id, name, provider, provider_id, status, credentials)
-		 VALUES ($1, $2, $3, $4, $5, 'connected', $6)`,
+		`INSERT INTO bots (id, user_id, name, provider, provider_id, status, credentials, ai_enabled)
+		 VALUES ($1, $2, $3, $4, $5, 'connected', $6, TRUE)`,
 		id, userID, name, provider, providerID, credentials,
 	)
 	if err != nil {
@@ -46,7 +46,7 @@ func (db *DB) CreateBot(userID, name, provider, providerID string, credentials j
 	}
 	return &store.Bot{
 		ID: id, UserID: userID, Name: name, Provider: provider, ProviderID: providerID,
-		Status: "connected", Credentials: credentials,
+		Status: "connected", Credentials: credentials, AIEnabled: true,
 	}, nil
 }
 

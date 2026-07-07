@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/provider"
 	"github.com/openilink/openilink-hub/internal/storage"
 	"github.com/openilink/openilink-hub/internal/store"
+	"github.com/openilink/openilink-hub/internal/supamemory"
 )
 
 const typingTimeout = 30 * time.Second
@@ -32,10 +34,51 @@ type BotModelSyncer interface {
 // AI calls an OpenAI-compatible chat completion API and sends the reply
 // back through the bot. Supports tool calling via installed App tools.
 type AI struct {
-	Store      store.Store
-	AppDisp    *appdelivery.Dispatcher
-	Storage    storage.Store
-	BotManager BotModelSyncer
+	Store       store.Store
+	AppDisp     *appdelivery.Dispatcher
+	Storage     storage.Store
+	BotManager  BotModelSyncer
+	SupaMemory  *supamemory.Client
+	promptCache map[string]cachedRuntimePrompt
+}
+
+type runtimePromptMeta struct {
+	Source    string
+	Version   int64
+	FullHash  string
+	Truncated bool
+	RoleID    string
+	UserID    string
+}
+
+type cachedRuntimePrompt struct {
+	FullPrompt    string
+	PromptVersion int64
+	CachedAt      time.Time
+}
+
+const runtimePromptCacheTTL = 120 * time.Second
+
+func (s *AI) writeRuntimeAudit(d Delivery, eventType string, detail map[string]any) {
+	if s.SupaMemory == nil || strings.TrimSpace(eventType) == "" {
+		return
+	}
+	traceID := ""
+	if d.Tracer != nil {
+		traceID = d.Tracer.TraceID()
+	}
+	sessionID := d.Message.ContextToken
+	if strings.TrimSpace(sessionID) == "" {
+		sessionID = d.Message.Sender
+	}
+	go func() {
+		_ = s.SupaMemory.WriteAuditLog(context.Background(), supamemory.AuditLogInput{
+			EventType: eventType,
+			SessionID: sessionID,
+			TraceID:   traceID,
+			Detail:    detail,
+		})
+	}()
 }
 
 func (s *AI) Name() string { return "ai" }
@@ -146,6 +189,9 @@ func (s *AI) reply(d Delivery) {
 	cfg := s.resolveConfig(d.AIModel)
 	if cfg.APIKey == "" {
 		slog.Warn("ai reply skipped: no api key", "bot", d.BotDBID)
+		s.writeRuntimeAudit(d, "openilink_hub_ai_skipped_no_api_key", map[string]any{
+			"bot_id": d.BotDBID,
+		})
 		return
 	}
 
@@ -161,6 +207,75 @@ func (s *AI) reply(d Delivery) {
 
 	ctx := context.Background()
 	sender := d.Message.Sender
+	cfg, promptMeta := s.resolveRuntimePrompt(ctx, cfg, d.BotDBID, d.Message.Recipient, d.Message.ContextToken, sender)
+	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_start", map[string]any{
+		"bot_id":          d.BotDBID,
+		"provider_bot_id": d.Message.Recipient,
+		"context_token":   d.Message.ContextToken,
+		"sender":          sender,
+		"model":           cfg.Model,
+		"prompt_source":   promptMeta.Source,
+		"user_id":         promptMeta.UserID,
+		"role_id":         promptMeta.RoleID,
+	})
+	memQuery := strings.TrimSpace(d.Content)
+	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
+		quota, err := s.SupaMemory.CheckMonthlyQuota(ctx, promptMeta.UserID)
+		if err != nil {
+			slog.Warn("ai quota check failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", err)
+			s.writeRuntimeAudit(d, "openilink_hub_ai_quota_check_failed", map[string]any{
+				"bot_id":  d.BotDBID,
+				"user_id": promptMeta.UserID,
+				"role_id": promptMeta.RoleID,
+				"error":   err.Error(),
+				"sender":  sender,
+				"model":   cfg.Model,
+			})
+		} else if quota != nil && !quota.Allowed {
+			if span != nil {
+				span.SetAttr("quota.blocked", true)
+				span.SetAttr("quota.plan_code", quota.PlanCode)
+				span.SetAttr("quota.period_month", quota.PeriodMonth)
+				span.SetAttr("quota.used", quota.Used)
+				span.SetAttr("quota.limit", quota.MonthlyLimit)
+			}
+			notice := "本月聊天额度已用完，请升级订阅或下月再试。"
+			if quota.MonthlyLimit > 0 {
+				notice = fmt.Sprintf("本月聊天额度已用完（%d/%d），请升级订阅或下月再试。", quota.Used, quota.MonthlyLimit)
+			}
+			if _, sendErr := d.Provider.Send(ctx, provider.OutboundMessage{
+				Recipient: sender,
+				Text:      notice,
+			}); sendErr != nil {
+				slog.Warn("quota notice send failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", sendErr)
+				s.writeRuntimeAudit(d, "openilink_hub_ai_quota_notice_send_failed", map[string]any{
+					"bot_id":    d.BotDBID,
+					"user_id":   promptMeta.UserID,
+					"role_id":   promptMeta.RoleID,
+					"sender":    sender,
+					"plan_code": quota.PlanCode,
+					"used":      quota.Used,
+					"limit":     quota.MonthlyLimit,
+					"period":    quota.PeriodMonth,
+					"error":     sendErr.Error(),
+				})
+			}
+			s.writeRuntimeAudit(d, "openilink_hub_ai_quota_blocked", map[string]any{
+				"bot_id":    d.BotDBID,
+				"user_id":   promptMeta.UserID,
+				"role_id":   promptMeta.RoleID,
+				"sender":    sender,
+				"plan_code": quota.PlanCode,
+				"used":      quota.Used,
+				"limit":     quota.MonthlyLimit,
+				"period":    quota.PeriodMonth,
+			})
+			if span != nil {
+				span.End()
+			}
+			return
+		}
+	}
 
 	// Typing indicator
 	var typingTicket string
@@ -219,6 +334,8 @@ func (s *AI) reply(d Delivery) {
 		}
 	}
 
+	memories := s.resolveMemories(ctx, cfg, promptMeta, memQuery)
+
 	// Create media resolver for history images
 	var resolver ai.MediaResolver
 	if s.Storage != nil {
@@ -229,9 +346,46 @@ func (s *AI) reply(d Delivery) {
 
 	// Build messages for conversation context (reused across tool-call rounds)
 	messages := ai.BuildMessages(ctx, cfg, s.Store, d.Channel.ID, sender, text, currentImages, resolver)
+	if len(memories) > 0 {
+		memPrompt := buildMemoryPrompt(memories)
+		if memPrompt != "" {
+			for i := range messages {
+				if messages[i].Role == "system" {
+					if content, ok := messages[i].Content.(string); ok {
+						messages[i].Content = strings.TrimSpace(content + "\n\n" + memPrompt)
+					}
+					break
+				}
+			}
+		}
+	}
+	if span != nil {
+		span.SetAttr("prompt.source", promptMeta.Source)
+		span.SetAttr("prompt.version", promptMeta.Version)
+		if promptMeta.FullHash != "" {
+			span.SetAttr("prompt.full_hash", promptMeta.FullHash)
+		}
+		span.SetAttr("prompt.truncated", promptMeta.Truncated)
+		span.SetAttr("memory.hit_count", len(memories))
+		if promptMeta.RoleID != "" {
+			span.SetAttr("memory.role_id", promptMeta.RoleID)
+		}
+		if promptMeta.UserID != "" {
+			span.SetAttr("memory.user_id", promptMeta.UserID)
+		}
+	}
 	result, err := ai.CompleteMessages(ctx, cfg, messages, tools)
 	if err != nil {
 		slog.Error("ai completion failed", "bot", d.BotDBID, "err", err)
+		s.writeRuntimeAudit(d, "openilink_hub_ai_completion_failed", map[string]any{
+			"bot_id":      d.BotDBID,
+			"user_id":     promptMeta.UserID,
+			"role_id":     promptMeta.RoleID,
+			"sender":      sender,
+			"model":       cfg.Model,
+			"memory_hits": len(memories),
+			"error":       err.Error(),
+		})
 		if span != nil {
 			span.SetStatus(store.StatusError, err.Error())
 			span.End()
@@ -330,6 +484,15 @@ func (s *AI) reply(d Delivery) {
 		result, messages, nextErr = ai.ContinueWithToolResults(ctx, cfg, messages, llmResults, tools)
 		if nextErr != nil {
 			slog.Error("ai continuation failed", "bot", d.BotDBID, "round", round+1, "err", nextErr)
+			s.writeRuntimeAudit(d, "openilink_hub_ai_continuation_failed", map[string]any{
+				"bot_id":  d.BotDBID,
+				"user_id": promptMeta.UserID,
+				"role_id": promptMeta.RoleID,
+				"sender":  sender,
+				"model":   cfg.Model,
+				"round":   round + 1,
+				"error":   nextErr.Error(),
+			})
 			if span != nil {
 				span.SetStatus(store.StatusError, nextErr.Error())
 				span.End()
@@ -373,6 +536,13 @@ func (s *AI) reply(d Delivery) {
 	}
 
 	if reply == "" {
+		s.writeRuntimeAudit(d, "openilink_hub_ai_reply_empty", map[string]any{
+			"bot_id":  d.BotDBID,
+			"user_id": promptMeta.UserID,
+			"role_id": promptMeta.RoleID,
+			"sender":  sender,
+			"model":   cfg.Model,
+		})
 		if span != nil {
 			span.SetAttr("reply.content", "(empty)")
 			span.End()
@@ -390,6 +560,15 @@ func (s *AI) reply(d Delivery) {
 	})
 	if err != nil {
 		slog.Error("ai reply send failed", "bot", d.BotDBID, "err", err)
+		s.writeRuntimeAudit(d, "openilink_hub_ai_reply_send_failed", map[string]any{
+			"bot_id":      d.BotDBID,
+			"user_id":     promptMeta.UserID,
+			"role_id":     promptMeta.RoleID,
+			"sender":      sender,
+			"model":       cfg.Model,
+			"reply_chars": len([]rune(reply)),
+			"error":       err.Error(),
+		})
 		if span != nil {
 			span.SetStatus(store.StatusError, "send failed: "+err.Error())
 			span.End()
@@ -397,19 +576,79 @@ func (s *AI) reply(d Delivery) {
 		return
 	}
 
+	s.writeRuntimeAudit(d, "openilink_hub_ai_reply_sent", map[string]any{
+		"bot_id":            d.BotDBID,
+		"user_id":           promptMeta.UserID,
+		"role_id":           promptMeta.RoleID,
+		"sender":            sender,
+		"model":             cfg.Model,
+		"reply_chars":       len([]rune(reply)),
+		"prompt_tokens":     totalPrompt,
+		"completion_tokens": totalCompletion,
+		"total_tokens":      totalTokens,
+		"cached_tokens":     totalCached,
+		"reasoning_tokens":  totalReasoning,
+		"memory_hits":       len(memories),
+	})
+
 	if span != nil {
 		span.End()
 	}
 
+	if s.SupaMemory != nil && strings.TrimSpace(promptMeta.UserID) != "" {
+		if err := s.SupaMemory.BumpMonthlyUsage(ctx, promptMeta.UserID, 1); err != nil {
+			slog.Warn("ai usage bump failed", "bot", d.BotDBID, "user_id", promptMeta.UserID, "err", err)
+			s.writeRuntimeAudit(d, "openilink_hub_ai_usage_bump_failed", map[string]any{
+				"bot_id":  d.BotDBID,
+				"user_id": promptMeta.UserID,
+				"role_id": promptMeta.RoleID,
+				"sender":  sender,
+				"error":   err.Error(),
+			})
+		}
+	}
+
 	// Save only the content (not thinking) to message history to avoid polluting context
 	itemList, _ := json.Marshal([]map[string]any{{"type": "text", "text": result.Content}})
-	s.Store.SaveMessage(&store.Message{
+	saveRes, _ := s.Store.SaveMessage(&store.Message{
 		BotID:       d.BotDBID,
 		Direction:   "outbound",
 		ToUserID:    sender,
 		MessageType: 2,
 		ItemList:    itemList,
 	})
+	if saveRes.Inserted {
+		s.enqueueOutboundOutbox(d.BotDBID, saveRes.ID, &store.Message{
+			BotID:       d.BotDBID,
+			Direction:   "outbound",
+			ToUserID:    sender,
+			MessageType: 2,
+			ItemList:    itemList,
+		})
+	}
+	if s.SupaMemory != nil && promptMeta.RoleID != "" && promptMeta.UserID != "" {
+		inboundText := strings.TrimSpace(text)
+		replyText := strings.TrimSpace(result.Content)
+		go func() {
+			bg := context.Background()
+			if inboundText != "" {
+				_ = s.SupaMemory.RecordMemory(bg, supamemory.RecordInput{
+					UserID:  promptMeta.UserID,
+					RoleID:  promptMeta.RoleID,
+					Content: inboundText,
+					Source:  "openilink_user",
+				})
+			}
+			if replyText != "" {
+				_ = s.SupaMemory.RecordMemory(bg, supamemory.RecordInput{
+					UserID:  promptMeta.UserID,
+					RoleID:  promptMeta.RoleID,
+					Content: replyText,
+					Source:  "openilink_assistant",
+				})
+			}
+		}()
+	}
 }
 
 // collectTools gathers all tools from enabled app installations on this bot.
@@ -667,10 +906,21 @@ func (s *AI) sendMediaToUser(ctx context.Context, d Delivery, images []ai.ImageD
 				mediaKeys, _ = json.Marshal(map[string]string{"0": key})
 			}
 		}
-		s.Store.SaveMessage(&store.Message{
+		saveRes, _ := s.Store.SaveMessage(&store.Message{
 			BotID: d.BotDBID, Direction: "outbound", ToUserID: sender, MessageType: 2,
 			ItemList: itemList, MediaStatus: mediaStatus, MediaKeys: mediaKeys,
 		})
+		if saveRes.Inserted {
+			s.enqueueOutboundOutbox(d.BotDBID, saveRes.ID, &store.Message{
+				BotID:       d.BotDBID,
+				Direction:   "outbound",
+				ToUserID:    sender,
+				MessageType: 2,
+				ItemList:    itemList,
+				MediaStatus: mediaStatus,
+				MediaKeys:   mediaKeys,
+			})
+		}
 	}
 	return delivered
 }
@@ -771,24 +1021,183 @@ func (s *AI) sendErrorNotice(d Delivery, recipient string) {
 
 func (s *AI) resolveGlobalConfig() store.AIConfig {
 	global, _ := s.Store.ListConfigByPrefix("ai.")
-	if global["ai.api_key"] == "" {
-		return store.AIConfig{}
-	}
+
 	var cfg store.AIConfig
 	cfg.Source = "builtin"
-	cfg.BaseURL = global["ai.base_url"]
-	cfg.APIKey = global["ai.api_key"]
-	cfg.Model = global["ai.model"]
-	cfg.SystemPrompt = global["ai.system_prompt"]
-	cfg.HideThinking = global["ai.hide_thinking"] == "true"
-	cfg.StripMarkdown = global["ai.strip_markdown"] == "true"
-	if v := global["ai.max_history"]; v != "" {
+	cfg.BaseURL = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_BASE_URL")), global["ai.base_url"])
+	cfg.APIKey = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_API_KEY")), global["ai.api_key"])
+	cfg.Model = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MODEL")), global["ai.model"])
+	cfg.FallbackModel = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_FALLBACK_MODEL")), global["ai.fallback_model"])
+	cfg.SystemPrompt = firstNonEmpty(strings.TrimSpace(os.Getenv("AI_SYSTEM_PROMPT")), global["ai.system_prompt"])
+	if cfg.APIKey == "" {
+		return store.AIConfig{}
+	}
+
+	hideThinkingRaw := strings.ToLower(firstNonEmpty(strings.TrimSpace(os.Getenv("AI_HIDE_THINKING")), global["ai.hide_thinking"]))
+	cfg.HideThinking = hideThinkingRaw == "true" || hideThinkingRaw == "1"
+	stripMarkdownRaw := strings.ToLower(firstNonEmpty(strings.TrimSpace(os.Getenv("AI_STRIP_MARKDOWN")), global["ai.strip_markdown"]))
+	cfg.StripMarkdown = stripMarkdownRaw == "true" || stripMarkdownRaw == "1"
+	if v := firstNonEmpty(strings.TrimSpace(os.Getenv("AI_MAX_HISTORY")), global["ai.max_history"]); v != "" {
 		fmt.Sscanf(v, "%d", &cfg.MaxHistory)
 	}
-	if v := global["ai.custom_headers"]; v != "" {
+	if v := firstNonEmpty(strings.TrimSpace(os.Getenv("AI_CUSTOM_HEADERS")), global["ai.custom_headers"]); v != "" {
 		cfg.CustomHeaders = parseCustomHeaders(v)
 	}
 	return cfg
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func composePromptSnapshot(prompt *supamemory.PromptSnapshot) string {
+	if prompt == nil {
+		return ""
+	}
+	full := strings.TrimSpace(prompt.FullPrompt)
+	if full != "" {
+		return full
+	}
+	sys := strings.TrimSpace(prompt.SystemPrompt)
+	usr := strings.TrimSpace(prompt.UserPrompt)
+	switch {
+	case sys != "" && usr != "":
+		return sys + "\n\n" + usr
+	case sys != "":
+		return sys
+	case usr != "":
+		return usr
+	default:
+		return ""
+	}
+}
+
+func (s *AI) resolveRuntimePrompt(ctx context.Context, cfg store.AIConfig, botID, providerBotID, contextToken, sender string) (store.AIConfig, runtimePromptMeta) {
+	meta := runtimePromptMeta{Source: "global_fallback"}
+	globalPrompt := cfg.SystemPrompt
+	if s.SupaMemory == nil {
+		return cfg, meta
+	}
+	contextToken = strings.TrimSpace(contextToken)
+	sender = strings.TrimSpace(sender)
+	if contextToken == "" && sender == "" {
+		return cfg, meta
+	}
+
+	var (
+		bctx *supamemory.BindingContext
+		berr error
+	)
+	if contextToken != "" {
+		bctx, berr = s.SupaMemory.ResolveBindingContext(ctx, providerBotID, contextToken)
+	}
+	if (berr != nil || bctx == nil) && sender != "" && sender != contextToken {
+		bctx, berr = s.SupaMemory.ResolveBindingContext(ctx, providerBotID, sender)
+	}
+	if berr != nil || bctx == nil {
+		cfg.SystemPrompt = globalPrompt
+		return cfg, meta
+	}
+	meta.RoleID = strings.TrimSpace(bctx.RoleID)
+	meta.UserID = strings.TrimSpace(bctx.UserID)
+	if meta.UserID == "" || meta.RoleID == "" {
+		cfg.SystemPrompt = globalPrompt
+		return cfg, meta
+	}
+
+	cacheKey := meta.UserID + ":" + meta.RoleID
+	if hit, ok := s.getRuntimePromptCache(cacheKey, time.Now()); ok && !store.IsBlankPrompt(hit.FullPrompt) {
+		cfg.SystemPrompt = hit.FullPrompt
+		meta.Source = "cache"
+		meta.Version = hit.PromptVersion
+		meta.FullHash = store.HashPrefix(store.HashPrompt(hit.FullPrompt), 12)
+		return cfg, meta
+	}
+
+	prompt, err := s.SupaMemory.GetEffectiveFullPrompt(ctx, meta.UserID, meta.RoleID)
+	resolvedPrompt := composePromptSnapshot(prompt)
+	if err != nil || prompt == nil || store.IsBlankPrompt(resolvedPrompt) {
+		cfg.SystemPrompt = globalPrompt
+		return cfg, meta
+	}
+
+	cfg.SystemPrompt = resolvedPrompt
+	meta.Source = "supabase_rpc"
+	meta.Version = prompt.PromptVersion
+	meta.FullHash = store.HashPrefix(store.HashPrompt(resolvedPrompt), 12)
+	s.setRuntimePromptCache(cacheKey, cachedRuntimePrompt{
+		FullPrompt:    resolvedPrompt,
+		PromptVersion: prompt.PromptVersion,
+		CachedAt:      time.Now(),
+	})
+	return cfg, meta
+}
+
+func (s *AI) getRuntimePromptCache(key string, now time.Time) (cachedRuntimePrompt, bool) {
+	if s == nil || key == "" || s.promptCache == nil {
+		return cachedRuntimePrompt{}, false
+	}
+	row, ok := s.promptCache[key]
+	if !ok || now.Sub(row.CachedAt) > runtimePromptCacheTTL {
+		return cachedRuntimePrompt{}, false
+	}
+	return row, true
+}
+
+func (s *AI) setRuntimePromptCache(key string, row cachedRuntimePrompt) {
+	if s == nil || key == "" {
+		return
+	}
+	if s.promptCache == nil {
+		s.promptCache = make(map[string]cachedRuntimePrompt)
+	}
+	s.promptCache[key] = row
+}
+
+func (s *AI) resolveMemories(ctx context.Context, cfg store.AIConfig, meta runtimePromptMeta, currentText string) []supamemory.MemoryRow {
+	if s.SupaMemory == nil {
+		return nil
+	}
+	if strings.TrimSpace(meta.RoleID) == "" || strings.TrimSpace(meta.UserID) == "" {
+		return nil
+	}
+	rows, err := s.SupaMemory.SearchMemories(ctx, meta.UserID, meta.RoleID, currentText, supamemory.SearchOptions{
+		EmbeddingBase:  cfg.BaseURL,
+		EmbeddingKey:   cfg.APIKey,
+		EmbeddingModel: "",
+		CustomHeaders:  cfg.CustomHeaders,
+	})
+	if err != nil {
+		return nil
+	}
+	return rows
+}
+
+func buildMemoryPrompt(rows []supamemory.MemoryRow) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	var lines []string
+	lines = append(lines, "以下是与当前用户相关的历史记忆（仅作参考，若与当前事实冲突以当前对话为准）：")
+	for _, row := range rows {
+		content := strings.TrimSpace(row.Content)
+		if content == "" {
+			continue
+		}
+		if len([]rune(content)) > 140 {
+			content = string([]rune(content)[:140])
+		}
+		lines = append(lines, "- "+content)
+	}
+	if len(lines) == 1 {
+		return ""
+	}
+	return strings.Join(lines, "\n")
 }
 
 // parseCustomHeaders parses custom headers from JSON. Supports both array
@@ -858,6 +1267,30 @@ func (s *AI) setTokenUsage(span, rootSpan *store.SpanBuilder, prompt, completion
 		if reasoning > 0 {
 			sp.SetAttr("ai.tokens.reasoning", reasoning)
 		}
+	}
+}
+
+func (s *AI) enqueueOutboundOutbox(botID string, msgID int64, msg *store.Message) {
+	if s.Store == nil || msgID <= 0 || msg == nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"message_db_id": msgID,
+		"bot_id":        botID,
+		"direction":     "outbound",
+		"to_user_id":    msg.ToUserID,
+		"item_list":     msg.ItemList,
+		"media_status":  msg.MediaStatus,
+		"media_keys":    msg.MediaKeys,
+	})
+	eventID := fmt.Sprintf("msg:%s:%s:%d", store.OutboxEventMessageOutbound, botID, msgID)
+	if _, _, err := s.Store.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
+		EventID:      eventID,
+		EventType:    store.OutboxEventMessageOutbound,
+		PartitionKey: botID,
+		Payload:      payload,
+	}); err != nil {
+		slog.Warn("enqueue outbox failed", "event_id", eventID, "bot", botID, "err", err)
 	}
 }
 

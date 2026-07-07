@@ -634,6 +634,51 @@ func (s *Store) UpdateWebhookLogPluginVersion(int64, string) error              
 func (s *Store) ListWebhookLogs(string, string, int) ([]store.WebhookLog, error)     { return nil, nil }
 func (s *Store) CleanOldWebhookLogs(int) error                                       { return nil }
 
+// --- PromptProfileStore (stub) ---
+
+func (s *Store) UpsertPromptProfile(store.PromptProfileUpsertInput) (*store.PromptProfile, bool, error) {
+	return nil, false, errNotImplemented
+}
+func (s *Store) GetActivePromptProfile(string, string) (*store.PromptProfile, error) { return nil, errNotImplemented }
+func (s *Store) InvalidatePromptProfile(string, string, string) (bool, error)         { return false, errNotImplemented }
+func (s *Store) GetPromptProfile(string, string, string) (*store.PromptProfile, error) {
+	return nil, errNotImplemented
+}
+
+// --- WechatPendingBindingStore (stub) ---
+
+func (s *Store) CreateWechatPendingBinding(store.WechatPendingBindingCreateInput) (*store.WechatPendingBinding, bool, error) {
+	return nil, false, errNotImplemented
+}
+func (s *Store) GetLatestPendingWechatBinding(string, string, time.Time) (*store.WechatPendingBinding, error) {
+	return nil, errNotImplemented
+}
+func (s *Store) FinalizeWechatPendingBinding(int64, string, string, time.Time) (bool, error) {
+	return false, errNotImplemented
+}
+func (s *Store) MarkWechatPendingBindingRetry(int64, string, string, time.Time) error {
+	return errNotImplemented
+}
+
+// --- SyncOutboxStore (stub) ---
+
+func (s *Store) EnqueueSyncOutboxEvent(store.EnqueueOutboxInput) (*store.SyncOutboxEvent, bool, error) {
+	return nil, false, errNotImplemented
+}
+func (s *Store) ClaimPendingSyncOutboxEvents(store.ClaimOutboxOptions) ([]store.SyncOutboxEvent, error) {
+	return nil, errNotImplemented
+}
+func (s *Store) MarkSyncOutboxEventSent(string, time.Time) error { return errNotImplemented }
+func (s *Store) MarkSyncOutboxEventRetry(store.RetryOutboxInput) error {
+	return errNotImplemented
+}
+func (s *Store) MarkSyncOutboxEventDead(string, string) error { return errNotImplemented }
+
+// --- AdminSyncInboxStore (stub) ---
+
+func (s *Store) CreateAdminSyncInboxEvent(string) (bool, error) { return false, errNotImplemented }
+func (s *Store) HasAdminSyncInboxEvent(string) (bool, error)    { return false, errNotImplemented }
+
 // --- io.Closer ---
 
 func (s *Store) Close() error { return nil }

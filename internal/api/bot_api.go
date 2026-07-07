@@ -189,7 +189,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		item["file_name"] = outMsg.FileName
 	}
 	itemList, _ := json.Marshal([]any{item})
-	s.Store.SaveMessage(&store.Message{
+	dbMsg := &store.Message{
 		BotID:       inst.BotID,
 		Direction:   "outbound",
 		ToUserID:    req.To,
@@ -197,7 +197,10 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		ItemList:    itemList,
 		MediaStatus: mediaStatus,
 		MediaKeys:   mediaKeys,
-	})
+	}
+	if res, err := s.Store.SaveMessage(dbMsg); err == nil && res.Inserted {
+		enqueueOutboundOutbox(s.Store, inst.BotID, res.ID, dbMsg)
+	}
 
 	// Append span to message trace if trace_id links to an existing trace
 	if traceID != "" {
@@ -224,6 +227,30 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 		"client_id": clientID,
 		"trace_id":  traceID,
 	})
+}
+
+func enqueueOutboundOutbox(st store.Store, botID string, msgID int64, msg *store.Message) {
+	if st == nil || msgID <= 0 || msg == nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"message_db_id": msgID,
+		"bot_id":        botID,
+		"direction":     "outbound",
+		"to_user_id":    msg.ToUserID,
+		"item_list":     msg.ItemList,
+		"media_status":  msg.MediaStatus,
+		"media_keys":    msg.MediaKeys,
+	})
+	eventID := fmt.Sprintf("msg:%s:%s:%d", store.OutboxEventMessageOutbound, botID, msgID)
+	if _, _, err := st.EnqueueSyncOutboxEvent(store.EnqueueOutboxInput{
+		EventID:      eventID,
+		EventType:    store.OutboxEventMessageOutbound,
+		PartitionKey: botID,
+		Payload:      payload,
+	}); err != nil {
+		slog.Warn("enqueue outbox failed", "event_id", eventID, "bot", botID, "err", err)
+	}
 }
 
 // handleBotAPIContacts handles GET /bot/v1/contacts.
