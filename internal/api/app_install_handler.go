@@ -73,9 +73,10 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 	}
 
 	var req struct {
-		Handle  *string         `json:"handle"`
-		Config  json.RawMessage `json:"config"`
-		Enabled *bool           `json:"enabled"`
+		Handle            *string         `json:"handle"`
+		Config            json.RawMessage `json:"config"`
+		Enabled           *bool           `json:"enabled"`
+		ReplyPrefixHandle *bool           `json:"reply_prefix_handle"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -102,8 +103,12 @@ func (s *Server) handleUpdateInstallation(w http.ResponseWriter, r *http.Request
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	replyPrefixHandle := inst.ReplyPrefixHandle
+	if req.ReplyPrefixHandle != nil {
+		replyPrefixHandle = *req.ReplyPrefixHandle
+	}
 
-	if err := s.Store.UpdateInstallation(inst.ID, handle, cfg, inst.Scopes, enabled); err != nil {
+	if err := s.Store.UpdateInstallation(inst.ID, handle, cfg, inst.Scopes, enabled, replyPrefixHandle); err != nil {
 		jsonError(w, "update failed", http.StatusInternalServerError)
 		return
 	}
@@ -320,7 +325,7 @@ func (s *Server) handleReauthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update installation scopes to current app scopes
-	if err := s.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled); err != nil {
+	if err := s.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled, inst.ReplyPrefixHandle); err != nil {
 		jsonError(w, "reauthorize failed", http.StatusInternalServerError)
 		return
 	}
@@ -454,7 +459,7 @@ func (s *Server) handleInstallApp(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "install failed", http.StatusInternalServerError)
 		return
 	}
-	if err := s.Store.UpdateInstallation(inst.ID, req.Handle, inst.Config, scopes, inst.Enabled); err != nil {
+	if err := s.Store.UpdateInstallation(inst.ID, req.Handle, inst.Config, scopes, inst.Enabled, inst.ReplyPrefixHandle); err != nil {
 		slog.Error("install: set handle/scopes failed", "inst", inst.ID, "err", err)
 	}
 	inst.Handle = req.Handle

@@ -26,6 +26,21 @@ func generateTraceID() string {
 	return "tr_" + hex.EncodeToString(b)
 }
 
+// applyReplyPrefix optionally prepends "@{handle} " to outbound text when the
+// installation has opted into multi-channel reply prefixing (#248). A no-op
+// when the toggle is off, the handle is empty, or the prefix is already
+// present (idempotent for clients that pre-format their own messages).
+func applyReplyPrefix(inst *store.AppInstallation, text string) string {
+	if !inst.ReplyPrefixHandle || inst.Handle == "" {
+		return text
+	}
+	prefix := "@" + inst.Handle + " "
+	if strings.HasPrefix(text, prefix) {
+		return text
+	}
+	return prefix + text
+}
+
 // handleBotAPISend handles POST /bot/v1/messages/send.
 func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 	inst := installationFromContext(r.Context())
@@ -112,7 +127,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 
 	itemType := req.Type
 	if req.Type == "text" {
-		outMsg.Text = req.Content
+		outMsg.Text = applyReplyPrefix(inst, req.Content)
 	} else {
 		// Media message: resolve data from base64, url, or content
 		var mediaData []byte
@@ -140,7 +155,7 @@ func (s *Server) handleBotAPISend(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			// Fallback: send content as text
-			outMsg.Text = req.Content
+			outMsg.Text = applyReplyPrefix(inst, req.Content)
 			itemType = "text"
 		}
 		if mediaData != nil {

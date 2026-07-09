@@ -306,7 +306,7 @@ func (db *DB) InstallApp(appID, botID string) (*store.AppInstallation, error) {
 func (db *DB) GetInstallation(id string) (*store.AppInstallation, error) {
 	i := &store.AppInstallation{}
 	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token,
-		i.handle, i.config, i.scopes, i.tools, i.enabled,
+		i.handle, i.config, i.scopes, i.tools, i.enabled, i.reply_prefix_handle,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
 		a.webhook_url, a.webhook_secret,
@@ -314,7 +314,7 @@ func (db *DB) GetInstallation(id string) (*store.AppInstallation, error) {
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.id = ?`, id).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
-		&i.Handle, &i.Config, &i.Scopes, &i.Tools, &i.Enabled,
+		&i.Handle, &i.Config, &i.Scopes, &i.Tools, &i.Enabled, &i.ReplyPrefixHandle,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
 		&i.AppWebhookURL, &i.AppWebhookSecret,
@@ -328,7 +328,7 @@ func (db *DB) GetInstallation(id string) (*store.AppInstallation, error) {
 func (db *DB) GetInstallationByToken(token string) (*store.AppInstallation, error) {
 	i := &store.AppInstallation{}
 	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token,
-		i.handle, i.config, i.scopes, i.tools, i.enabled,
+		i.handle, i.config, i.scopes, i.tools, i.enabled, i.reply_prefix_handle,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
 		a.webhook_url, a.webhook_secret,
@@ -336,7 +336,7 @@ func (db *DB) GetInstallationByToken(token string) (*store.AppInstallation, erro
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.app_token = ?`, token).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
-		&i.Handle, &i.Config, &i.Scopes, &i.Tools, &i.Enabled,
+		&i.Handle, &i.Config, &i.Scopes, &i.Tools, &i.Enabled, &i.ReplyPrefixHandle,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
 		&i.AppWebhookURL, &i.AppWebhookSecret,
@@ -375,7 +375,7 @@ func (db *DB) ListInstallationsByBot(botID string) ([]store.AppInstallation, err
 
 func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation, error) {
 	rows, err := db.Query(fmt.Sprintf(`SELECT i.id, i.app_id, i.bot_id, i.app_token,
-		i.handle, i.config, i.scopes, i.tools, i.enabled,
+		i.handle, i.config, i.scopes, i.tools, i.enabled, i.reply_prefix_handle,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
 		a.webhook_url, a.webhook_secret,
@@ -390,7 +390,7 @@ func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation,
 	for rows.Next() {
 		var i store.AppInstallation
 		if err := rows.Scan(&i.ID, &i.AppID, &i.BotID, &i.AppToken,
-			&i.Handle, &i.Config, &i.Scopes, &i.Tools, &i.Enabled,
+			&i.Handle, &i.Config, &i.Scopes, &i.Tools, &i.Enabled, &i.ReplyPrefixHandle,
 			&i.CreatedAt, &i.UpdatedAt,
 			&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
 			&i.AppWebhookURL, &i.AppWebhookSecret,
@@ -402,9 +402,10 @@ func (db *DB) listInstallations(where string, arg any) ([]store.AppInstallation,
 	return list, rows.Err()
 }
 
-func (db *DB) UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool) error {
-	_, err := db.Exec(`UPDATE app_installations SET handle=?, config=?, scopes=?, enabled=?, updated_at=? WHERE id=?`,
-		handle, config, scopes, enabled, db.now(), id)
+func (db *DB) UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool, replyPrefixHandle bool) error {
+	_, err := db.Exec(`UPDATE app_installations
+		SET handle=?, config=?, scopes=?, enabled=?, reply_prefix_handle=?, updated_at=? WHERE id=?`,
+		handle, config, scopes, enabled, replyPrefixHandle, db.now(), id)
 	return err
 }
 
@@ -427,7 +428,7 @@ func (db *DB) RegenerateInstallationToken(id string) (string, error) {
 func (db *DB) GetInstallationByHandle(botID, handle string) (*store.AppInstallation, error) {
 	i := &store.AppInstallation{}
 	err := db.QueryRow(`SELECT i.id, i.app_id, i.bot_id, i.app_token,
-		i.handle, i.config, i.scopes, i.tools, i.enabled,
+		i.handle, i.config, i.scopes, i.tools, i.enabled, i.reply_prefix_handle,
 		i.created_at, i.updated_at,
 		COALESCE(a.name,''), COALESCE(a.slug,''), COALESCE(a.icon,''), COALESCE(a.icon_url,''),
 		a.webhook_url, a.webhook_secret,
@@ -435,7 +436,7 @@ func (db *DB) GetInstallationByHandle(botID, handle string) (*store.AppInstallat
 		FROM app_installations i JOIN apps a ON a.id = i.app_id
 		WHERE i.bot_id = ? AND i.handle = ?`, botID, handle).Scan(
 		&i.ID, &i.AppID, &i.BotID, &i.AppToken,
-		&i.Handle, &i.Config, &i.Scopes, &i.Tools, &i.Enabled,
+		&i.Handle, &i.Config, &i.Scopes, &i.Tools, &i.Enabled, &i.ReplyPrefixHandle,
 		&i.CreatedAt, &i.UpdatedAt,
 		&i.AppName, &i.AppSlug, &i.AppIcon, &i.AppIconURL,
 		&i.AppWebhookURL, &i.AppWebhookSecret,

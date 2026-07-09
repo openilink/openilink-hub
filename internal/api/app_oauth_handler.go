@@ -140,7 +140,7 @@ func (s *Server) handleAppOAuthExchange(w http.ResponseWriter, r *http.Request) 
 	// Snapshot app scopes at install time (Slack model)
 	if len(inst.Scopes) == 0 || string(inst.Scopes) == "[]" || string(inst.Scopes) == "null" {
 		if len(app.Scopes) > 0 {
-			if err := s.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled); err != nil {
+			if err := s.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled, inst.ReplyPrefixHandle); err != nil {
 				slog.Error("oauth exchange: snapshot scopes failed", "inst", inst.ID, "err", err)
 			}
 			inst.Scopes = app.Scopes

@@ -120,14 +120,17 @@ export function InstallationDetailPage() {
   const [handle, setHandle] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [enablingPending, setEnablingPending] = useState(false);
+  const [replyPrefixHandle, setReplyPrefixHandle] = useState(false);
+  const [prefixPending, setPrefixPending] = useState(false);
 
   // Sync local state when inst loads
   useEffect(() => {
     if (inst) {
       setHandle(inst.handle || "");
       setEnabled(inst.enabled ?? true);
+      setReplyPrefixHandle(inst.reply_prefix_handle ?? false);
     }
-  }, [inst?.id, inst?.handle, inst?.enabled]);
+  }, [inst?.id, inst?.handle, inst?.enabled, inst?.reply_prefix_handle]);
 
   if (loading) {
     return (
@@ -180,6 +183,21 @@ export function InstallationDetailPage() {
       toast({ variant: "destructive", title: "保存失败", description: e.message });
     } finally {
       setEnablingPending(false);
+    }
+  }
+
+  async function handleToggleReplyPrefix(val: boolean) {
+    if (prefixPending) return;
+    setPrefixPending(true);
+    setReplyPrefixHandle(val);
+    try {
+      await api.updateInstallation(inst.app_id, inst.id, { reply_prefix_handle: val });
+      refreshInstallations();
+    } catch (e: any) {
+      setReplyPrefixHandle(!val);
+      toast({ variant: "destructive", title: "保存失败", description: e.message });
+    } finally {
+      setPrefixPending(false);
     }
   }
 
@@ -245,6 +263,25 @@ export function InstallationDetailPage() {
             {app.description ? (
               <p className="text-sm text-muted-foreground">{app.description}</p>
             ) : null}
+            {/* Secondary toggle row: reply-prefix opt-in (#248). Disabled
+                when handle is empty since the backend short-circuits and
+                wouldn't actually prepend anything. */}
+            <div className="flex items-center gap-2 pt-1">
+              <Switch
+                checked={replyPrefixHandle && !!handle}
+                onCheckedChange={handleToggleReplyPrefix}
+                disabled={prefixPending || !handle}
+                aria-label="回复时带 @handle 前缀"
+              />
+              <span className="text-sm text-muted-foreground">
+                回复时带 <code className="font-mono">@{handle || "handle"}</code> 前缀
+                {handle ? (
+                  <span className="ml-1 text-xs">（多 channel 时区分来源）</span>
+                ) : (
+                  <span className="ml-1 text-xs">（先设置 handle 后可启用）</span>
+                )}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -744,7 +781,15 @@ function AppConfigForm({ app, inst, onUpdate }: { app: any; inst: any; onUpdate:
 
 // ==================== Config Section ====================
 
-function ConfigSection({ inst, onUninstall, queryClient }: { inst: any; onUninstall: () => void; queryClient: QueryClient }) {
+function ConfigSection({
+  inst,
+  onUninstall,
+  queryClient,
+}: {
+  inst: any;
+  onUninstall: () => void;
+  queryClient: QueryClient;
+}) {
   const { toast } = useToast();
   const [showUninstallDialog, setShowUninstallDialog] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
@@ -869,26 +914,30 @@ function EventLogsSection({
       </div>
 
       {/* Show hint when logs contain 403/4xx errors */}
-      {!loading && logs.some((l) => {
-        const code = l.status_code || l.status;
-        return code >= 400 && code < 500;
-      }) && (
-        <div className="rounded-lg border border-orange-200 bg-orange-50 dark:border-orange-900 dark:bg-orange-950/30 p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-medium text-orange-700 dark:text-orange-400">部分事件投递失败</p>
-          <p>如果应用来自远程市场，4xx 错误通常是远程应用服务器的配置问题。请联系应用开发者确认 Webhook 地址和权限配置是否正确。</p>
-          {homepage ? (
-            <a
-              href={homepage}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-orange-700 hover:underline dark:text-orange-400"
-            >
-              <ExternalLink className="h-3 w-3" />
-              前往应用主页
-            </a>
-          ) : null}
-        </div>
-      )}
+      {!loading &&
+        logs.some((l) => {
+          const code = l.status_code || l.status;
+          return code >= 400 && code < 500;
+        }) && (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 dark:border-orange-900 dark:bg-orange-950/30 p-3 text-xs text-muted-foreground space-y-1">
+            <p className="font-medium text-orange-700 dark:text-orange-400">部分事件投递失败</p>
+            <p>
+              如果应用来自远程市场，4xx 错误通常是远程应用服务器的配置问题。请联系应用开发者确认
+              Webhook 地址和权限配置是否正确。
+            </p>
+            {homepage ? (
+              <a
+                href={homepage}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-orange-700 hover:underline dark:text-orange-400"
+              >
+                <ExternalLink className="h-3 w-3" />
+                前往应用主页
+              </a>
+            ) : null}
+          </div>
+        )}
 
       <Card className="overflow-hidden">
         {loading ? (

@@ -126,7 +126,7 @@ func setupMediaTestEnv(t *testing.T) (*httptest.Server, store.Store, *store.Bot,
 		t.Fatalf("InstallApp: %v", err)
 	}
 	// Grant message:read scope so Bearer auth passes scope check.
-	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, true); err != nil {
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, true, false); err != nil {
 		t.Fatalf("UpdateInstallation: %v", err)
 	}
 	// Re-read to pick up updated scopes.
@@ -277,7 +277,7 @@ func TestChannelMedia_BearerDisabledInstallation(t *testing.T) {
 
 	// Disable the installation.
 	scopesJSON, _ := json.Marshal([]string{"message:read"})
-	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, false); err != nil {
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, false, false); err != nil {
 		t.Fatalf("UpdateInstallation: %v", err)
 	}
 
@@ -298,7 +298,7 @@ func TestChannelMedia_BearerNoScope(t *testing.T) {
 	ts, s, _, inst := setupMediaTestEnv(t)
 
 	// Clear scopes on the installation.
-	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), json.RawMessage("[]"), true); err != nil {
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), json.RawMessage("[]"), true, false); err != nil {
 		t.Fatalf("UpdateInstallation: %v", err)
 	}
 
@@ -320,7 +320,7 @@ func TestMediaProxy_BearerDisabledInstallation(t *testing.T) {
 
 	// Disable the installation.
 	scopesJSON, _ := json.Marshal([]string{"message:read"})
-	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, false); err != nil {
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), scopesJSON, false, false); err != nil {
 		t.Fatalf("UpdateInstallation: %v", err)
 	}
 
@@ -341,7 +341,7 @@ func TestMediaProxy_BearerNoScope(t *testing.T) {
 	ts, s, b, inst := setupMediaTestEnv(t)
 
 	// Clear scopes on the installation.
-	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), json.RawMessage("[]"), true); err != nil {
+	if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), json.RawMessage("[]"), true, false); err != nil {
 		t.Fatalf("UpdateInstallation: %v", err)
 	}
 

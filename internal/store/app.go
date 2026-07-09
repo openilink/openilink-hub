@@ -51,8 +51,11 @@ type AppInstallation struct {
 	Scopes    json.RawMessage `json:"scopes"`
 	Tools     json.RawMessage `json:"tools,omitempty"`
 	Enabled   bool            `json:"enabled"`
-	CreatedAt int64           `json:"created_at"`
-	UpdatedAt int64           `json:"updated_at"`
+	// ReplyPrefixHandle, when true, makes the Bot API send path prepend
+	// "@{handle} " to outgoing text messages. Opt-in (default false). See #248.
+	ReplyPrefixHandle bool  `json:"reply_prefix_handle"`
+	CreatedAt         int64 `json:"created_at"`
+	UpdatedAt         int64 `json:"updated_at"`
 
 	// Joined from apps table
 	AppName          string `json:"app_name,omitempty"`
@@ -118,7 +121,7 @@ type AppStore interface {
 	GetInstallationByToken(token string) (*AppInstallation, error)
 	ListInstallationsByApp(appID string) ([]AppInstallation, error)
 	ListInstallationsByBot(botID string) ([]AppInstallation, error)
-	UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool) error
+	UpdateInstallation(id, handle string, config json.RawMessage, scopes json.RawMessage, enabled bool, replyPrefixHandle bool) error
 	SetAppWebhookVerified(id string, verified bool) error
 	UpdateAppWebhookURL(id, webhookURL string) error
 	InstalledAppIDs(userID string) (map[string]bool, error)

@@ -483,7 +483,7 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 	t.Run("UpdateInstallation", func(t *testing.T) {
 		cfg := json.RawMessage(`{"channel":"general"}`)
 		scopes := json.RawMessage(`["message:read"]`)
-		if err := s.UpdateInstallation(instID, "my-app-handle", cfg, scopes, false); err != nil {
+		if err := s.UpdateInstallation(instID, "my-app-handle", cfg, scopes, false, true); err != nil {
 			t.Fatalf("UpdateInstallation: %v", err)
 		}
 		got, _ := s.GetInstallation(instID)
@@ -506,6 +506,9 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 		}
 		if len(gotScopes) != 1 || gotScopes[0] != "message:read" {
 			t.Errorf("scopes = %s", got.Scopes)
+		}
+		if !got.ReplyPrefixHandle {
+			t.Error("expected reply_prefix_handle=true after update")
 		}
 	})
 
@@ -948,7 +951,7 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 
 		// Set installation-level scopes (subset of app scopes).
 		instScopes, _ := json.Marshal([]string{"message:read"})
-		if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), instScopes, true); err != nil {
+		if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), instScopes, true, false); err != nil {
 			t.Fatalf("UpdateInstallation: %v", err)
 		}
 
@@ -961,7 +964,7 @@ func TestAppLifecycle(t *testing.T, s store.Store) {
 
 		// Clear installation scopes back to empty.
 		emptyScopes, _ := json.Marshal([]string{})
-		if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), emptyScopes, true); err != nil {
+		if err := s.UpdateInstallation(inst.ID, "", json.RawMessage("{}"), emptyScopes, true, false); err != nil {
 			t.Fatalf("UpdateInstallation (clear scopes): %v", err)
 		}
 		got, _ = s.GetInstallation(inst.ID)

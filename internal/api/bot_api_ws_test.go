@@ -121,7 +121,11 @@ func TestBotAPIWebSocket_Connect(t *testing.T) {
 	})
 
 	t.Run("connect with disabled installation", func(t *testing.T) {
-		_ = srv.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, inst.Scopes, false)
+		// Only flip Enabled; preserve all other settings (including ReplyPrefixHandle)
+		// so the subtest stays focused on the disabled-installation code path.
+		if err := srv.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, inst.Scopes, false, inst.ReplyPrefixHandle); err != nil {
+			t.Fatalf("UpdateInstallation(disable): %v", err)
+		}
 
 		wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/bot/v1/ws?token=" + inst.AppToken
 		_, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -133,7 +137,9 @@ func TestBotAPIWebSocket_Connect(t *testing.T) {
 		}
 
 		// Re-enable
-		_ = srv.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, inst.Scopes, true)
+		if err := srv.Store.UpdateInstallation(inst.ID, inst.Handle, inst.Config, inst.Scopes, true, inst.ReplyPrefixHandle); err != nil {
+			t.Fatalf("UpdateInstallation(re-enable): %v", err)
+		}
 	})
 }
 

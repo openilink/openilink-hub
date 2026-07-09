@@ -2917,7 +2917,7 @@ func TestAppEventDelivery_HTTPAndWebSocket(t *testing.T) {
 	}
 	// Grant scopes — handleInstallApp does this via UpdateInstallation; direct
 	// db.InstallApp leaves scopes as "[]", which fails instHasScope checks.
-	if err := env.db.UpdateInstallation(inst.ID, "", inst.Config, appObj.Scopes, true); err != nil {
+	if err := env.db.UpdateInstallation(inst.ID, "", inst.Config, appObj.Scopes, true, false); err != nil {
 		t.Fatalf("UpdateInstallation scopes: %v", err)
 	}
 	time.Sleep(100 * time.Millisecond) // allow bot dispatcher to settle

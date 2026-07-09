@@ -152,10 +152,13 @@ func installTestApp(t *testing.T, s store.Store, appID, botID string) *store.App
 	if err != nil {
 		t.Fatalf("InstallApp: %v", err)
 	}
-	// Snapshot app scopes at install time (Slack model)
+	// Snapshot app scopes at install time (Slack model). Fail fast so the
+	// helper never hands back an installation with stale scopes.
 	app, err := s.GetApp(appID)
 	if err == nil && app != nil && len(app.Scopes) > 0 {
-		_ = s.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled)
+		if err := s.UpdateInstallation(inst.ID, inst.Handle, inst.Config, app.Scopes, inst.Enabled, inst.ReplyPrefixHandle); err != nil {
+			t.Fatalf("installTestApp: snapshot scopes: %v", err)
+		}
 		inst.Scopes = app.Scopes
 	}
 	return inst
@@ -268,8 +271,9 @@ func TestBotAPI_ScopeChecks(t *testing.T) {
 	})
 
 	t.Run("disabled installation returns 403", func(t *testing.T) {
-		// Disable the installation.
-		_ = env.store.UpdateInstallation(instMsgOnly.ID, instMsgOnly.Handle, instMsgOnly.Config, instMsgOnly.Scopes, false)
+		// Disable the installation. Preserve ReplyPrefixHandle so this subtest
+		// only toggles the Enabled bit (matches the WS test pattern).
+		_ = env.store.UpdateInstallation(instMsgOnly.ID, instMsgOnly.Handle, instMsgOnly.Config, instMsgOnly.Scopes, false, instMsgOnly.ReplyPrefixHandle)
 
 		resp := doJSON(t, env.ts, "POST", "/bot/v1/message/send",
 			map[string]string{"content": "hello"},
@@ -280,7 +284,7 @@ func TestBotAPI_ScopeChecks(t *testing.T) {
 		}
 
 		// Re-enable for other tests.
-		_ = env.store.UpdateInstallation(instMsgOnly.ID, instMsgOnly.Handle, instMsgOnly.Config, instMsgOnly.Scopes, true)
+		_ = env.store.UpdateInstallation(instMsgOnly.ID, instMsgOnly.Handle, instMsgOnly.Config, instMsgOnly.Scopes, true, instMsgOnly.ReplyPrefixHandle)
 	})
 }
 
