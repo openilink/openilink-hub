@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/minio/minio-go/v7"
 	"github.com/openilink/openilink-hub/internal/api"
 	appdelivery "github.com/openilink/openilink-hub/internal/app"
 	"github.com/openilink/openilink-hub/internal/auth"
@@ -2098,12 +2099,13 @@ func TestAIContextIsolation(t *testing.T) {
 func TestMediaStorageAndProxy(t *testing.T) {
 	// Requires MinIO running on localhost:19000
 	objStore, err := storage.NewS3(storage.S3Config{
-		Endpoint:  "localhost:19000",
-		AccessKey: "openilink",
-		SecretKey: "openilink",
-		Bucket:    "openilink-test",
-		UseSSL:    false,
-		PublicURL: "", // will be set after server starts
+		Endpoint:     "localhost:19000",
+		AccessKey:    "openilink",
+		SecretKey:    "openilink",
+		Bucket:       "openilink-test",
+		UseSSL:       false,
+		PublicURL:    "", // will be set after server starts
+		BucketLookup: minio.BucketLookupPath,
 	})
 	if err != nil {
 		t.Skipf("skip: MinIO unavailable: %v", err)
