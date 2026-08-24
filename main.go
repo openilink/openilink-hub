@@ -156,6 +156,7 @@ func main() {
 			Bucket:    cfg.StorageBucket,
 			UseSSL:    cfg.StorageSSL,
 			PublicURL: publicURL,
+			BucketLookup: storage.ParseBucketLookup(cfg.StorageBucketLookup),
 		})
 		if err != nil {
 			slog.Error("storage init failed (s3)", "err", err)

@@ -20,6 +20,7 @@ type Config struct {
 	StorageBucket    string
 	StorageSSL       bool
 	StoragePublicURL string
+	StorageBucketLookup string // "auto" | "path" | "dns"; bucket addressing style
 	StoragePath      string // local filesystem path (used when S3 is not configured)
 
 	// OAuth providers
@@ -44,6 +45,7 @@ func Parse() *Config {
 	cfg.StorageBucket = envOr("STORAGE_BUCKET", "openilink")
 	cfg.StorageSSL = envOr("STORAGE_SSL", "") == "true"
 	cfg.StoragePublicURL = envOr("STORAGE_PUBLIC_URL", "")
+	cfg.StorageBucketLookup = envOr("STORAGE_BUCKET_LOOKUP", "auto")
 	cfg.StoragePath = envOr("STORAGE_PATH", "")
 	// OAuth
 	cfg.GitHubClientID = envOr("GITHUB_CLIENT_ID", "")
