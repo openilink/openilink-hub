@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -25,6 +26,22 @@ type S3Config struct {
 	Bucket    string
 	UseSSL    bool
 	PublicURL string
+	// BucketLookup specifies the bucket addressing style:
+	// minio.BucketLookupAuto | BucketLookupPath | BucketLookupDNS.
+	BucketLookup minio.BucketLookupType
+}
+
+// ParseBucketLookup parses a string into a minio.BucketLookupType.
+// Accepts "auto" (default), "path", or "dns" (case-insensitive).
+func ParseBucketLookup(s string) minio.BucketLookupType {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "path":
+		return minio.BucketLookupPath
+	case "dns":
+		return minio.BucketLookupDNS
+	default:
+		return minio.BucketLookupAuto
+	}
 }
 
 // NewS3 creates a new S3Store and ensures the bucket exists.
@@ -32,6 +49,7 @@ func NewS3(cfg S3Config) (*S3Store, error) {
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
 		Secure: cfg.UseSSL,
+		BucketLookup: cfg.BucketLookup,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("storage: s3 connect: %w", err)

@@ -408,6 +408,7 @@ go build -o oih .
 | `STORAGE_ACCESS_KEY` | — | 存储密钥 |
 | `STORAGE_SECRET_KEY` | — | 存储密钥 |
 | `STORAGE_BUCKET` | — | 存储桶 |
+| `STORAGE_BUCKET_LOOKUP` | `auto` | Bucket 寻址模式：`auto` / `path` / `dns`（COS、OSS、R2 用 `dns`） |
 | `STORAGE_PUBLIC_URL` | — | 存储公开 URL |
 
 <details>

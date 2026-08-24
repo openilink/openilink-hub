@@ -44,6 +44,7 @@ services:
       STORAGE_ACCESS_KEY: openilink
       STORAGE_SECRET_KEY: ${PASSWORD:-openilink}
       STORAGE_BUCKET: openilink
+      # STORAGE_BUCKET_LOOKUP: auto   # auto | path | dns (use dns for COS/OSS/R2)
       # STORAGE_PUBLIC_URL: https://s3.example.com/openilink
       # GITHUB_CLIENT_ID:
       # GITHUB_CLIENT_SECRET:
