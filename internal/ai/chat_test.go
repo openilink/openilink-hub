@@ -15,7 +15,13 @@ import (
 )
 
 // mockMessageStore implements store.MessageStore for testing.
-type mockMessageStore struct{}
+type mockMessageStore struct {
+	history       []store.Message
+	gotBotID      string
+	gotSender     string
+	gotBeforeID   int64
+	gotHistoryMax int
+}
 
 func (m *mockMessageStore) ListChannelMessages(channelID, sender string, limit int) ([]store.Message, error) {
 	return nil, nil
@@ -29,6 +35,13 @@ func (m *mockMessageStore) ListMessages(_ string, _ int, _ int64) ([]store.Messa
 }
 func (m *mockMessageStore) ListMessagesBySender(_, _ string, _ int) ([]store.Message, error) {
 	return nil, nil
+}
+func (m *mockMessageStore) ListMessagesBySenderBefore(botID, sender string, beforeID int64, limit int) ([]store.Message, error) {
+	m.gotBotID = botID
+	m.gotSender = sender
+	m.gotBeforeID = beforeID
+	m.gotHistoryMax = limit
+	return m.history, nil
 }
 func (m *mockMessageStore) GetMessagesSince(_ string, _ int64, _ int) ([]store.Message, error) {
 	return nil, nil
@@ -51,6 +64,42 @@ func (m *mockMessageStore) GetUnprocessedMessages(_ string, _ int) ([]store.Mess
 func (m *mockMessageStore) PruneMessages(_ int) (int64, error) { return 0, nil }
 
 // ==================== Tests ====================
+
+func TestBuildBotMessages_LoadsPriorHistoryWithoutDuplicatingCurrentMessage(t *testing.T) {
+	messageStore := &mockMessageStore{history: []store.Message{
+		{
+			ID: 2, Direction: "outbound", ToUserID: "user1",
+			ItemList: json.RawMessage(`[{"type":"text","text":"Your favorite color is blue."}]`),
+		},
+		{
+			ID: 1, Direction: "inbound", FromUserID: "user1",
+			ItemList: json.RawMessage(`[{"type":"text","text":"My favorite color is blue."}]`),
+		},
+	}}
+	cfg := store.AIConfig{MaxHistory: 8}
+
+	messages := BuildBotMessages(context.Background(), cfg, messageStore, "bot1", "user1", "What is my favorite color?", 3, nil, nil)
+
+	if messageStore.gotBotID != "bot1" || messageStore.gotSender != "user1" || messageStore.gotBeforeID != 3 || messageStore.gotHistoryMax != 8 {
+		t.Fatalf("history query = bot %q sender %q before %d limit %d", messageStore.gotBotID, messageStore.gotSender, messageStore.gotBeforeID, messageStore.gotHistoryMax)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("messages = %d, want 3", len(messages))
+	}
+	want := []struct {
+		role    string
+		content string
+	}{
+		{"user", "My favorite color is blue."},
+		{"assistant", "Your favorite color is blue."},
+		{"user", "What is my favorite color?"},
+	}
+	for i, w := range want {
+		if messages[i].Role != w.role || messages[i].Content != w.content {
+			t.Errorf("message[%d] = (%q, %q), want (%q, %q)", i, messages[i].Role, messages[i].Content, w.role, w.content)
+		}
+	}
+}
 
 func TestComplete_TextReply(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

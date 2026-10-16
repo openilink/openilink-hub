@@ -640,6 +640,32 @@ func TestMessageCRUD(t *testing.T, s store.Store) {
 		}
 	})
 
+	t.Run("ListMessagesBySenderBefore", func(t *testing.T) {
+		all, err := s.ListMessagesBySender(b.ID, "sender1", 100)
+		if err != nil {
+			t.Fatalf("ListMessagesBySender: %v", err)
+		}
+		if len(all) < 2 {
+			t.Fatal("expected at least 2 messages from sender1")
+		}
+		beforeID := all[0].ID
+		msgs, err := s.ListMessagesBySenderBefore(b.ID, "sender1", beforeID, 10)
+		if err != nil {
+			t.Fatalf("ListMessagesBySenderBefore: %v", err)
+		}
+		if len(msgs) == 0 {
+			t.Fatal("expected prior messages from sender1")
+		}
+		for _, m := range msgs {
+			if m.ID >= beforeID {
+				t.Errorf("message id %d should be < %d", m.ID, beforeID)
+			}
+			if m.FromUserID != "sender1" && m.ToUserID != "sender1" {
+				t.Errorf("message id %d belongs to a different sender", m.ID)
+			}
+		}
+	})
+
 	t.Run("ListChannelMessages", func(t *testing.T) {
 		msgs, err := s.ListChannelMessages(ch.ID, "sender1", 10)
 		if err != nil {

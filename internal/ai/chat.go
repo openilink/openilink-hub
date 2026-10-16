@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -215,13 +216,34 @@ func BuildMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore
 	if maxHistory <= 0 {
 		maxHistory = defaultMaxHistory
 	}
+	history, err := s.ListChannelMessages(channelID, sender, maxHistory)
+	if err != nil {
+		slog.Warn("load channel AI history failed", "channel", channelID, "sender", sender, "err", err)
+	}
+	return buildMessages(ctx, cfg, history, text, currentImages, resolver)
+}
 
+// BuildBotMessages builds conversation context for the bot-level AI sink.
+// The current inbound message is already stored before AI delivery, so only
+// messages with a lower database ID are loaded as history.
+func BuildBotMessages(ctx context.Context, cfg store.AIConfig, s store.MessageStore, botID, sender, text string, currentMessageID int64, currentImages []ImageData, resolver MediaResolver) []Message {
+	maxHistory := cfg.MaxHistory
+	if maxHistory <= 0 {
+		maxHistory = defaultMaxHistory
+	}
+	history, err := s.ListMessagesBySenderBefore(botID, sender, currentMessageID, maxHistory)
+	if err != nil {
+		slog.Warn("load bot AI history failed", "bot", botID, "sender", sender, "err", err)
+	}
+	return buildMessages(ctx, cfg, history, text, currentImages, resolver)
+}
+
+func buildMessages(ctx context.Context, cfg store.AIConfig, history []store.Message, text string, currentImages []ImageData, resolver MediaResolver) []Message {
 	var messages []Message
 	if cfg.SystemPrompt != "" {
 		messages = append(messages, Message{Role: "system", Content: cfg.SystemPrompt})
 	}
 
-	history, _ := s.ListChannelMessages(channelID, sender, maxHistory)
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]
 		if m.Direction == "inbound" {

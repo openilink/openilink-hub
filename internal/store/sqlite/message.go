@@ -122,6 +122,19 @@ func (db *DB) ListMessagesBySender(botID, sender string, limit int) ([]store.Mes
 	)
 }
 
+func (db *DB) ListMessagesBySenderBefore(botID, sender string, beforeID int64, limit int) ([]store.Message, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if beforeID <= 0 {
+		return db.ListMessagesBySender(botID, sender, limit)
+	}
+	return scanMessages(db,
+		"SELECT "+msgSelectCols+" FROM messages WHERE bot_id = ? AND (from_user_id = ? OR to_user_id = ?) AND id < ? ORDER BY id DESC LIMIT ?",
+		botID, sender, sender, beforeID, limit,
+	)
+}
+
 func (db *DB) ListChannelMessages(channelID, sender string, limit int) ([]store.Message, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50

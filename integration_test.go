@@ -12,6 +12,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +32,7 @@ import (
 	"github.com/openilink/openilink-hub/internal/storage"
 	"github.com/openilink/openilink-hub/internal/store"
 	"github.com/openilink/openilink-hub/internal/store/postgres"
+	"github.com/openilink/openilink-hub/internal/store/sqlite"
 )
 
 // ==================== Test infrastructure ====================
@@ -2090,6 +2093,114 @@ func TestAIContextIsolation(t *testing.T) {
 	msgs3, _ := env.db.ListChannelMessages(ch1.ID, "other@wechat", 50)
 	if len(msgs3) != 0 {
 		t.Errorf("other sender: want 0, got %d", len(msgs3))
+	}
+}
+
+func TestBotAIReceivesPriorConversationHistory(t *testing.T) {
+	type capturedMessage struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+
+	var (
+		llmCalls atomic.Int32
+		callsMu  sync.Mutex
+		calls    [][]capturedMessage
+	)
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []capturedMessage `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		callsMu.Lock()
+		calls = append(calls, req.Messages)
+		callsMu.Unlock()
+		call := llmCalls.Add(1)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": fmt.Sprintf("reply-%d", call)},
+				"finish_reason": "stop",
+			}},
+		})
+	}))
+	defer llmSrv.Close()
+
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "history-test.db"))
+	if err != nil {
+		t.Fatalf("open SQLite: %v", err)
+	}
+	defer db.Close()
+	if err := db.SetConfig("ai.api_key", "test-key"); err != nil {
+		t.Fatalf("set AI API key: %v", err)
+	}
+	db.SetConfig("ai.base_url", llmSrv.URL)
+	db.SetConfig("ai.model", "test-model")
+	user, err := db.CreateUser("aihistory", "AI History")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	botObj, err := db.CreateBot(user.ID, "HistoryBot", "mock", "", mockserver.MockCredentials())
+	if err != nil {
+		t.Fatalf("CreateBot: %v", err)
+	}
+	if err := db.UpdateBotAIEnabled(botObj.ID, true); err != nil {
+		t.Fatalf("UpdateBotAIEnabled: %v", err)
+	}
+	botObj, _ = db.GetBot(botObj.ID)
+	hub := relay.NewHub(nil)
+	mgr := bot.NewManager(db, hub, &sink.AI{Store: db}, nil, "http://localhost")
+	defer mgr.StopAll()
+	if err := mgr.StartBot(context.Background(), botObj); err != nil {
+		t.Fatalf("StartBot: %v", err)
+	}
+
+	botInst, ok := mgr.GetInstance(botObj.ID)
+	if !ok {
+		t.Fatal("bot instance not found")
+	}
+	engine := botInst.Provider.(*mockserver.Provider).Engine()
+
+	waitForReply := func(want int) {
+		t.Helper()
+		deadline := time.After(3 * time.Second)
+		for len(engine.SentMessages()) < want {
+			select {
+			case <-deadline:
+				t.Fatalf("timed out waiting for reply %d", want)
+			default:
+				time.Sleep(20 * time.Millisecond)
+			}
+		}
+	}
+
+	engine.InjectInbound(mockserver.InboundRequest{Sender: "alice@wechat", Text: "My favorite color is blue."})
+	waitForReply(1)
+	engine.InjectInbound(mockserver.InboundRequest{Sender: "alice@wechat", Text: "What is my favorite color?"})
+	waitForReply(2)
+	engine.InjectInbound(mockserver.InboundRequest{Sender: "bob@wechat", Text: "What did Alice say?"})
+	waitForReply(3)
+
+	callsMu.Lock()
+	defer callsMu.Unlock()
+	if len(calls) != 3 {
+		t.Fatalf("LLM calls = %d, want 3", len(calls))
+	}
+	wantAlice := []capturedMessage{
+		{Role: "user", Content: "My favorite color is blue."},
+		{Role: "assistant", Content: "reply-1"},
+		{Role: "user", Content: "What is my favorite color?"},
+	}
+	if !reflect.DeepEqual(calls[1], wantAlice) {
+		t.Errorf("second request messages = %#v, want %#v", calls[1], wantAlice)
+	}
+	wantBob := []capturedMessage{{Role: "user", Content: "What did Alice say?"}}
+	if !reflect.DeepEqual(calls[2], wantBob) {
+		t.Errorf("third request messages = %#v, want %#v", calls[2], wantBob)
 	}
 }
 

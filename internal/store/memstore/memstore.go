@@ -266,6 +266,9 @@ func (s *Store) BatchHasFreshContextToken(botIDs []string, maxAge time.Duration)
 func (s *Store) GetMessage(int64) (*store.Message, error)                          { return nil, errNotImplemented }
 func (s *Store) ListMessages(string, int, int64) ([]store.Message, error)          { return nil, nil }
 func (s *Store) ListMessagesBySender(string, string, int) ([]store.Message, error) { return nil, nil }
+func (s *Store) ListMessagesBySenderBefore(string, string, int64, int) ([]store.Message, error) {
+	return nil, nil
+}
 func (s *Store) ListChannelMessages(string, string, int) ([]store.Message, error)  { return nil, nil }
 func (s *Store) GetMessagesSince(string, int64, int) ([]store.Message, error)      { return nil, nil }
 func (s *Store) UpdateMediaStatus(string, string, json.RawMessage) error           { return nil }

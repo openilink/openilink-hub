@@ -44,6 +44,7 @@ type MessageStore interface {
 	GetMessage(id int64) (*Message, error)
 	ListMessages(botID string, limit int, beforeID int64) ([]Message, error)
 	ListMessagesBySender(botID, sender string, limit int) ([]Message, error)
+	ListMessagesBySenderBefore(botID, sender string, beforeID int64, limit int) ([]Message, error)
 	ListChannelMessages(channelID, sender string, limit int) ([]Message, error)
 	GetMessagesSince(botID string, afterSeq int64, limit int) ([]Message, error)
 	GetLatestContextToken(botID string) string
