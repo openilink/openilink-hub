@@ -498,4 +498,8 @@ docker run -d -p 9800:9800 ghcr.io/openilink/openilink-hub:latest     # GHCR
 
 Visit `http://localhost:9800` — first user becomes admin. Zero config needed.
 
+### One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/OpeniLink%20Hub/)
+
 **Website:** [openilink.com](https://openilink.com) · **Live Demo:** [hub.openilink.com](https://hub.openilink.com)
